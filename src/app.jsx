@@ -55,7 +55,11 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const moveTask = (id, colId) => setTasks(tasks.map(t => t.id === id ? { ...t, col: colId, progress: colId === 'done' ? 100 : t.progress } : t));
+  const moveTask = (id, colId) => {
+    const col = DATA.COLUMNS.find(c => c.id === colId);
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, col: colId, progress: col?.is_done ? 100 : t.progress } : t));
+    API.updateTask(id, { col: colId }).catch(e => console.error('moveTask API error:', e));
+  };
   const updateTitle = (id, title) => setTasks(tasks.map(t => t.id === id ? { ...t, title } : t));
   const createTask = (newTask) => setTasks(prev => [newTask, ...prev]);
 

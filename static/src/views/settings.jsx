@@ -1,11 +1,15 @@
 // Settings view — profile, appearance, workspace (invite code + roles + members)
 
 const LABEL_TONES = [
-  { id: 'rose',   label: 'Kırmızı' },
-  { id: 'blue',   label: 'Mavi'    },
-  { id: 'amber',  label: 'Sarı'    },
-  { id: 'green',  label: 'Yeşil'   },
-  { id: 'purple', label: 'Mor'     },
+  { id: 'rose',   label: 'Kırmızı'    },
+  { id: 'blue',   label: 'Mavi'       },
+  { id: 'amber',  label: 'Sarı'       },
+  { id: 'green',  label: 'Yeşil'      },
+  { id: 'purple', label: 'Mor'        },
+  { id: 'teal',   label: 'Turkuaz'    },
+  { id: 'orange', label: 'Turuncu'    },
+  { id: 'cyan',   label: 'Camgöbeği' },
+  { id: 'pink',   label: 'Pembe'      },
 ];
 
 function LabelsSection({ canManage }) {

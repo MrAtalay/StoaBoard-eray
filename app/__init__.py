@@ -29,6 +29,10 @@ def _migrate_db():
             if is_pg else
             "ALTER TABLE chat_messages ADD COLUMN hidden_for TEXT DEFAULT '[]'"),
         ('workspace_members', 'role_title', "ALTER TABLE workspace_members ADD COLUMN role_title VARCHAR(100)"),
+        ('board_columns', 'is_done',
+            "ALTER TABLE board_columns ADD COLUMN is_done BOOLEAN DEFAULT FALSE"
+            if is_pg else
+            "ALTER TABLE board_columns ADD COLUMN is_done INTEGER DEFAULT 0"),
     ]
 
     column_cache = {}

@@ -149,11 +149,12 @@ def _user_private_dict(user, member=None):
 
 def _push_notification(user_id, notif):
     """Bildirim oluştuktan sonra SocketIO ile anlık gönder."""
+    import logging
     from app import socketio as _sio
     try:
         _sio.emit('notification', notif.to_dict(), to=f'user_{user_id}')
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger(__name__).warning('push_notification emit failed: %s', e)
 
 
 # ── Bootstrap ──────────────────────────────────────────────────────────────
@@ -832,7 +833,7 @@ def update_task(task_id):
         ).first()
         if new_col and new_col.id != task.column_id:
             task.column_id = new_col.id
-            if new_col.slug == 'done':
+            if new_col.is_done:
                 task.progress = 100
             _log_activity(
                 task.project_id, user,
@@ -1074,6 +1075,7 @@ def create_column(project_id):
         title_tr=data.get('title_tr') or title,
         color=data.get('color') or 'oklch(55% 0.02 250)',
         position=pos,
+        is_done=bool(data.get('is_done', False)),
     )
     db.session.add(col)
     _log_activity(project_id, user, f"'{title}' isimli yeni bir kolon ekledi.")
@@ -1099,6 +1101,8 @@ def update_column(col_id):
         col.title_tr = data['title_tr']
     if 'color' in data:
         col.color = data['color']
+    if 'is_done' in data:
+        col.is_done = bool(data['is_done'])
     db.session.commit()
     return jsonify(col.to_dict())
 
@@ -1668,8 +1672,9 @@ def create_chat_message():
             _sio.emit('chat_message', msg_data, to=f'user_{receiver.id}')
         elif workspace_id:
             _sio.emit('chat_message', msg_data, to=f'ws_{workspace_id}')
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning('socket emit failed: %s', e)
 
     return jsonify(msg_data), 201
 

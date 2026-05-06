@@ -1,10 +1,11 @@
 // Dashboard
 
 function DashboardView({ tasks, onOpenTask }) {
+  const doneColIds = new Set(DATA.COLUMNS.filter(c => c.is_done).map(c => c.id));
   const total = tasks.length;
-  const done = tasks.filter(t => t.col === 'done').length;
+  const done = tasks.filter(t => doneColIds.has(t.col)).length;
   const overdue = tasks.filter(t => DATA.isOverdue(t.due, t.col)).length;
-  const inProgress = tasks.filter(t => t.col === 'doing').length;
+  const inProgress = tasks.filter(t => !doneColIds.has(t.col)).length;
 
   const maxBar = Math.max(...DATA.THROUGHPUT.map(d => d.done + d.review + d.progress)) || 1;
 

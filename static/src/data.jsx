@@ -9,7 +9,9 @@ function fmtDate(isoDate) {
 }
 
 function isOverdue(isoDate, colId) {
-  if (!isoDate || colId === 'done') return false;
+  if (!isoDate) return false;
+  const col = (window.DATA?.COLUMNS || []).find(c => c.id === colId);
+  if (col?.is_done) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return new Date(isoDate) < today;

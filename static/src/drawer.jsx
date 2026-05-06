@@ -8,12 +8,21 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
   const [submitting, setSubmitting]     = useDrawerState(false);
   const [loadingDetail, setLoadingDetail] = useDrawerState(false);
   const [statusOpen, setStatusOpen]     = useDrawerState(false);
+  const [priorityOpen, setPriorityOpen] = useDrawerState(false);
+  const [labelOpen, setLabelOpen]       = useDrawerState(false);
+  const [assigneeOpen, setAssigneeOpen] = useDrawerState(false);
   const [confirmDelete, setConfirmDelete] = useDrawerState(false);
   const [mentionQuery, setMentionQuery] = useDrawerState(null);
   const [fullscreen, setFullscreen]     = useDrawerState(false);
   const [duplicating, setDuplicating]   = useDrawerState(false);
+  const [dueVal, setDueVal]             = useDrawerState('');
   const statusRef   = useDrawerRef(null);
+  const priorityRef = useDrawerRef(null);
+  const labelRef    = useDrawerRef(null);
+  const assigneeRef = useDrawerRef(null);
   const textareaRef = useDrawerRef(null);
+
+  useDrawerEffect(() => { setDueVal(task?.due || ''); }, [task?.id, task?.due]);
 
   // Fetch full task detail (doc + comments + subtasks) when drawer opens
   useDrawerEffect(() => {
@@ -26,13 +35,25 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
 
   useDrawerEffect(() => {
     const handleClick = (e) => {
-      if (statusOpen && statusRef.current && !statusRef.current.contains(e.target)) {
-        setStatusOpen(false);
-      }
+      if (statusOpen   && statusRef.current   && !statusRef.current.contains(e.target))   setStatusOpen(false);
+      if (priorityOpen && priorityRef.current && !priorityRef.current.contains(e.target)) setPriorityOpen(false);
+      if (labelOpen    && labelRef.current    && !labelRef.current.contains(e.target))    setLabelOpen(false);
+      if (assigneeOpen && assigneeRef.current && !assigneeRef.current.contains(e.target)) setAssigneeOpen(false);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [statusOpen]);
+  }, [statusOpen, priorityOpen, labelOpen, assigneeOpen]);
+
+  const patchTask = async (fields) => {
+    onTaskUpdate && onTaskUpdate({ id: task.id, ...task, ...fields });
+    try {
+      const updated = await API.updateTask(task.id, fields);
+      onTaskUpdate && onTaskUpdate({ id: task.id, ...updated });
+    } catch (e) {
+      console.error('patchTask:', e);
+      onTaskUpdate && onTaskUpdate({ id: task.id, ...task });
+    }
+  };
 
   // ── Duplicate task ──────────────────────────────────────────────────────
   const handleDuplicate = async () => {
@@ -213,38 +234,126 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
             </div>
 
             <div className="prop-label"><Icon name="flag" size={13} /> Öncelik</div>
-            <div className="prop-value">
-              <span className="priority-dot" data-p={task.priority} />
-              {task.priority === 'high' ? 'Yüksek' : task.priority === 'mid' ? 'Orta' : 'Düşük'}
+            <div className="prop-value custom-dropdown" ref={priorityRef}>
+              <button type="button" className="custom-dropdown-btn" disabled={!canManageTasks}
+                onClick={() => canManageTasks && setPriorityOpen(o => !o)}>
+                <span className="priority-dot" data-p={task.priority} />
+                <span>{task.priority === 'high' ? 'Yüksek' : task.priority === 'mid' ? 'Orta' : 'Düşük'}</span>
+                {canManageTasks && <Icon name="chevronDown" size={12} />}
+              </button>
+              {priorityOpen && canManageTasks && (
+                <div className="custom-dropdown-menu">
+                  {[['high','Yüksek'],['mid','Orta'],['low','Düşük']].map(([p, label]) => (
+                    <button key={p} type="button"
+                      className={'custom-dropdown-item' + (task.priority === p ? ' active' : '')}
+                      onClick={() => { patchTask({ priority: p }); setPriorityOpen(false); }}>
+                      <span className="priority-dot" data-p={p} /> {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="prop-label"><Icon name="users" size={13} /> Atanan</div>
-            <div className="prop-value">
-              <AvatarStack members={members} size="sm" />
-              <span style={{ color: 'var(--ink-muted)', marginLeft: 4 }}>
-                {members.map(m => m.name.split(' ')[0]).join(', ')}
-              </span>
+            <div className="prop-value custom-dropdown" ref={assigneeRef}>
+              <button type="button" className="custom-dropdown-btn" disabled={!canManageTasks}
+                onClick={() => canManageTasks && setAssigneeOpen(o => !o)}>
+                {members.length > 0
+                  ? <><AvatarStack members={members} size="sm" max={3} /><span style={{ color:'var(--ink-muted)', fontSize:12 }}>{members.map(m => m.name.split(' ')[0]).join(', ')}</span></>
+                  : <span style={{ color:'var(--ink-muted)' }}>Ata…</span>
+                }
+                {canManageTasks && <Icon name="chevronDown" size={12} />}
+              </button>
+              {assigneeOpen && canManageTasks && (
+                <div className="custom-dropdown-menu" style={{ minWidth: 180 }}>
+                  {DATA.MEMBERS.map(m => {
+                    const assigned = (task.assignees || []).includes(m.id);
+                    return (
+                      <button key={m.id} type="button" className="custom-dropdown-item"
+                        style={{ justifyContent: 'space-between' }}
+                        onClick={() => {
+                          const cur = task.assignees || [];
+                          const next = assigned ? cur.filter(a => a !== m.id) : [...cur, m.id];
+                          patchTask({ assignees: next });
+                        }}>
+                        <span style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <Avatar member={m} size="sm" /> {m.name.split(' ')[0]}
+                        </span>
+                        {assigned && <Icon name="check" size={12} strokeWidth={2.5} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="prop-label"><Icon name="calendar" size={13} /> Bitiş</div>
-            <div className="prop-value">
-              {task.due ? (
-                <>
-                  <span style={{ color: DATA.isOverdue(task.due, task.col) ? 'var(--status-rose)' : 'var(--ink)' }}>
-                    {DATA.fmtDate(task.due)}, {new Date(task.due).getFullYear()}
-                  </span>
-                  {DATA.isOverdue(task.due, task.col) &&
-                    <span style={{ color: 'var(--status-rose)', fontSize: 12 }}>· geçti</span>}
-                </>
-              ) : <span style={{ color: 'var(--ink-muted)' }}>Tarih ekle</span>}
+            <div className="prop-value" style={{ gap: 6 }}>
+              <input
+                type="date"
+                value={dueVal}
+                disabled={!canManageTasks}
+                onChange={e => { setDueVal(e.target.value); patchTask({ due: e.target.value || null }); }}
+                style={{
+                  background:'transparent', border:'1px solid var(--line)', borderRadius:6,
+                  padding:'2px 6px', fontSize:13, cursor: canManageTasks ? 'pointer' : 'default',
+                  color: dueVal && DATA.isOverdue(dueVal, task.col) ? 'var(--status-rose)' : 'var(--ink)',
+                }}
+              />
+              {dueVal && canManageTasks && (
+                <button className="icon-btn" title="Tarihi kaldır"
+                  onClick={() => { setDueVal(''); patchTask({ due: null }); }}>
+                  <Icon name="x" size={11} />
+                </button>
+              )}
+              {!dueVal && <span style={{ color:'var(--ink-muted)', fontSize:13 }}>Tarih ekle</span>}
             </div>
 
             <div className="prop-label"><Icon name="tag" size={13} /> Etiketler</div>
-            <div className="prop-value" style={{ gap: 4, flexWrap: 'wrap' }}>
+            <div className="prop-value" style={{ gap: 4, flexWrap: 'wrap' }} ref={labelRef}>
               {(task.labels || []).map(l => {
                 const lab = DATA.LABELS[l];
-                return lab && <span key={l} className="tag" data-tone={lab.tone}>{lab.tr}</span>;
+                return lab && (
+                  <span key={l} className="tag" data-tone={lab.tone}
+                    style={{ cursor: canManageTasks ? 'pointer' : 'default' }}
+                    onClick={() => {
+                      if (!canManageTasks) return;
+                      patchTask({ labels: (task.labels || []).filter(x => x !== l) });
+                    }}
+                    title={canManageTasks ? 'Kaldırmak için tıkla' : undefined}>
+                    {lab.tr}
+                  </span>
+                );
               })}
+              {canManageTasks && (
+                <>
+                  <button className="tag" style={{ cursor:'pointer', borderStyle:'dashed' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLabelOpen(o => !o);
+                    }}>
+                    <Icon name="plus" size={10} strokeWidth={2} />
+                  </button>
+                  {labelOpen && (
+                    <div className="custom-dropdown-menu" style={{ minWidth: 180 }}>
+                      {Object.entries(DATA.LABELS).map(([slug, lab]) => {
+                        const active = (task.labels || []).includes(slug);
+                        return (
+                          <button key={slug} type="button" className="custom-dropdown-item"
+                            style={{ justifyContent:'space-between' }}
+                            onClick={() => {
+                              const cur = task.labels || [];
+                              patchTask({ labels: active ? cur.filter(x => x !== slug) : [...cur, slug] });
+                            }}>
+                            <span className="tag" data-tone={lab.tone}>{lab.tr}</span>
+                            {active && <Icon name="check" size={12} strokeWidth={2.5} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
 

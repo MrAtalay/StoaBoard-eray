@@ -160,6 +160,7 @@ class BoardColumn(db.Model):
     title_tr = db.Column(db.String(100))
     color = db.Column(db.String(100))
     position = db.Column(db.Integer, default=0)
+    is_done = db.Column(db.Boolean, default=False, nullable=True)
 
     tasks = db.relationship('Task', backref='column', lazy='dynamic',
                             foreign_keys='Task.column_id')
@@ -171,6 +172,7 @@ class BoardColumn(db.Model):
             'title': self.title,
             'title_tr': self.title_tr or self.title,
             'color': self.color or 'oklch(55% 0.02 250)',
+            'is_done': bool(self.is_done),
         }
 
 

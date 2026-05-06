@@ -59,7 +59,7 @@ function CalendarView({ tasks, onOpenTask }) {
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   const tasksFor = (ds) => tasks.filter(t => t.due === ds);
-  const overdue  = tasks.filter(t => t.due && t.due < today && t.col !== 'done').length;
+  const overdue  = tasks.filter(t => DATA.isOverdue(t.due, t.col)).length;
 
   // ── Chip tone ─────────────────────────────────────────────────────────────
   const chipTone = (t) => DATA.LABELS[(t.labels || [])[0]]?.tone || 'slate';
@@ -143,7 +143,7 @@ function CalendarView({ tasks, onOpenTask }) {
                 </div>
                 <div className="cal-week-body">
                   {dayTasks.map(t => {
-                    const overdueT = t.due < today && t.col !== 'done';
+                    const overdueT = DATA.isOverdue(t.due, t.col);
                     return (
                       <div key={t.id} className="cal-week-chip" data-tone={chipTone(t)} data-overdue={overdueT} onClick={() => onOpenTask(t)}>
                         <span className="cal-week-chip-title">{t.title}</span>

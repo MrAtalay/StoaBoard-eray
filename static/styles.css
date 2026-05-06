@@ -173,6 +173,11 @@
   --status-green: oklch(55% 0.09 150);
   --status-yellow: oklch(72% 0.14 75);
   --status-slate: oklch(55% 0.02 250);
+  --status-purple: oklch(55% 0.14 300);
+  --status-teal:   oklch(55% 0.10 195);
+  --status-orange: oklch(62% 0.14 50);
+  --status-cyan:   oklch(60% 0.10 210);
+  --status-pink:   oklch(60% 0.14 350);
 
   /* Shadows — physical, soft */
   --shadow-xs: 0 1px 2px rgba(20, 18, 12, 0.03);
@@ -895,6 +900,73 @@ input, textarea, select, [contenteditable="true"] {
 .avatar[data-size="lg"] { width: 36px; height: 36px; font-size: 13px; }
 
 /* ========================================
+   Filter bar (Board + List shared)
+   ======================================== */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 38px;
+}
+.filter-bar-section {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.filter-bar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+.filter-bar > .icon { color: var(--ink-muted); flex-shrink: 0; }
+.filter-tag {
+  opacity: 0.38;
+  cursor: pointer;
+  transition: opacity .12s;
+}
+.filter-tag:hover { opacity: 0.65; }
+.filter-tag[data-active="true"] { opacity: 1; }
+.filter-priority-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+  background: var(--bg-subtle);
+  transition: all .1s;
+}
+.filter-priority-chip:hover { border-color: var(--ink-dim); color: var(--ink); }
+.filter-priority-chip[data-active="true"] { border-color: var(--ink-2); color: var(--ink); background: var(--bg-raised); font-weight: 600; }
+.filter-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--line);
+  transition: all .1s;
+  margin-left: 2px;
+}
+.filter-clear-btn:hover { color: var(--status-rose); border-color: var(--status-rose); }
+
+/* ========================================
    Kanban Board
    ======================================== */
 .board {
@@ -1093,8 +1165,13 @@ input, textarea, select, [contenteditable="true"] {
 .tag[data-tone="amber"] { color: var(--status-amber); background: oklch(65% 0.11 70 / 0.10); border-color: oklch(65% 0.11 70 / 0.25); }
 .tag[data-tone="rose"] { color: var(--status-rose); background: oklch(58% 0.13 10 / 0.08); border-color: oklch(58% 0.13 10 / 0.25); }
 .tag[data-tone="green"] { color: var(--status-green); background: oklch(55% 0.09 150 / 0.08); border-color: oklch(55% 0.09 150 / 0.25); }
-.tag[data-tone="accent"] { color: var(--accent-ink); background: var(--accent-soft); border-color: var(--accent-soft); }
+.tag[data-tone="accent"]  { color: var(--accent-ink);     background: var(--accent-soft);                    border-color: var(--accent-soft); }
 [data-theme="dark"] .tag[data-tone="accent"] { color: var(--accent); }
+.tag[data-tone="purple"]  { color: var(--status-purple);  background: oklch(55% 0.14 300 / 0.08);  border-color: oklch(55% 0.14 300 / 0.25); }
+.tag[data-tone="teal"]    { color: var(--status-teal);    background: oklch(55% 0.10 195 / 0.08);  border-color: oklch(55% 0.10 195 / 0.25); }
+.tag[data-tone="orange"]  { color: var(--status-orange);  background: oklch(62% 0.14 50  / 0.10);  border-color: oklch(62% 0.14 50  / 0.25); }
+.tag[data-tone="cyan"]    { color: var(--status-cyan);    background: oklch(60% 0.10 210 / 0.08);  border-color: oklch(60% 0.10 210 / 0.25); }
+.tag[data-tone="pink"]    { color: var(--status-pink);    background: oklch(60% 0.14 350 / 0.08);  border-color: oklch(60% 0.14 350 / 0.25); }
 
 .card-title {
   font-size: 13.5px;
@@ -1554,7 +1631,12 @@ input, textarea, select, [contenteditable="true"] {
 .cal-chip[data-tone="amber"]  { border-left-color: var(--status-amber); }
 .cal-chip[data-tone="rose"]   { border-left-color: var(--status-rose); }
 .cal-chip[data-tone="green"]  { border-left-color: var(--status-green); }
-.cal-chip[data-tone="accent"] { border-left-color: var(--accent); }
+.cal-chip[data-tone="accent"]  { border-left-color: var(--accent); }
+.cal-chip[data-tone="purple"]  { border-left-color: var(--status-purple); }
+.cal-chip[data-tone="teal"]    { border-left-color: var(--status-teal); }
+.cal-chip[data-tone="orange"]  { border-left-color: var(--status-orange); }
+.cal-chip[data-tone="cyan"]    { border-left-color: var(--status-cyan); }
+.cal-chip[data-tone="pink"]    { border-left-color: var(--status-pink); }
 .cal-more { font-size: 10.5px; color: var(--ink-muted); padding-left: 4px; }
 .cal-empty { padding: 48px 0; text-align: center; color: var(--ink-dim); font-size: 14px; }
 
@@ -1641,7 +1723,12 @@ input, textarea, select, [contenteditable="true"] {
 .cal-week-chip[data-tone="amber"]  { border-left-color: var(--status-amber); }
 .cal-week-chip[data-tone="rose"]   { border-left-color: var(--status-rose); }
 .cal-week-chip[data-tone="green"]  { border-left-color: var(--status-green); }
-.cal-week-chip[data-tone="accent"] { border-left-color: var(--accent); }
+.cal-week-chip[data-tone="accent"]  { border-left-color: var(--accent); }
+.cal-week-chip[data-tone="purple"]  { border-left-color: var(--status-purple); }
+.cal-week-chip[data-tone="teal"]    { border-left-color: var(--status-teal); }
+.cal-week-chip[data-tone="orange"]  { border-left-color: var(--status-orange); }
+.cal-week-chip[data-tone="cyan"]    { border-left-color: var(--status-cyan); }
+.cal-week-chip[data-tone="pink"]    { border-left-color: var(--status-pink); }
 
 /* ── Agenda view ── */
 .cal-agenda {
@@ -1701,7 +1788,12 @@ input, textarea, select, [contenteditable="true"] {
 .agenda-item[data-tone="amber"]  .agenda-item-bar { background: var(--status-amber); }
 .agenda-item[data-tone="rose"]   .agenda-item-bar { background: var(--status-rose); }
 .agenda-item[data-tone="green"]  .agenda-item-bar { background: var(--status-green); }
-.agenda-item[data-tone="accent"] .agenda-item-bar { background: var(--accent); }
+.agenda-item[data-tone="accent"]  .agenda-item-bar { background: var(--accent); }
+.agenda-item[data-tone="purple"]  .agenda-item-bar { background: var(--status-purple); }
+.agenda-item[data-tone="teal"]    .agenda-item-bar { background: var(--status-teal); }
+.agenda-item[data-tone="orange"]  .agenda-item-bar { background: var(--status-orange); }
+.agenda-item[data-tone="cyan"]    .agenda-item-bar { background: var(--status-cyan); }
+.agenda-item[data-tone="pink"]    .agenda-item-bar { background: var(--status-pink); }
 .agenda-item-body { flex: 1; min-width: 0; }
 .agenda-item-title {
   font-size: 13px;
@@ -2013,8 +2105,9 @@ input, textarea, select, [contenteditable="true"] {
   transition: background 0.15s var(--ease), border-color 0.15s var(--ease), transform 0.15s var(--ease);
   background: var(--bg-subtle);
   border: 1px solid var(--line);
+  position: relative;
 }
-.prop-value:hover { background: var(--bg-raised); transform: translateY(-1px); }
+.prop-value:hover { background: var(--bg-raised); box-shadow: 0 2px 6px oklch(0% 0 0 / 0.06); }
 .custom-dropdown {
   position: relative;
   width: 100%;

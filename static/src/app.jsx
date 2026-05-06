@@ -337,6 +337,9 @@ function App() {
     window.CURRENT_USER       = data.user;
     window.CURRENT_PROJECT_ID = data.current_project;
 
+    const unread = (data.notifications || []).filter(n => n.unread).length;
+    setNotifCount(unread);
+
     const nextStatus = ['away', 'dnd'].includes(data.user?.status) ? data.user.status : 'online';
     setOwnStatus(nextStatus, { manual: nextStatus === 'away', persist: false });
   }
@@ -388,7 +391,8 @@ function App() {
 
   const moveTask = async (id, colId) => {
     const prev = tasks;
-    setTasks(tasks.map(t => t.id === id ? { ...t, col: colId, progress: colId === 'done' ? 100 : t.progress } : t));
+    const col = DATA.COLUMNS.find(c => c.id === colId);
+    setTasks(tasks.map(t => t.id === id ? { ...t, col: colId, progress: col?.is_done ? 100 : t.progress } : t));
     if (drawerTask?.id === id) setDrawerTask(dt => ({ ...dt, col: colId }));
     try { await API.updateTask(id, { col: colId }); }
     catch (e) { setTasks(prev); console.error('moveTask failed:', e.message); }

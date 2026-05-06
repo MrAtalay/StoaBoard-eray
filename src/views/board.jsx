@@ -2,9 +2,56 @@
 
 const { useState: useBoardState, useRef: useBoardRef, useEffect: useBoardEf } = React;
 
+function FilterBar({ activeLabels, activePriority, onToggleLabel, onTogglePriority, onClear }) {
+  const labelEntries = Object.entries(DATA.LABELS || {});
+  const hasFilters = activeLabels.size > 0 || activePriority !== null;
+  const priorities = [
+    { id: 'high', label: 'Yüksek' },
+    { id: 'mid',  label: 'Orta'   },
+    { id: 'low',  label: 'Düşük'  },
+  ];
+
+  return (
+    <div className="filter-bar">
+      <Icon name="filter" size={13} />
+      {labelEntries.length > 0 && (
+        <div className="filter-bar-section">
+          {labelEntries.map(([slug, lab]) => (
+            <button
+              key={slug}
+              className="tag filter-tag"
+              data-tone={lab.tone}
+              data-active={activeLabels.has(slug)}
+              style={{ opacity: activeLabels.size === 0 || activeLabels.has(slug) ? 1 : 0.35, cursor: 'pointer' }}
+              onClick={() => onToggleLabel(slug)}
+            >
+              {lab.tr}
+            </button>
+          ))}
+        </div>
+      )}
+      {labelEntries.length > 0 && <div className="filter-bar-divider" />}
+      <div className="filter-bar-section">
+        {priorities.map(p => (
+          <button key={p.id} className="filter-priority-chip" data-active={activePriority === p.id} onClick={() => onTogglePriority(p.id)}>
+            <span className="priority-dot" data-p={p.id} />
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {hasFilters && (
+        <button className="filter-clear-btn" onClick={onClear}>
+          <Icon name="x" size={11} /> Temizle
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleChange }) {
   const members = task.assignees.map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
-  const isDone = task.col === 'done';
+  const colData = DATA.COLUMNS.find(c => c.id === task.col);
+  const isDone = colData?.is_done || false;
   const overdue = DATA.isOverdue(task.due, task.col);
   const titleRef = useBoardRef(null);
   const [editing, setEditing] = useBoardState(false);
@@ -104,18 +151,35 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
   );
 }
 
-function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dragging, tweaks, onOpenModal, onTitleChange }) {
+function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dragging, tweaks, onOpenModal, onTitleChange, onToggleDone }) {
   const [dragOver, setDragOver] = useBoardState(false);
+  const [menuOpen, setMenuOpen] = useBoardState(false);
+  const menuRef = useBoardRef(null);
+
+  useBoardEf(() => {
+    const handler = (e) => { if (menuOpen && menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
 
   return (
     <div className="column">
       <div className="col-header">
-        <div className="col-dot" style={{ background: col.color }} />
+        <div className="col-dot" style={{ background: col.is_done ? 'var(--status-green)' : col.color }} />
         <span className="col-title">{col.title_tr}</span>
+        {col.is_done && <span style={{ fontSize: 10, color: 'var(--status-green)', fontWeight: 600, letterSpacing: '0.04em' }}>BİTTİ</span>}
         <span className="col-count">{tasks.length}</span>
-        <div className="col-actions">
+        <div className="col-actions" ref={menuRef} style={{ position: 'relative' }}>
           <button onClick={() => onOpenModal(col.id)} title="Yeni görev"><Icon name="plus" size={14} /></button>
-          <button title="Daha fazla"><Icon name="moreH" size={14} /></button>
+          <button title="Daha fazla" onClick={() => setMenuOpen(!menuOpen)}><Icon name="moreH" size={14} /></button>
+          {menuOpen && (
+            <div className="col-menu" style={{ position: 'absolute', top: '100%', right: 0, zIndex: 50 }}>
+              <button className="col-menu-item" onClick={() => { onToggleDone(col); setMenuOpen(false); }}>
+                <Icon name={col.is_done ? 'minus' : 'check'} size={13} />
+                {col.is_done ? 'Bitti işaretini kaldır' : 'Bitti kolonu olarak işaretle'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
       <div
@@ -147,6 +211,8 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
 
 function BoardView({ tasks, onOpenTask, onMoveTask, tweaks, onOpenModal, onTitleChange }) {
   const [draggingId, setDraggingId] = useBoardState(null);
+  const [activeLabels, setActiveLabels] = useBoardState(new Set());
+  const [activePriority, setActivePriority] = useBoardState(null);
   const [columns, setColumns] = useBoardState(() => {
     // Initial load: deduplicate from DATA.COLUMNS
     const cols = DATA.COLUMNS || [];
@@ -191,6 +257,31 @@ function BoardView({ tasks, onOpenTask, onMoveTask, tweaks, onOpenModal, onTitle
     }
   };
 
+  const handleToggleDone = async (col) => {
+    const newIsDone = !col.is_done;
+    setColumns(prev => prev.map(c => c.id === col.id ? { ...c, is_done: newIsDone } : c));
+    DATA.COLUMNS = DATA.COLUMNS.map(c => c.id === col.id ? { ...c, is_done: newIsDone } : c);
+    try {
+      await API.updateColumn(col.db_id, { is_done: newIsDone });
+    } catch (e) {
+      console.error('toggleDone error:', e);
+    }
+  };
+
+  const toggleLabel = (slug) => setActiveLabels(prev => {
+    const next = new Set(prev);
+    if (next.has(slug)) next.delete(slug); else next.add(slug);
+    return next;
+  });
+  const togglePriority = (p) => setActivePriority(prev => prev === p ? null : p);
+  const clearFilters = () => { setActiveLabels(new Set()); setActivePriority(null); };
+
+  const visibleTasks = tasks.filter(t => {
+    if (activePriority && t.priority !== activePriority) return false;
+    if (activeLabels.size > 0 && !t.labels.some(l => activeLabels.has(l))) return false;
+    return true;
+  });
+
   const handleAddColumn = async () => {
     const title = newColumnTitle.trim();
     if (!title) return;
@@ -216,12 +307,20 @@ function BoardView({ tasks, onOpenTask, onMoveTask, tweaks, onOpenModal, onTitle
   };
 
   return (
+    <React.Fragment>
+    <FilterBar
+      activeLabels={activeLabels}
+      activePriority={activePriority}
+      onToggleLabel={toggleLabel}
+      onTogglePriority={togglePriority}
+      onClear={clearFilters}
+    />
     <div className="board">
       {columns.map(col => (
         <Column
           key={col.id}
           col={col}
-          tasks={tasks.filter(t => t.col === col.id)}
+          tasks={visibleTasks.filter(t => t.col === col.id)}
           onOpenTask={onOpenTask}
           onDropCard={handleDrop}
           onDragStart={handleDragStart}
@@ -230,6 +329,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, tweaks, onOpenModal, onTitle
           tweaks={tweaks}
           onOpenModal={onOpenModal}
           onTitleChange={onTitleChange}
+          onToggleDone={handleToggleDone}
         />
       ))}
 
@@ -257,7 +357,8 @@ function BoardView({ tasks, onOpenTask, onMoveTask, tweaks, onOpenModal, onTitle
         </button>
       )}
     </div>
+    </React.Fragment>
   );
 }
 
-Object.assign(window, { Card, Column, BoardView });
+Object.assign(window, { Card, Column, BoardView, FilterBar });

@@ -16,10 +16,11 @@ function DashboardView({ tasks, onOpenTask, onView }) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [teamSortOpen]);
+  const doneColIds  = new Set(DATA.COLUMNS.filter(c => c.is_done).map(c => c.id));
   const total      = tasks.length;
-  const done       = tasks.filter(t => t.col === 'done').length;
+  const done       = tasks.filter(t => doneColIds.has(t.col)).length;
   const overdue    = tasks.filter(t => DATA.isOverdue(t.due, t.col)).length;
-  const inProgress = tasks.filter(t => t.col === 'doing').length;
+  const inProgress = tasks.filter(t => !doneColIds.has(t.col)).length;
 
   const throughput = DATA.THROUGHPUT || [];
 

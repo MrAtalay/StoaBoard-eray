@@ -3,12 +3,37 @@
 const { useState: useListState } = React;
 
 function ListView({ tasks, onOpenTask, onMoveTask }) {
+  const [activeLabels, setActiveLabels] = useListState(new Set());
+  const [activePriority, setActivePriority] = useListState(null);
+
+  const toggleLabel = (slug) => setActiveLabels(prev => {
+    const next = new Set(prev);
+    if (next.has(slug)) next.delete(slug); else next.add(slug);
+    return next;
+  });
+  const togglePriority = (p) => setActivePriority(prev => prev === p ? null : p);
+  const clearFilters = () => { setActiveLabels(new Set()); setActivePriority(null); };
+
+  const visibleTasks = tasks.filter(t => {
+    if (activePriority && t.priority !== activePriority) return false;
+    if (activeLabels.size > 0 && !t.labels.some(l => activeLabels.has(l))) return false;
+    return true;
+  });
+
   const groups = DATA.COLUMNS.map(col => ({
     col,
-    tasks: tasks.filter(t => t.col === col.id),
+    tasks: visibleTasks.filter(t => t.col === col.id),
   }));
 
   return (
+    <React.Fragment>
+    <FilterBar
+      activeLabels={activeLabels}
+      activePriority={activePriority}
+      onToggleLabel={toggleLabel}
+      onTogglePriority={togglePriority}
+      onClear={clearFilters}
+    />
     <div className="list-view">
       {groups.map(({ col, tasks }) => (
         <div className="list-group" key={col.id}>
@@ -32,7 +57,7 @@ function ListView({ tasks, onOpenTask, onMoveTask }) {
             <tbody>
               {tasks.map(t => {
                 const members = t.assignees.map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
-                const isDone = t.col === 'done';
+                const isDone = DATA.COLUMNS.find(c => c.id === t.col)?.is_done || false;
                 const overdue = DATA.isOverdue(t.due, t.col);
                 return (
                   <tr key={t.id} data-done={isDone} onClick={() => onOpenTask(t)}>
@@ -40,7 +65,13 @@ function ListView({ tasks, onOpenTask, onMoveTask }) {
                       <div
                         className="list-check"
                         data-checked={isDone}
-                        onClick={(e) => { e.stopPropagation(); onMoveTask(t.id, isDone ? 'todo' : 'done'); }}
+                        onClick={(e) => {
+  e.stopPropagation();
+  const doneCol = DATA.COLUMNS.find(c => c.is_done);
+  const firstCol = DATA.COLUMNS[0];
+  if (isDone) { onMoveTask(t.id, firstCol?.id || 'todo'); }
+  else { if (doneCol) onMoveTask(t.id, doneCol.id); }
+}}
                       >
                         {isDone && <Icon name="check" size={10} strokeWidth={2.5} />}
                       </div>
@@ -86,6 +117,7 @@ function ListView({ tasks, onOpenTask, onMoveTask }) {
         </div>
       ))}
     </div>
+    </React.Fragment>
   );
 }
 
