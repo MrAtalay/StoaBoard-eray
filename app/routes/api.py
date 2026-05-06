@@ -129,6 +129,8 @@ def _require_project_access(user, project, message='Bu projeye erişiminiz yok')
 def _member_to_dict(wm):
     d = wm.user.to_dict()
     d['ws_role'] = wm.role
+    if wm.role_title:
+        d['role'] = wm.role_title  # workspace-specific title overrides global
     if wm.workspace_role:
         d['role_id'] = wm.role_id
         d['role_name'] = wm.workspace_role.name
@@ -137,9 +139,11 @@ def _member_to_dict(wm):
     return d
 
 
-def _user_private_dict(user):
+def _user_private_dict(user, member=None):
     d = user.to_dict()
     d['email'] = user.email
+    if member and member.role_title:
+        d['role'] = member.role_title  # workspace-specific title
     return d
 
 
@@ -210,7 +214,7 @@ def bootstrap():
     sidebar_projects = [p.to_dict() for p in projects]
 
     base_payload = {
-        'user': _user_private_dict(user),
+        'user': _user_private_dict(user, member),
         'workspace': ws_dict,
         'workspaces': workspaces_list,
         'members': members,
@@ -1156,6 +1160,23 @@ def create_label(project_id):
     return jsonify({label.slug: label.to_dict_value()}), 201
 
 
+@api_bp.route('/projects/<int:project_id>/labels/<slug>', methods=['DELETE'])
+@_login_required
+def delete_label(project_id, slug):
+    user = _current_user()
+    project = Project.query.get_or_404(project_id)
+    _, denied = _require_project_permission(
+        user, project, 'manage_projects', 'Etiket silme yetkiniz yok'
+    )
+    if denied:
+        return denied
+    label = Label.query.filter_by(project_id=project_id, slug=slug).first_or_404()
+    TaskLabel.query.filter_by(label_id=label.id).delete()
+    db.session.delete(label)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 # ── Notifications ──────────────────────────────────────────────────────────
 
 @api_bp.route('/notifications', methods=['GET'])
@@ -1271,7 +1292,14 @@ def update_me():
             parts = name.split()
             user.avatar_initials = (parts[0][0] + (parts[-1][0] if len(parts) > 1 else '')).upper()
     if 'role_title' in data:
-        user.role_title = data['role_title']
+        # Save workspace-specific title on the membership, fall back to user-level
+        wm = WorkspaceMember.query.filter_by(
+            user_id=user.id, workspace_id=user.current_workspace_id
+        ).first()
+        if wm:
+            wm.role_title = data['role_title']
+        else:
+            user.role_title = data['role_title']
     if 'email' in data:
         new_email = data['email'].strip().lower()
         if new_email and new_email != user.email:
@@ -1284,7 +1312,10 @@ def update_me():
         user.set_password(data['password'])
 
     db.session.commit()
-    return jsonify(_user_private_dict(user))
+    wm_current = WorkspaceMember.query.filter_by(
+        user_id=user.id, workspace_id=user.current_workspace_id
+    ).first()
+    return jsonify(_user_private_dict(user, wm_current))
 
 
 # ── Projects ───────────────────────────────────────────────────────────────
@@ -1489,6 +1520,7 @@ def upload_chat_file():
     if not f or not f.filename:
         return jsonify({'error': 'Geçersiz dosya'}), 400
 
+
     f.seek(0, 2)
     size = f.tell()
     f.seek(0)
@@ -1497,14 +1529,6 @@ def upload_chat_file():
 
     orig_name = f.filename
     ext = orig_name.rsplit('.', 1)[-1].lower() if '.' in orig_name else ''
-    safe_name = f'{uuid.uuid4().hex}.{ext}' if ext else uuid.uuid4().hex
-
-    upload_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        'static', 'uploads', 'chat'
-    )
-    os.makedirs(upload_dir, exist_ok=True)
-    f.save(os.path.join(upload_dir, safe_name))
 
     if ext in ALLOWED_IMAGE:
         ftype = 'image'
@@ -1512,6 +1536,37 @@ def upload_chat_file():
         ftype = 'video'
     else:
         ftype = 'file'
+
+    # Cloudinary: persistent cloud storage (set CLOUDINARY_URL env var to enable)
+    cloudinary_url_env = os.environ.get('CLOUDINARY_URL')
+    if cloudinary_url_env:
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            cloudinary.config.from_url(cloudinary_url_env)
+            resource_type = 'image' if ftype == 'image' else ('video' if ftype == 'video' else 'raw')
+            result = cloudinary.uploader.upload(
+                f, resource_type=resource_type,
+                use_filename=True, unique_filename=True,
+                folder='stoaboard/chat',
+            )
+            return jsonify({
+                'url': result['secure_url'],
+                'type': ftype,
+                'name': orig_name,
+                'size': size,
+            })
+        except Exception:
+            f.seek(0)  # reset for local fallback
+
+    # Local storage fallback (ephemeral on Railway without a volume)
+    safe_name = f'{uuid.uuid4().hex}.{ext}' if ext else uuid.uuid4().hex
+    upload_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        'static', 'uploads', 'chat'
+    )
+    os.makedirs(upload_dir, exist_ok=True)
+    f.save(os.path.join(upload_dir, safe_name))
 
     return jsonify({
         'url': f'/static/uploads/chat/{safe_name}',

@@ -358,19 +358,6 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
         return [...prev, msg];
       });
 
-      // Toast for incoming messages when panel is open (DND / settings check)
-      if (msg.from !== me) {
-        const tweaks = JSON.parse(localStorage.getItem('stoa.tweaks') || '{}');
-        const notifyEnabled = tweaks.notifyMessages !== false;
-        const toastEnabled  = tweaks.notifyToasts   !== false;
-        const myStatus = window.__MY_STATUS__ || 'online';
-        if (notifyEnabled && toastEnabled && myStatus !== 'dnd' && !window.__CHAT_OPEN__) {
-          const sender = allMembers.find(m => m.id === msg.from);
-          if (sender && window.showToast) {
-            window.showToast(chatToastPayload(msg, sender), 'message');
-          }
-        }
-      }
     };
 
     const onTyping = ({ user, typing }) => {

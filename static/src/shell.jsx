@@ -22,22 +22,12 @@ function ToastContainer() {
 
   useEffect(() => {
     window.TOAST_LISTENER = (newToasts) => setToasts(newToasts);
-    
-    // Auto-remove toasts after 4 seconds
     const interval = setInterval(() => {
       const now = Date.now();
-      window.TOAST_QUEUE = window.TOAST_QUEUE.filter(t => {
-        return (now - (t._createdAt || now)) < 4000;
-      });
-      if (window.TOAST_LISTENER) {
-        window.TOAST_LISTENER([...window.TOAST_QUEUE]);
-      }
-    }, 500);
-    
-    return () => {
-      clearInterval(interval);
-      window.TOAST_LISTENER = null;
-    };
+      window.TOAST_QUEUE = window.TOAST_QUEUE.filter(t => (now - (t._createdAt || now)) < 5000);
+      if (window.TOAST_LISTENER) window.TOAST_LISTENER([...window.TOAST_QUEUE]);
+    }, 400);
+    return () => { clearInterval(interval); window.TOAST_LISTENER = null; };
   }, []);
 
   const removeToast = (id) => {
@@ -45,46 +35,32 @@ function ToastContainer() {
     setToasts([...window.TOAST_QUEUE]);
   };
 
+  const handleClick = (toast) => {
+    removeToast(toast.id);
+    if (toast.type === 'message' && window.__OPEN_CHAT__) {
+      window.__OPEN_CHAT__(toast.meta?.dmWith || null);
+    }
+  };
+
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: 20,
-      right: 20,
-      zIndex: 10000,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 8,
-      pointerEvents: 'none'
-    }}>
+    <div className="toast-stack">
       {toasts.map(toast => (
-        <div
-          key={toast.id}
-          className={`toast-item toast-${toast.type || 'info'}`}
-          style={{
-            background: 'var(--bg-raised)',
-            color: 'var(--ink)',
-            border: '1px solid var(--line)',
-            borderRadius: 8,
-            padding: toast.type === 'message' && toast.meta ? '12px 14px' : '12px 16px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            maxWidth: 340,
-            wordWrap: 'break-word',
-            pointerEvents: 'auto',
-            animation: 'toastIn 0.3s ease-out',
-            cursor: 'pointer'
-          }}
-          onClick={() => removeToast(toast.id)}
-        >
+        <div key={toast.id} className={`toast-item toast-${toast.type || 'info'}`} onClick={() => handleClick(toast)}>
           {toast.type === 'message' && toast.meta ? (
-            <div className="toast-message-body">
-              <div className="toast-message-title">{toast.meta.sender || 'Yeni mesaj'}</div>
-              <div className="toast-message-text">{toast.message}</div>
-              <div className="toast-message-meta">
-                <span>{toast.meta.channel || 'Genel'}</span>
-                <span>{toast.meta.time || ''}</span>
+            <>
+              <div className="toast-msg-head">
+                <span className="toast-msg-name">{toast.meta.sender}</span>
+                <span className="toast-msg-channel">{toast.meta.channel}</span>
+                <span className="toast-msg-time">{toast.meta.time}</span>
               </div>
-            </div>
-          ) : toast.message}
+              <div className="toast-msg-text">
+                {toast.message}
+                {toast.meta.truncated && <span className="toast-see-more"> devamını gör →</span>}
+              </div>
+            </>
+          ) : (
+            <div className="toast-msg-text">{toast.message}</div>
+          )}
         </div>
       ))}
     </div>
@@ -370,6 +346,17 @@ function NavItem({ icon, label, sub, badge, active, onClick }) {
 }
 
 function Topbar({ view, onView, openCmd, openNotifs, openModal, activeCrumb, onChatOpen, notifCount, canManageTasks, onMobileMenuToggle }) {
+  const [showCode, setShowCode] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const inviteCode = DATA.WORKSPACE?.invite_code || null;
+
+  const handleCopyCode = () => {
+    if (!inviteCode) return;
+    navigator.clipboard.writeText(inviteCode).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="topbar">
       <button className="mobile-menu-btn" onClick={onMobileMenuToggle} title="Menü">
@@ -386,6 +373,17 @@ function Topbar({ view, onView, openCmd, openNotifs, openModal, activeCrumb, onC
             <button data-active={view==='board'}    onClick={() => onView('board')}>   <Icon name="layoutBoard" size={13} /> Pano</button>
             <button data-active={view==='list'}     onClick={() => onView('list')}>    <Icon name="list" size={13} /> Liste</button>
             <button data-active={view==='calendar'} onClick={() => onView('calendar')}><Icon name="calendar" size={13} /> Takvim</button>
+          </div>
+        )}
+        {inviteCode && (
+          <div className="topbar-invite" title="Davet kodu">
+            <span className="topbar-invite-code">{showCode ? inviteCode : '•'.repeat(inviteCode.length)}</span>
+            <button className="icon-btn topbar-invite-eye" onClick={() => setShowCode(v => !v)} title={showCode ? 'Gizle' : 'Göster'}>
+              <Icon name={showCode ? 'eyeOff' : 'eye'} size={13} />
+            </button>
+            <button className="icon-btn topbar-invite-eye" onClick={handleCopyCode} title={copied ? 'Kopyalandı!' : 'Kopyala'}>
+              <Icon name={copied ? 'check' : 'copy'} size={13} />
+            </button>
           </div>
         )}
         <button className="icon-btn" onClick={openCmd}    title="Komut paleti (⌘K)"><Icon name="search" size={16} /></button>

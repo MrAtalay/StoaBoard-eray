@@ -87,6 +87,12 @@ window.API = {
   updateProject: (id, data)  => apiFetch(`/api/projects/${id}`, { method: 'PATCH', body: data }),
   deleteProject: (id)        => apiFetch(`/api/projects/${id}`, { method: 'DELETE' }),
 
+  // Labels
+  createLabel: (projectId, data) =>
+    apiFetch(`/api/projects/${projectId}/labels`, { method: 'POST', body: data }),
+  deleteLabel: (projectId, slug) =>
+    apiFetch(`/api/projects/${projectId}/labels/${slug}`, { method: 'DELETE' }),
+
   // Columns
   createColumn: (projectId, data) =>
     apiFetch(`/api/projects/${projectId}/columns`, { method: 'POST', body: data }),

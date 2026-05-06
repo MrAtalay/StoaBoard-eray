@@ -2,7 +2,7 @@
 
 const { useState: useDrawerState, useEffect: useDrawerEffect, useRef: useDrawerRef } = React;
 
-function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, canManageTasks = true }) {
+function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, onCreateTask, canManageTasks = true }) {
   const [detail, setDetail]             = useDrawerState(null);
   const [newComment, setNewComment]     = useDrawerState('');
   const [submitting, setSubmitting]     = useDrawerState(false);
@@ -10,6 +10,8 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, c
   const [statusOpen, setStatusOpen]     = useDrawerState(false);
   const [confirmDelete, setConfirmDelete] = useDrawerState(false);
   const [mentionQuery, setMentionQuery] = useDrawerState(null);
+  const [fullscreen, setFullscreen]     = useDrawerState(false);
+  const [duplicating, setDuplicating]   = useDrawerState(false);
   const statusRef   = useDrawerRef(null);
   const textareaRef = useDrawerRef(null);
 
@@ -31,6 +33,29 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, c
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [statusOpen]);
+
+  // ── Duplicate task ──────────────────────────────────────────────────────
+  const handleDuplicate = async () => {
+    if (duplicating) return;
+    setDuplicating(true);
+    try {
+      const newTask = await API.createTask(task.project_id, {
+        title: task.title + ' (kopya)',
+        desc: task.desc,
+        col: task.col,
+        priority: task.priority,
+        due: task.due || null,
+        labels: task.labels || [],
+        assignees: task.assignees || [],
+      });
+      if (onCreateTask) onCreateTask(newTask);
+      onClose();
+    } catch (e) {
+      alert('Görev kopyalanamadı: ' + e.message);
+    } finally {
+      setDuplicating(false);
+    }
+  };
 
   if (!task) return null;
 
@@ -113,8 +138,8 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, c
 
   return (
     <>
-      <div className="drawer-overlay" data-open={open} onClick={onClose} />
-      <div className="drawer" data-open={open}>
+      <div className="drawer-overlay" data-open={open} data-fullscreen={fullscreen} onClick={onClose} />
+      <div className="drawer" data-open={open} data-fullscreen={fullscreen}>
         <div className="drawer-head">
           <div className="drawer-crumbs">
             <span>StoaBoard Web</span>
@@ -122,8 +147,12 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, c
             <span style={{ color: 'var(--ink)' }}>{col.title_tr}</span>
           </div>
           <div className="drawer-head-actions">
-            <button className="icon-btn" title="Kopyala"><Icon name="copy" size={15} /></button>
-            <button className="icon-btn" title="Tam ekran"><Icon name="expand" size={14} /></button>
+            <button className="icon-btn" title="Kopyala" onClick={handleDuplicate} disabled={duplicating}>
+              <Icon name="copy" size={15} />
+            </button>
+            <button className="icon-btn" title={fullscreen ? 'Küçült' : 'Tam ekran'} onClick={() => setFullscreen(f => !f)}>
+              <Icon name={fullscreen ? 'minimize' : 'expand'} size={14} />
+            </button>
             {onDelete && canManageTasks && (
               confirmDelete ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -202,7 +231,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, c
               {task.due ? (
                 <>
                   <span style={{ color: DATA.isOverdue(task.due, task.col) ? 'var(--status-rose)' : 'var(--ink)' }}>
-                    {DATA.fmtDate(task.due)}, 2026
+                    {DATA.fmtDate(task.due)}, {new Date(task.due).getFullYear()}
                   </span>
                   {DATA.isOverdue(task.due, task.col) &&
                     <span style={{ color: 'var(--status-rose)', fontSize: 12 }}>· geçti</span>}
@@ -287,7 +316,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, c
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 8 }}>
-              <button className="btn btn-ghost" onClick={() => setNewComment('')}>İptal</button>
+              <button className="btn btn-ghost" onClick={onClose}>İptal</button>
               <button className="btn btn-primary" onClick={handleCommentSubmit} disabled={submitting || !newComment.trim()}>
                 {submitting ? 'Gönderiliyor…' : 'Gönder'}
               </button>

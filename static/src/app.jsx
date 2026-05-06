@@ -18,6 +18,7 @@ function App() {
   const [chatDmWith, setChatDmWith]         = useS(null);
   const [onlineUsers, setOnlineUsers]       = useS(new Map()); // slug → status
   const [members, setMembers]               = useS([]);
+  const [isOwner, setIsOwner]               = useS(false);
   const [projectModal, setProjectModal]     = useS(false);
   const [tweaksAvailable, setTweaksAvailable] = useS(false);
   const [socket, setSocket]                 = useS(null);
@@ -31,6 +32,7 @@ function App() {
   const currentStatus  = useRef('online');
   const autoAwayStatus = useRef(false);
   const manualAwayStatus = useRef(false);
+  const pendingGTimer  = useRef(null);
   const [myStatusState, setMyStatusState] = useS('online');
   const [notifCount, setNotifCount]       = useS(0);
 
@@ -49,8 +51,8 @@ function App() {
 
   const myMember = members.find(m => m.id === window.CURRENT_USER?.id) || {};
   const myPerms = myMember.role_permissions || [];
-  const canManageTasks = DATA.WORKSPACE?.is_owner || myPerms.includes('manage_tasks');
-  const canManageProjects = DATA.WORKSPACE?.is_owner || myPerms.includes('manage_projects');
+  const canManageTasks = isOwner || myPerms.includes('manage_tasks');
+  const canManageProjects = isOwner || myPerms.includes('manage_projects');
 
   useEf(() => localStorage.setItem('stoa.view', view), [view]);
   useEf(() => { document.documentElement.dataset.theme    = tweaks.theme;    }, [tweaks.theme]);
@@ -70,23 +72,44 @@ function App() {
 
   // Keyboard shortcuts
   useEf(() => {
+    const isEditing = () => {
+      const ae = document.activeElement;
+      return ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable;
+    };
+    const clearG = () => { clearTimeout(pendingGTimer.current); pendingGTimer.current = null; };
+    const G_MAP = { b: 'board', l: 'list', c: 'calendar', d: 'dashboard', s: 'settings' };
+
     const onKey = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(true); }
-      else if (e.key === 'Escape') {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); clearG(); setCmdOpen(true); return; }
+      if (e.key === 'Escape') {
+        clearG();
         setDrawerTask(null); setModalOpen(false); setCmdOpen(false);
         setNotifOpen(false); setChatOpen(false); setProjectModal(false);
         setWsSwitcherOpen(false);
-      } else if (
-        e.key === 'n' && !e.metaKey && !e.ctrlKey &&
-        document.activeElement.tagName !== 'INPUT' &&
-        document.activeElement.tagName !== 'TEXTAREA' &&
-        !document.activeElement.isContentEditable
-      ) {
+        return;
+      }
+      if (isEditing()) return;
+
+      // Second key of a G+key sequence
+      if (pendingGTimer.current !== null) {
+        clearG();
+        const dest = G_MAP[e.key.toLowerCase()];
+        if (dest) { e.preventDefault(); setView(dest); }
+        return;
+      }
+
+      if (e.key.toLowerCase() === 'g' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        pendingGTimer.current = setTimeout(clearG, 600);
+        return;
+      }
+
+      if (e.key === 'n' && !e.metaKey && !e.ctrlKey) {
         if (canManageTasks) openModal('todo');
       }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); clearG(); };
   }, [canManageTasks]);
 
   // ── Auth + bootstrap on mount ────────────────────────────────────────────
@@ -154,22 +177,30 @@ function App() {
     });
 
     // Global chat_message handler — shows toast when chat panel is closed
-    // and respects DND mode
+    if (!window.__TOAST_LAST_MSG__) window.__TOAST_LAST_MSG__ = {};
     sock.on('chat_message', (msg) => {
       const me = window.CURRENT_USER?.id;
       if (!msg || msg.from === me) return;
-
-      // Only toast if chat panel is not open (chat panel handles its own notifications)
       if (window.__CHAT_OPEN__) return;
 
       const twks = JSON.parse(localStorage.getItem('stoa.tweaks') || '{}');
-      const notifyMessages = twks.notifyMessages !== false;
-      const notifyToasts   = twks.notifyToasts   !== false;
-      const myStatus = window.__MY_STATUS__ || 'online';
+      if (twks.notifyMessages === false || twks.notifyToasts === false) return;
+      if ((window.__MY_STATUS__ || 'online') === 'dnd') return;
 
-      if (!notifyMessages) return;
-      if (myStatus === 'dnd') return;    // no pop-up in DND
-      if (!notifyToasts) return;
+      // Per-type filtering
+      const isDM = !!msg.to;
+      if (isDM  && twks.notifyDMs       === false) return;
+      if (!isDM && twks.notifyGroupChat === false) return;
+
+      // Debounce: aynı göndericiden 2 sn içinde birden fazla toast gösterme
+      const now = Date.now();
+      const key = String(msg.from);
+      const lastTimes = window.__TOAST_LAST_MSG__;
+      if (lastTimes[key] && (now - lastTimes[key]) < 2000) return;
+      lastTimes[key] = now;
+
+      // Max 3 toast aynı anda
+      if ((window.TOAST_QUEUE || []).length >= 3) return;
 
       const allMembers = window.DATA?.MEMBERS || [];
       const sender = allMembers.find(m => m.id === msg.from);
@@ -262,13 +293,18 @@ function App() {
   }
 
   function messageToastPayload(msg, sender) {
-    const preview = msg.text || msg.file_name || 'Dosya';
+    const MAX_LEN = 80;
+    const raw = msg.text || msg.file_name || 'Dosya';
+    const truncated = raw.length > MAX_LEN;
     return {
-      message: preview,
+      message: truncated ? raw.slice(0, MAX_LEN) + '…' : raw,
       meta: {
         sender: sender?.name || msg.from || 'Yeni mesaj',
+        senderId: sender?.id || msg.from,
         channel: msg.to ? 'Direkt mesaj' : 'Genel kanal',
         time: msg.time || new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+        truncated,
+        dmWith: msg.to ? (typeof msg.from === 'string' ? msg.from : null) : null,
       },
     };
   }
@@ -293,6 +329,7 @@ function App() {
     window.DATA.PROJECTS      = data.projects      || [];
     window.DATA.WORKSPACE     = data.workspace     || {};
     window.DATA.WORKSPACES    = data.workspaces    || [];
+    setIsOwner(!!(data.workspace?.is_owner));
     setWsLogoUrl(data.workspace?.logo_url || null);
     window.DATA.NOTIFICATIONS = data.notifications || [];
     window.DATA.ACTIVITY      = data.activity      || [];
@@ -398,12 +435,12 @@ function App() {
   };
 
   const openChat = (dmWithSlug) => {
-    // only accept actual slug strings — filter out DOM events, booleans, etc.
     const slug = typeof dmWithSlug === 'string' ? dmWithSlug : null;
     setChatDmWith(slug);
     setChatOpen(true);
     window.__CHAT_OPEN__ = true;
   };
+  window.__OPEN_CHAT__ = openChat;
 
   const handleCmd = (action) => {
     if (action.startsWith('goto:'))       setView(action.slice(5));
@@ -444,7 +481,7 @@ function App() {
     try { await API.logout(); } catch (_) {}
     window.DATA.MEMBERS = []; window.DATA.COLUMNS = []; window.DATA.LABELS = {};
     window.DATA.PROJECTS = []; window.DATA.WORKSPACE = {}; window.DATA.WORKSPACES = [];
-    setAuthed(false); setNeedsWorkspace(false);
+    setAuthed(false); setNeedsWorkspace(false); setIsOwner(false);
     setTasks([]); setOnlineUsers(new Map()); setWorkspaces([]);
     setWsLogoUrl(null);
     setTweak('theme', 'cream');
@@ -462,12 +499,17 @@ function App() {
 
   if (loading) {
     return (
-      <div className="app" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-        <div style={{ textAlign: 'center', color: 'var(--ink-muted)', fontSize: 14 }}>
-          <div className="sidebar-logo" style={{ margin: '0 auto 12px' }}>
-            <Icon name="bolt" size={20} strokeWidth={1.8} />
+      <div className="loading-screen">
+        <div className="loading-content">
+          <div className="loading-logo-wrap">
+            <img
+              src="/static/StoaBoard_symbol.png" alt=""
+              style={{ width: 36, height: 36, objectFit: 'contain', filter: 'brightness(0) invert(1)', display: 'block' }}
+              onError={e => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>'; }}
+            />
           </div>
-          Yükleniyor…
+          <div className="loading-brand">Stoa<em>Board</em></div>
+          <div className="loading-bar-wrap"><div className="loading-bar" /></div>
         </div>
       </div>
     );
@@ -563,7 +605,7 @@ function App() {
             {view === 'board'     && <BoardView tasks={tasks} onOpenTask={openDrawer} onMoveTask={moveTask} onDeleteTask={deleteTask} tweaks={tweaks} onOpenModal={openModal} onTitleChange={updateTitle} canManageTasks={canManageTasks} canManageProjects={canManageProjects} />}
             {view === 'list'      && <ListView tasks={tasks} onOpenTask={openDrawer} onMoveTask={moveTask} canManageTasks={canManageTasks} />}
             {view === 'calendar'  && <CalendarView tasks={tasks} onOpenTask={openDrawer} />}
-            {view === 'dashboard' && <DashboardView tasks={tasks} onOpenTask={openDrawer} />}
+            {view === 'dashboard' && <DashboardView tasks={tasks} onOpenTask={openDrawer} onView={setView} />}
           </>
         )}
         {view === 'settings' && <SettingsView tweaks={tweaks} setTweak={setTweak} onLogout={handleLogout} onWsLogoChange={handleWsLogoChange} onMembersChange={setMembers} />}
@@ -572,8 +614,12 @@ function App() {
       <TaskDrawer
         open={!!drawerTask} task={drawerTask} onClose={closeDrawer}
         onMoveTask={moveTask}
-        onTaskUpdate={(updated) => setTasks(tasks.map(t => t.id === updated.id ? { ...t, ...updated } : t))}
+        onTaskUpdate={(updated) => {
+          setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t));
+          setDrawerTask(prev => prev && prev.id === updated.id ? { ...prev, ...updated } : prev);
+        }}
         onDelete={deleteTask}
+        onCreateTask={(newTask) => setTasks(prev => [newTask, ...prev])}
         canManageTasks={canManageTasks}
       />
       <AddTaskModal open={canManageTasks && modalOpen} onClose={() => setModalOpen(false)} defaultCol={modalCol} onCreate={createTask} />

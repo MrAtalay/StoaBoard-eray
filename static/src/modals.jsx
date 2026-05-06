@@ -154,6 +154,7 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate }) {
   const [labels, setLabels]       = useModalState([]);
   const [assignees, setAssignees] = useModalState([]);
   const [busy, setBusy]           = useModalState(false);
+  const [titleError, setTitleError] = useModalState(false);
   const [colOpen, setColOpen]           = useModalState(false);
   const [priorityOpen, setPriorityOpen] = useModalState(false);
   const [colPos, setColPos]             = useModalState({ top: 0, left: 0, width: 0 });
@@ -189,7 +190,7 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate }) {
 
   React.useEffect(() => { if (defaultCol) setCol(defaultCol); }, [defaultCol, open]);
   React.useEffect(() => {
-    if (!open) { setTitle(''); setDesc(''); setLabels([]); setBusy(false); }
+    if (!open) { setTitle(''); setDesc(''); setLabels([]); setBusy(false); setTitleError(false); }
     if (open) {
       const me = window.CURRENT_USER;
       setAssignees(me ? [me.id] : []);
@@ -200,7 +201,11 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate }) {
   const toggleAssignee = (k) => setAssignees(as => as.includes(k) ? as.filter(x => x !== k) : [...as, k]);
 
   const submit = async () => {
-    if (!title.trim() || busy) return;
+    if (busy) return;
+    if (!title.trim()) {
+      setTitleError(true);
+      return;
+    }
     setBusy(true);
     try {
       await onCreate({ title: title.trim(), desc, col, priority, due: due || null, labels, assignees });
@@ -223,8 +228,14 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate }) {
         </div>
         <div className="modal-body">
           <div className="field">
-            <label>Başlık</label>
-            <input autoFocus placeholder="Ne yapılacak?" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <label>Başlık {titleError && <span style={{ color: 'var(--status-rose)', fontWeight: 400, fontSize: 11 }}>— başlık gerekli</span>}</label>
+            <input
+              autoFocus
+              placeholder="Ne yapılacak?"
+              value={title}
+              onChange={(e) => { setTitle(e.target.value); if (e.target.value.trim()) setTitleError(false); }}
+              style={titleError ? { borderColor: 'var(--status-rose)', background: 'oklch(58% 0.13 10 / 0.05)' } : {}}
+            />
           </div>
           <div className="field">
             <label>Açıklama</label>
@@ -236,15 +247,16 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate }) {
               <div className="custom-dropdown">
                 <button ref={colBtnRef} type="button" className="custom-dropdown-btn"
                   onClick={() => openDropdown(colBtnRef, setColPos, setColOpen)}>
-                  <span>{DATA.COLUMNS.find(c => c.id === col)?.title_tr || 'Seç'}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{DATA.COLUMNS.find(c => c.id === col)?.title_tr || 'Seç'}</span>
                   <Icon name="chevronDown" size={12} />
                 </button>
                 {colOpen && ReactDOM.createPortal(
                   <div ref={colMenuRef} className="custom-dropdown-menu"
-                    style={{ position: 'fixed', top: colPos.top, left: colPos.left, minWidth: colPos.width, zIndex: 9999 }}>
+                    style={{ position: 'fixed', top: colPos.top, left: colPos.left, minWidth: colPos.width, maxWidth: 320, zIndex: 9999 }}>
                     {DATA.COLUMNS.map(c => (
                       <button key={c.id} type="button"
                         className={`custom-dropdown-item${c.id === col ? ' active' : ''}`}
+                        style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                         onClick={() => { setCol(c.id); setColOpen(false); }}>
                         {c.title_tr}
                       </button>

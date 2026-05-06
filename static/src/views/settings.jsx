@@ -1,5 +1,115 @@
 // Settings view — profile, appearance, workspace (invite code + roles + members)
 
+const LABEL_TONES = [
+  { id: 'rose',   label: 'Kırmızı' },
+  { id: 'blue',   label: 'Mavi'    },
+  { id: 'amber',  label: 'Sarı'    },
+  { id: 'green',  label: 'Yeşil'   },
+  { id: 'purple', label: 'Mor'     },
+];
+
+function LabelsSection({ canManage }) {
+  const projectId = window.CURRENT_PROJECT_ID;
+  const [labels, setLabels] = React.useState(() => ({ ...DATA.LABELS }));
+  const [newName, setNewName] = React.useState('');
+  const [newTone, setNewTone] = React.useState('blue');
+  const [adding, setAdding] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const toSlug = (s) =>
+    s.toLowerCase()
+      .replace(/[çÇ]/g,'c').replace(/[ğĞ]/g,'g').replace(/[ıİ]/g,'i')
+      .replace(/[öÖ]/g,'o').replace(/[şŞ]/g,'s').replace(/[üÜ]/g,'u')
+      .replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+
+  const handleDelete = async (slug) => {
+    if (!projectId || !canManage) return;
+    try {
+      await API.deleteLabel(projectId, slug);
+      const next = { ...labels };
+      delete next[slug];
+      setLabels(next);
+      DATA.LABELS = next;
+    } catch (e) { alert('Etiket silinemedi: ' + e.message); }
+  };
+
+  const handleAdd = async () => {
+    const name = newName.trim();
+    if (!name || !projectId) return;
+    const slug = toSlug(name);
+    if (!slug) { setError('Geçerli bir isim girin'); return; }
+    if (labels[slug]) { setError('Bu etiket zaten mevcut'); return; }
+    setAdding(true);
+    setError('');
+    try {
+      const result = await API.createLabel(projectId, { slug, name_en: name, name_tr: name, tone: newTone });
+      const next = { ...labels, ...result };
+      setLabels(next);
+      DATA.LABELS = next;
+      setNewName('');
+    } catch (e) { setError(e.message); }
+    finally { setAdding(false); }
+  };
+
+  return (
+    <div className="settings-section">
+      <div>
+        <h3>Etiketler</h3>
+        <p className="desc">Görevleri kategorize etmek için etiketleri yönetin.</p>
+      </div>
+      <div className="settings-card" style={{ padding: 0, overflow: 'hidden' }}>
+        {Object.keys(labels).length === 0 && (
+          <div style={{ padding: '18px 20px', fontSize: 13, color: 'var(--ink-muted)' }}>Henüz etiket yok.</div>
+        )}
+        {Object.entries(labels).map(([slug, label], i, arr) => (
+          <div key={slug} className="label-row" style={{ borderBottom: i < arr.length - 1 ? '1px solid var(--line)' : 'none' }}>
+            <span className="tag" data-tone={label.tone} style={{ flexShrink: 0 }}>{label.tr}</span>
+            <span className="label-row-slug">{slug}</span>
+            {canManage && (
+              <button className="icon-btn label-row-del" title="Sil" onClick={() => handleDelete(slug)}>
+                <Icon name="trash" size={13} />
+              </button>
+            )}
+          </div>
+        ))}
+        {canManage && (
+          <div className="label-add-row">
+            <input
+              className="label-add-input"
+              placeholder="Yeni etiket adı…"
+              value={newName}
+              onChange={e => { setNewName(e.target.value); setError(''); }}
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            />
+            <div className="label-tone-row">
+              {LABEL_TONES.map(t => (
+                <button
+                  key={t.id}
+                  title={t.label}
+                  className="label-tone-dot"
+                  data-active={newTone === t.id}
+                  style={{ background: `var(--status-${t.id})` }}
+                  onClick={() => setNewTone(t.id)}
+                />
+              ))}
+            </div>
+            <button className="btn btn-primary" style={{ fontSize: 13, whiteSpace: 'nowrap' }}
+              onClick={handleAdd} disabled={adding || !newName.trim() || !projectId}>
+              {adding ? '…' : '+ Ekle'}
+            </button>
+          </div>
+        )}
+        {error && (
+          <div style={{ padding: '0 20px 14px', fontSize: 12, color: 'var(--status-rose)' }}>{error}</div>
+        )}
+        {!projectId && canManage && (
+          <div style={{ padding: '0 20px 14px', fontSize: 12, color: 'var(--ink-muted)' }}>Etiket yönetimi için bir proje açın.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RoleDropdown({ value, roles, onChange, disabled }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
@@ -663,6 +773,9 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
         </div>
       )}
 
+      {/* ── Labels ── */}
+      <LabelsSection canManage={canManageProjects} />
+
       {/* ── Members ── */}
       {ws.name && (
         <div className="settings-section">
@@ -714,35 +827,86 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       <div className="settings-section">
         <div>
           <h3>Bildirimler</h3>
-          <p className="desc">Uygulama içi bildirim tercihleri.</p>
+          <p className="desc">Hangi bildirimleri, nasıl alacağınızı özelleştirin.</p>
         </div>
         <div className="settings-card settings-panel">
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
-            Mesaj Bildirimleri
+
+          <div className="notif-pref-group">
+            <div className="notif-pref-title">Genel</div>
+            <div className="tweak-toggle" onClick={() => setTweak('notifyMessages', !(tweaks.notifyMessages !== false))}>
+              <div className="tweak-toggle-info">
+                <span>Mesaj bildirimleri</span>
+                <span className="tweak-toggle-desc">Chat mesajları için anlık bildirim al</span>
+              </div>
+              <div className="toggle" data-on={tweaks.notifyMessages !== false} />
+            </div>
+            <div className="tweak-toggle"
+              style={{ opacity: tweaks.notifyMessages === false ? 0.4 : 1 }}
+              onClick={() => tweaks.notifyMessages !== false && setTweak('notifyToasts', !(tweaks.notifyToasts !== false))}>
+              <div className="tweak-toggle-info">
+                <span>Toast bildirimleri</span>
+                <span className="tweak-toggle-desc">Ekranın köşesinde bildirim baloncuğu göster</span>
+              </div>
+              <div className="toggle" data-on={tweaks.notifyMessages !== false && tweaks.notifyToasts !== false} />
+            </div>
           </div>
-          <div className="tweak-toggle" onClick={() => setTweak('notifyMessages', !(tweaks.notifyMessages !== false))}>
-            <span>Mesaj bildirimlerini etkinleştir</span>
-            <div className="toggle" data-on={tweaks.notifyMessages !== false} />
+
+          <div className="notif-pref-group" style={{ opacity: tweaks.notifyMessages === false ? 0.4 : 1 }}>
+            <div className="notif-pref-title">Mesaj Filtreleri</div>
+            <div className="tweak-toggle"
+              onClick={() => tweaks.notifyMessages !== false && setTweak('notifyDMs', !(tweaks.notifyDMs !== false))}>
+              <div className="tweak-toggle-info">
+                <span>Direkt mesajlar</span>
+                <span className="tweak-toggle-desc">Birisinden doğrudan mesaj aldığında</span>
+              </div>
+              <div className="toggle" data-on={tweaks.notifyMessages !== false && tweaks.notifyDMs !== false} />
+            </div>
+            <div className="tweak-toggle"
+              onClick={() => tweaks.notifyMessages !== false && setTweak('notifyGroupChat', !(tweaks.notifyGroupChat !== false))}>
+              <div className="tweak-toggle-info">
+                <span>Genel kanal mesajları</span>
+                <span className="tweak-toggle-desc">Takım kanalında yeni mesaj geldiğinde</span>
+              </div>
+              <div className="toggle" data-on={tweaks.notifyMessages !== false && tweaks.notifyGroupChat !== false} />
+            </div>
+            <div className="tweak-toggle"
+              onClick={() => setTweak('notifyMentions', !(tweaks.notifyMentions !== false))}>
+              <div className="tweak-toggle-info">
+                <span>@Bahsedilmeler</span>
+                <span className="tweak-toggle-desc">Adın @ile geçtiğinde her zaman bildir</span>
+              </div>
+              <div className="toggle" data-on={tweaks.notifyMentions !== false} />
+            </div>
           </div>
-          <div className="tweak-toggle" style={{ opacity: tweaks.notifyMessages === false ? 0.4 : 1 }}
-            onClick={() => tweaks.notifyMessages !== false && setTweak('notifyToasts', !(tweaks.notifyToasts !== false))}>
-            <span>Sağ alt köşe baloncukları</span>
-            <div className="toggle" data-on={tweaks.notifyMessages !== false && tweaks.notifyToasts !== false} />
+
+          <div className="notif-pref-group">
+            <div className="notif-pref-title">Görev Bildirimleri</div>
+            <div className="tweak-toggle" onClick={() => setTweak('notifyAssigned', !(tweaks.notifyAssigned !== false))}>
+              <div className="tweak-toggle-info">
+                <span>Görev atama</span>
+                <span className="tweak-toggle-desc">Bir kart sana atandığında</span>
+              </div>
+              <div className="toggle" data-on={tweaks.notifyAssigned !== false} />
+            </div>
+            <div className="tweak-toggle" onClick={() => setTweak('notifyComments', !(tweaks.notifyComments !== false))}>
+              <div className="tweak-toggle-info">
+                <span>Yorum bildirimleri</span>
+                <span className="tweak-toggle-desc">Takip ettiğin bir kartta yorum olduğunda</span>
+              </div>
+              <div className="toggle" data-on={tweaks.notifyComments !== false} />
+            </div>
+            <div className="tweak-toggle" onClick={() => setTweak('notifyWeekly', !tweaks.notifyWeekly)}>
+              <div className="tweak-toggle-info">
+                <span>Haftalık özet</span>
+                <span className="tweak-toggle-desc">Pazartesi sabahı haftalık aktivite özeti</span>
+              </div>
+              <div className="toggle" data-on={!!tweaks.notifyWeekly} />
+            </div>
           </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '16px 0 10px' }}>
-            Görev Bildirimleri
-          </div>
-          <div className="tweak-toggle" onClick={() => setTweak('notifyAssigned', !(tweaks.notifyAssigned !== false))}>
-            <span>Bir kart sana atandığında</span>
-            <div className="toggle" data-on={tweaks.notifyAssigned !== false} />
-          </div>
-          <div className="tweak-toggle" onClick={() => setTweak('notifyComments', !(tweaks.notifyComments !== false))}>
-            <span>Takip ettiğin kartta yorum olduğunda</span>
-            <div className="toggle" data-on={tweaks.notifyComments !== false} />
-          </div>
-          <div className="tweak-toggle" onClick={() => setTweak('notifyWeekly', !tweaks.notifyWeekly)}>
-            <span>Haftalık özet (Pzt sabahı)</span>
-            <div className="toggle" data-on={!!tweaks.notifyWeekly} />
+
+          <div className="notif-pref-note">
+            <Icon name="info" size={12} />
+            <span>"Rahatsız Etme" modunda tüm mesaj bildirimleri sessize alınır.</span>
           </div>
         </div>
       </div>

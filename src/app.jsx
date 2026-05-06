@@ -57,7 +57,22 @@ function App() {
 
   const moveTask = (id, colId) => setTasks(tasks.map(t => t.id === id ? { ...t, col: colId, progress: colId === 'done' ? 100 : t.progress } : t));
   const updateTitle = (id, title) => setTasks(tasks.map(t => t.id === id ? { ...t, title } : t));
-  const createTask = (newTask) => setTasks([newTask, ...tasks]);
+  const createTask = (newTask) => setTasks(prev => [newTask, ...prev]);
+
+  const handleTaskUpdate = (update) => {
+    setTasks(prev => prev.map(t => t.id === update.id ? { ...t, ...update } : t));
+    setDrawerTask(prev => prev && prev.id === update.id ? { ...prev, ...update } : prev);
+  };
+
+  const handleDeleteTask = async (id) => {
+    try {
+      await API.deleteTask(id);
+      setTasks(prev => prev.filter(t => t.id !== id));
+      setDrawerTask(null);
+    } catch (e) {
+      alert('Görev silinemedi: ' + e.message);
+    }
+  };
 
   const openModal = (colId) => { setModalCol(colId || 'todo'); setModalOpen(true); };
   const openDrawer = (task) => setDrawerTask(task);
@@ -116,10 +131,18 @@ function App() {
         {view === 'list' && <ListView tasks={tasks} onOpenTask={openDrawer} onMoveTask={moveTask} />}
         {view === 'calendar' && <CalendarView tasks={tasks} onOpenTask={openDrawer} />}
         {view === 'dashboard' && <DashboardView tasks={tasks} onOpenTask={openDrawer} />}
-        {view === 'settings' && <SettingsView tweaks={tweaks} setTweak={setTweak} />}
+        {view === 'settings' && <SettingsView tweaks={tweaks} setTweak={setTweak} projectId={DATA.PROJECTS[0]?.id} />}
       </div>
 
-      <TaskDrawer open={!!drawerTask} task={drawerTask} onClose={closeDrawer} onMoveTask={moveTask} />
+      <TaskDrawer
+        open={!!drawerTask}
+        task={drawerTask}
+        onClose={closeDrawer}
+        onMoveTask={moveTask}
+        onTaskUpdate={handleTaskUpdate}
+        onDelete={handleDeleteTask}
+        onCreateTask={createTask}
+      />
       <AddTaskModal open={modalOpen} onClose={() => setModalOpen(false)} defaultCol={modalCol} onCreate={createTask} />
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onAction={handleCmd} />
       <NotifPanel open={notifOpen} onClose={() => setNotifOpen(false)} />

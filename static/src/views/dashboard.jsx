@@ -2,7 +2,7 @@
 
 const { useState: useDashState, useEffect: useDashEffect, useRef: useDashRef } = React;
 
-function DashboardView({ tasks, onOpenTask }) {
+function DashboardView({ tasks, onOpenTask, onView }) {
   const [chartPeriod, setChartPeriod] = useDashState('week');
   const [teamSort, setTeamSort]       = useDashState('open');
   const [teamSortOpen, setTeamSortOpen] = useDashState(false);
@@ -222,7 +222,7 @@ function DashboardView({ tasks, onOpenTask }) {
         <div className="panel">
           <div className="panel-head">
             <div className="panel-title">Yaklaşan son tarihler</div>
-            <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}>Tümünü gör <Icon name="arrowRight" size={12} /></button>
+            <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => onView && onView('list')}>Tümünü gör <Icon name="arrowRight" size={12} /></button>
           </div>
           <div className="panel-body" style={{ padding: '0 0 12px' }}>
             <table className="list-table">

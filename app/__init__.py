@@ -28,6 +28,7 @@ def _migrate_db():
             "ALTER TABLE chat_messages ADD COLUMN hidden_for JSONB DEFAULT '[]'"
             if is_pg else
             "ALTER TABLE chat_messages ADD COLUMN hidden_for TEXT DEFAULT '[]'"),
+        ('workspace_members', 'role_title', "ALTER TABLE workspace_members ADD COLUMN role_title VARCHAR(100)"),
     ]
 
     column_cache = {}

@@ -2,6 +2,8 @@
 
 const { useState: useBoardState, useRef: useBoardRef, useEffect: useBoardEf } = React;
 
+const COL_NAME_MAX = 30;
+
 function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleChange, canManageTasks, onTouchLongPress }) {
   const members = (task.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
   const isDone = task.col === 'done';
@@ -204,8 +206,10 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
       >
         <div className="col-dot" style={{ background: col.color }} />
         {renaming ? (
+          <>
           <input
             value={renameVal}
+            maxLength={COL_NAME_MAX}
             onChange={e => setRenameVal(e.target.value)}
             onBlur={handleRename}
             onKeyDown={e => {
@@ -213,8 +217,14 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
               if (e.key === 'Escape') { setRenaming(false); setRenameVal(col.title_tr || ''); }
             }}
             autoFocus
-            style={{ flex: 1, background: 'transparent', border: 'none', borderBottom: '1.5px solid var(--accent)', outline: 'none', color: 'var(--ink)', fontSize: 13, fontWeight: 600, padding: '1px 0', minWidth: 0 }}
+            style={{ flex: 1, background: 'transparent', border: 'none', borderBottom: `1.5px solid ${renameVal.length >= COL_NAME_MAX ? 'var(--status-rose)' : 'var(--accent)'}`, outline: 'none', color: 'var(--ink)', fontSize: 13, fontWeight: 600, padding: '1px 0', minWidth: 0 }}
           />
+          {renameVal.length >= COL_NAME_MAX - 5 && (
+            <span style={{ fontSize: 10, color: renameVal.length >= COL_NAME_MAX ? 'var(--status-rose)' : 'var(--ink-muted)', flexShrink: 0 }}>
+              {renameVal.length}/{COL_NAME_MAX}
+            </span>
+          )}
+          </>
         ) : (
           <span className="col-title">{col.title_tr}</span>
         )}
@@ -295,6 +305,8 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
 
   const trashZoneRef = useBoardRef(null);
   const touchGhostRef = useBoardRef(null);
+  const boardRef = useBoardRef(null);
+  const scrollRafRef = useBoardRef(null);
 
   // Sync columns ONLY on initial load, not on every tasks change
   useBoardEf(() => {
@@ -311,12 +323,34 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
     setColumns(dedupedCols);
   }, []); // Empty dependency — only run once on mount
 
+  const handleBoardDragOver = (e) => {
+    const board = boardRef.current;
+    if (!board) return;
+    const rect = board.getBoundingClientRect();
+    const ZONE = 80;
+    const SPEED = 12;
+    const x = e.clientX;
+    let vel = 0;
+    if (x < rect.left + ZONE) vel = -SPEED * (1 - (x - rect.left) / ZONE);
+    else if (x > rect.right - ZONE) vel = SPEED * (1 - (rect.right - x) / ZONE);
+    cancelAnimationFrame(scrollRafRef.current);
+    if (vel !== 0) {
+      const step = () => {
+        board.scrollLeft += vel;
+        scrollRafRef.current = requestAnimationFrame(step);
+      };
+      scrollRafRef.current = requestAnimationFrame(step);
+    }
+  };
+
+  const stopAutoScroll = () => cancelAnimationFrame(scrollRafRef.current);
+
   const handleDragStart = (e, task) => {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', task.id);
     setDraggingId(task.id);
   };
-  const handleDragEnd = () => { setDraggingId(null); setTrashHover(false); };
+  const handleDragEnd = () => { stopAutoScroll(); setDraggingId(null); setTrashHover(false); };
   const handleDrop = (targetColId) => {
     if (draggingId) { onMoveTask(draggingId, targetColId); setDraggingId(null); }
   };
@@ -438,7 +472,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
 
   return (
     <>
-    <div className="board">
+    <div className="board" ref={boardRef} onDragOver={handleBoardDragOver} onDragEnd={stopAutoScroll}>
       {columns.map(col => (
         <Column
           key={col.id}
@@ -461,17 +495,26 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
       ))}
       {canManageProjects && (isAddingColumn ? (
         <div className="add-column-form">
-          <input
-            autoFocus
-            className="add-column-input"
-            placeholder="Kolon başlığı yazın..."
-            value={newColumnTitle}
-            onChange={(e) => setNewColumnTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleAddColumn();
-              if (e.key === 'Escape') setIsAddingColumn(false);
-            }}
-          />
+          <div>
+            <input
+              autoFocus
+              className="add-column-input"
+              placeholder="Kolon başlığı yazın..."
+              maxLength={COL_NAME_MAX}
+              value={newColumnTitle}
+              onChange={(e) => setNewColumnTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAddColumn();
+                if (e.key === 'Escape') setIsAddingColumn(false);
+              }}
+              style={newColumnTitle.length >= COL_NAME_MAX ? { borderColor: 'var(--status-rose)' } : {}}
+            />
+            {newColumnTitle.length >= COL_NAME_MAX - 5 && (
+              <div style={{ textAlign: 'right', fontSize: 10, marginTop: 4, color: newColumnTitle.length >= COL_NAME_MAX ? 'var(--status-rose)' : 'var(--ink-muted)' }}>
+                {newColumnTitle.length}/{COL_NAME_MAX}
+              </div>
+            )}
+          </div>
           <div className="add-column-actions">
             <button className="btn-save" onClick={handleAddColumn} disabled={addingColumnBusy || !newColumnTitle.trim()}>
               {addingColumnBusy ? 'Ekleniyor…' : 'Ekle'}

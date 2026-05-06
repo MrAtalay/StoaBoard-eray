@@ -109,6 +109,7 @@ class WorkspaceMember(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
     role = db.Column(db.String(50), default='member')
     role_id = db.Column(db.Integer, db.ForeignKey('workspace_roles.id'), nullable=True)
+    role_title = db.Column(db.String(100))
 
     user = db.relationship('User')
     workspace_role = db.relationship('WorkspaceRole')
@@ -247,6 +248,7 @@ class Task(db.Model):
             'progress': self.progress or 0,
             'comments': comment_count,
             'attachments': 0,
+            'project_id': self.project_id,
         }
         if subtask_list:
             done_count = sum(1 for s in subtask_list if s.done)
