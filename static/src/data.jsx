@@ -123,9 +123,13 @@ window.API = {
   joinWorkspace:     (code)  => apiFetch('/api/workspaces/join',          { method: 'POST', body: { code } }),
   myWorkspaces:      ()      => apiFetch('/api/workspaces/mine'),
   switchWorkspace:   (wsId)  => apiFetch(`/api/workspaces/${wsId}/switch`, { method: 'POST' }),
+  updateWorkspace:   (wsId, data) => apiFetch(`/api/workspaces/${wsId}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   // User preferences
   updatePreferences: (data)  => apiFetch('/api/me/preferences', { method: 'PATCH', body: data }),
+
+  // Columns
+  reorderColumns: (projectId, columnIds) => apiFetch(`/api/projects/${projectId}/columns/reorder`, { method: 'POST', body: JSON.stringify({ column_ids: columnIds }) }),
 
   // Invite code
   regenInviteCode:  () => apiFetch('/api/workspaces/me/regen-code',  { method: 'POST' }),

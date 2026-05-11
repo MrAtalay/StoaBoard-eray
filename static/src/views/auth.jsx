@@ -80,7 +80,10 @@ function isValidEmailDomain(email) {
 
 // ── 1. GİRİŞ YAP / KAYDOL SAYFASI ───────────────────────────────────────────────
 function AuthPage({ onSignIn }) {
-  const [mode, setMode] = useAuthState('signin');
+  const joinInviteCode = React.useMemo(() => {
+    try { return new URLSearchParams(window.location.search).get('join') || ''; } catch { return ''; }
+  }, []);
+  const [mode, setMode] = useAuthState(joinInviteCode ? 'signup' : 'signin');
   const [error, setError] = useAuthState('');
   const [busy, setBusy] = useAuthState(false);
   const [form, setForm] = useAuthState({ name: '', email: '', password: '' });
@@ -288,6 +291,15 @@ function AuthPage({ onSignIn }) {
             <div style={{ animation: 'fadeIn 0.3s ease' }}>
               <h2>{mode === 'signin' ? greeting : 'Yeni Hesap Oluştur.'}</h2>
               <p className="sub">{mode === 'signin' ? 'Kaldığın yerden devam etmek için giriş yap.' : 'Takımınla projelerini yönetmeye hemen başla.'}</p>
+              {joinInviteCode && (
+                <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:10, background:'oklch(55% 0.13 250 / 0.1)', border:'1px solid oklch(55% 0.13 250 / 0.25)', marginBottom:16, fontSize:13 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="oklch(55% 0.13 250)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  <span style={{ color:'var(--ink)' }}>
+                    Takıma davet edildiniz.{' '}
+                    <strong>{mode === 'signup' ? 'Hesap oluşturarak' : 'Giriş yaparak'}</strong> katılmaya devam edin.
+                  </span>
+                </div>
+              )}
               <div className="auth-tabs">
                 <button className="tab-btn" data-active={mode === 'signin'} onClick={() => { setMode('signin'); setError(''); }}>Giriş yap</button>
                 <button className="tab-btn" data-active={mode === 'signup'} onClick={() => { setMode('signup'); setError(''); }}>Kaydol</button>

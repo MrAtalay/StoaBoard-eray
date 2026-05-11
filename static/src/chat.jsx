@@ -292,7 +292,7 @@ function MediaGallery({ allMembers, onImageClick }) {
 }
 
 // ── Main Chat Panel ───────────────────────────────────────────────────────
-function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith, unreadCounts, markAsRead, wsId }) {
+function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith, unreadCounts, markAsRead, wsId, highlightMsgId }) {
   const [tab, setTab]             = useChatS('general');
   const [dmWith, setDmWith]       = useChatS(null);
   const [messages, setMessages]   = useChatS([]);
@@ -399,6 +399,19 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
       .catch(err => { if (err.name !== 'AbortError') setMessages([]); });
     return () => controller.abort();
   }, [open, dmWith, wsId]);
+
+  // ── Scroll to highlighted message after load ──────────────────────────────
+  useChatE(() => {
+    if (!highlightMsgId || messages.length === 0) return;
+    const el = document.querySelector(`[data-msgid="${highlightMsgId}"]`);
+    if (!el) return;
+    setTimeout(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'background 0.3s';
+      el.style.background = 'var(--accent-softer, oklch(80% 0.08 25 / 0.3))';
+      setTimeout(() => { el.style.background = ''; }, 2000);
+    }, 150);
+  }, [messages, highlightMsgId]);
 
   // ── Socket listeners — use `socket` prop as dependency (fixes stale/null issue) ──
   useChatE(() => {
@@ -892,7 +905,8 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
                 const hasReactions = Object.keys(msgReactions).length > 0;
                 return (
                   <div key={msg.id || i} className={`chat-msg ${isMine ? 'mine' : 'theirs'}`}
-                    style={{ position: 'relative' }}
+                    data-msgid={msg.id}
+                    style={{ position: 'relative', scrollMarginTop: 60 }}
                   >
                     {!isMine && (
                       <div className="chat-msg-avatar" style={{ visibility: showSender ? 'visible' : 'hidden' }}>

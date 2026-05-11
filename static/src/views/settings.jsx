@@ -413,6 +413,23 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
   const [logoUrl, setLogoUrl]       = React.useState(ws.logo_url || null);
   const [logoBusy, setLogoBusy]     = React.useState(false);
   const logoInputRef = React.useRef(null);
+  const [wsName, setWsName]         = React.useState(ws.name || '');
+  const [wsNameBusy, setWsNameBusy] = React.useState(false);
+  const [wsNameSaved, setWsNameSaved] = React.useState(false);
+
+  const saveWsName = async () => {
+    const trimmed = wsName.trim();
+    if (!trimmed || trimmed === ws.name) return;
+    setWsNameBusy(true);
+    try {
+      const res = await API.updateWorkspace(ws.id, { name: trimmed });
+      window.DATA.WORKSPACE = { ...window.DATA.WORKSPACE, name: res.name };
+      ws.name = res.name;
+      setWsNameSaved(true);
+      setTimeout(() => setWsNameSaved(false), 2000);
+    } catch (e) { window.showToast?.(e.message || 'İsim güncellenemedi', 'error'); }
+    finally { setWsNameBusy(false); }
+  };
 
   const uploadLogo = async (e) => {
     const file = e.target.files?.[0];
@@ -742,7 +759,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ fontSize: 14, fontWeight: 500 }}>{ws.name || 'Çalışma Alanı'}</div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
                   <input ref={logoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={uploadLogo} />
                   <button className="btn btn-ghost" style={{ fontSize: 12 }} disabled={logoBusy}
                     onClick={() => logoInputRef.current?.click()}>
@@ -765,6 +782,21 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                 <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>PNG, JPG, WEBP — maks. 5 MB</div>
               </div>
             </div>
+            <div style={{ borderTop: '1px solid var(--line)', marginTop: 16, paddingTop: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink-muted)', display: 'block', marginBottom: 6 }}>Takım Adı</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input
+                  value={wsName}
+                  onChange={e => setWsName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveWsName(); }}
+                  placeholder={ws.name || 'Takım adı…'}
+                  style={{ flex: 1, minWidth: 140 }}
+                />
+                <button className="btn btn-primary" style={{ fontSize: 12, flexShrink: 0 }} disabled={wsNameBusy || !wsName.trim() || wsName.trim() === ws.name} onClick={saveWsName}>
+                  {wsNameBusy ? 'Kaydediliyor…' : wsNameSaved ? '✓ Kaydedildi' : 'Kaydet'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -782,11 +814,11 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           <div className="settings-card settings-panel">
             {inviteCode ? (
               <>
-                <div style={{ display:'flex', alignItems:'center', gap:10, padding:'14px 16px', background:'var(--bg-raised)', border:'1px solid var(--line)', borderRadius:10, marginBottom:12 }}>
-                  <span style={{ fontFamily:'var(--font-mono)', fontSize:22, letterSpacing:'0.15em', fontWeight:600, color:'var(--ink)', flex:1 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10, padding:'14px 16px', background:'var(--bg-raised)', border:'1px solid var(--line)', borderRadius:10, marginBottom:12, flexWrap:'wrap' }}>
+                  <span style={{ fontFamily:'var(--font-mono)', fontSize:'clamp(16px,4vw,22px)', letterSpacing:'0.15em', fontWeight:600, color:'var(--ink)', flex:1, minWidth:0, wordBreak:'break-all' }}>
                     {inviteCode}
                   </span>
-                  <button className="btn btn-ghost" onClick={copyCode} style={{ fontSize:12, padding:'5px 10px' }}>
+                  <button className="btn btn-ghost" onClick={copyCode} style={{ fontSize:12, padding:'5px 10px', flexShrink:0 }}>
                     {codeCopied ? '✓ Kopyalandı' : 'Kopyala'}
                   </button>
                 </div>

@@ -11,7 +11,7 @@ from app.models import (
     User, Workspace, WorkspaceMember, WorkspaceRole,
     Project, BoardColumn,
     Task, Label, TaskLabel, TaskAssignee, Subtask, Comment,
-    Notification, ActivityLog, ChatMessage, WorkspaceJoinRequest, _now
+    Notification, ActivityLog, ChatMessage, WorkspaceJoinRequest, UploadedFile, _now
 )
 from app import online_state
 
@@ -502,6 +502,23 @@ def create_workspace():
     db.session.commit()
 
     return jsonify({'ok': True, 'invite_code': invite_code, 'workspace_id': ws.id}), 201
+
+
+@api_bp.route('/workspaces/<int:ws_id>', methods=['PATCH'])
+@_login_required
+def update_workspace(ws_id):
+    user = _current_user()
+    member = WorkspaceMember.query.filter_by(user_id=user.id, workspace_id=ws_id).first()
+    if not member or member.role != 'owner':
+        return jsonify({'error': 'Bu işlem için yetkiniz yok'}), 403
+    ws = Workspace.query.get_or_404(ws_id)
+    data = request.get_json(silent=True) or {}
+    if 'name' in data:
+        name = data['name'].strip()
+        if name:
+            ws.name = name
+    db.session.commit()
+    return jsonify({'ok': True, 'name': ws.name})
 
 
 @api_bp.route('/workspaces/join', methods=['POST'])
@@ -1320,6 +1337,26 @@ def delete_column(col_id):
     return jsonify({'ok': True})
 
 
+@api_bp.route('/projects/<int:project_id>/columns/reorder', methods=['POST'])
+@_login_required
+def reorder_columns(project_id):
+    user = _current_user()
+    project = Project.query.get_or_404(project_id)
+    _, denied = _require_project_permission(
+        user, project, 'manage_projects', 'Kolon düzenleme yetkiniz yok'
+    )
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    ordered_ids = data.get('column_ids', [])
+    for idx, col_id in enumerate(ordered_ids):
+        col = BoardColumn.query.get(col_id)
+        if col and col.project_id == project_id:
+            col.position = idx
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 # ── Labels ─────────────────────────────────────────────────────────────────
 
 @api_bp.route('/projects/<int:project_id>/labels', methods=['GET'])
@@ -1542,46 +1579,63 @@ def update_me():
     return jsonify(_user_private_dict(user, wm_current))
 
 
+# ── Serve uploaded media from DB ───────────────────────────────────────────
+
+@api_bp.route('/media/<int:file_id>')
+def serve_media(file_id):
+    from flask import make_response
+    uf = UploadedFile.query.get_or_404(file_id)
+    resp = make_response(uf.data)
+    resp.headers['Content-Type'] = uf.content_type
+    resp.headers['Content-Disposition'] = f'inline; filename="{uf.filename}"'
+    resp.headers['Cache-Control'] = 'public, max-age=2592000'
+    return resp
+
+
+def _store_file_in_db(f, purpose='chat'):
+    """Read file bytes and persist in uploaded_files table. Returns UploadedFile."""
+    data = f.read()
+    content_type = f.content_type or 'application/octet-stream'
+    uf = UploadedFile(
+        filename=f.filename or 'file',
+        content_type=content_type,
+        purpose=purpose,
+        data=data,
+        size=len(data),
+    )
+    db.session.add(uf)
+    db.session.flush()
+    return uf
+
+
 # ── Avatar upload ──────────────────────────────────────────────────────────
 
 @api_bp.route('/users/me/avatar', methods=['POST'])
 @_login_required
 def upload_avatar():
-    import os, uuid
     from werkzeug.utils import secure_filename
     user = _current_user()
     f = request.files.get('file')
     if not f:
         return jsonify({'error': 'Dosya bulunamadı'}), 400
-    if f.content_length and f.content_length > 5 * 1024 * 1024:
+    f.seek(0, 2); size = f.tell(); f.seek(0)
+    if size > 5 * 1024 * 1024:
         return jsonify({'error': 'Dosya 5 MB\'ı geçemez'}), 413
     ext = os.path.splitext(secure_filename(f.filename))[1].lower()
     if ext not in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
         return jsonify({'error': 'Geçersiz dosya türü'}), 400
-    safe_name = f'{uuid.uuid4().hex}{ext}'
-    upload_dir = os.path.join('static', 'uploads', 'avatars')
-    os.makedirs(upload_dir, exist_ok=True)
-    old_url = user.avatar_photo_url
-    f.save(os.path.join(upload_dir, safe_name))
-    user.avatar_photo_url = f'/static/uploads/avatars/{safe_name}'
+    uf = _store_file_in_db(f, purpose='avatar')
+    user.avatar_photo_url = f'/api/media/{uf.id}'
     db.session.commit()
-    if old_url and old_url.startswith('/static/uploads/avatars/'):
-        try: os.remove(old_url.lstrip('/'))
-        except OSError: pass
     return jsonify({'avatar_photo_url': user.avatar_photo_url})
 
 
 @api_bp.route('/users/me/avatar', methods=['DELETE'])
 @_login_required
 def delete_avatar():
-    import os
     user = _current_user()
-    old_url = user.avatar_photo_url
     user.avatar_photo_url = None
     db.session.commit()
-    if old_url and old_url.startswith('/static/uploads/avatars/'):
-        try: os.remove(old_url.lstrip('/'))
-        except OSError: pass
     return jsonify({'avatar_photo_url': None})
 
 
@@ -1745,15 +1799,8 @@ def upload_workspace_logo(ws_id):
     if size > 5 * 1024 * 1024:
         return jsonify({'error': 'Logo 5 MB\'dan büyük olamaz'}), 400
 
-    safe_name = f'ws_{ws_id}_{uuid.uuid4().hex[:8]}.{ext}'
-    upload_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        'static', 'uploads', 'logos'
-    )
-    os.makedirs(upload_dir, exist_ok=True)
-    f.save(os.path.join(upload_dir, safe_name))
-
-    ws.logo_url = f'/static/uploads/logos/{safe_name}'
+    uf = _store_file_in_db(f, purpose='logo')
+    ws.logo_url = f'/api/media/{uf.id}'
     db.session.commit()
     return jsonify({'logo_url': ws.logo_url})
 
@@ -1824,19 +1871,13 @@ def upload_chat_file():
                 'size': size,
             })
         except Exception:
-            f.seek(0)  # reset for local fallback
+            f.seek(0)
 
-    # Local storage fallback (ephemeral on Railway without a volume)
-    safe_name = f'{uuid.uuid4().hex}.{ext}' if ext else uuid.uuid4().hex
-    upload_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        'static', 'uploads', 'chat'
-    )
-    os.makedirs(upload_dir, exist_ok=True)
-    f.save(os.path.join(upload_dir, safe_name))
-
+    # DB storage — persistent on Railway/Neon without a volume
+    uf = _store_file_in_db(f, purpose='chat')
+    db.session.commit()
     return jsonify({
-        'url': f'/static/uploads/chat/{safe_name}',
+        'url': f'/api/media/{uf.id}',
         'type': ftype,
         'name': orig_name,
         'size': size,

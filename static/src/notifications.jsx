@@ -74,15 +74,15 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
       if (task) { onOpenTask?.(task); onClose(); return; }
       if (window.__OPEN_TASK_BY_ID__) { window.__OPEN_TASK_BY_ID__(n.task_id); onClose(); return; }
     }
-    // @mention in general chat → open general channel (not DM)
+    // @mention in general chat → open general channel, scroll to message
     if (n.chat_channel === 'general') {
-      onOpenChat?.(null);
+      onOpenChat?.(null, n.message_id || null);
       onClose();
       return;
     }
-    // DM message or DM mention → open DM with sender
+    // DM message or DM mention → open DM with sender, scroll to message
     if (n.sender_slug) {
-      onOpenChat?.(n.sender_slug);
+      onOpenChat?.(n.sender_slug, n.message_id || null);
       onClose();
     }
   };

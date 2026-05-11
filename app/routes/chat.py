@@ -194,6 +194,7 @@ def on_chat_message(data):
                     sender_slug=user.slug,
                     workspace_id=workspace_id,
                     chat_channel='dm' if receiver else 'general',
+                    message_id=msg.id,
                 )
                 db.session.add(m_notif)
                 db.session.flush()

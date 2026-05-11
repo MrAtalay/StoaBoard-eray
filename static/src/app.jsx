@@ -37,6 +37,7 @@ function App() {
   const [notifOpen, setNotifOpen]           = useS(false);
   const [chatOpen, setChatOpen]             = useS(false);
   const [chatDmWith, setChatDmWith]         = useS(null);
+  const [chatHighlightMsgId, setChatHighlightMsgId] = useS(null);
   const [onlineUsers, setOnlineUsers]       = useS(new Map()); // slug → status
   const [members, setMembers]               = useS([]);
   const [isOwner, setIsOwner]               = useS(false);
@@ -46,6 +47,7 @@ function App() {
   const [workspaces, setWorkspaces]         = useS([]);
   const [wsSwitcherOpen, setWsSwitcherOpen] = useS(false);
   const [wsJoinModalOpen, setWsJoinModalOpen] = useS(false);
+  const [wsJoinInitialCode, setWsJoinInitialCode] = useS('');
   const [wsLogoUrl, setWsLogoUrl]           = useS(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useS(false);
   const [projectSwitching, setProjectSwitching]   = useS(false);
@@ -157,6 +159,15 @@ function App() {
         if (data.online_users) _applyOnlineUsers(data.online_users);
         if (data.workspaces)   setWorkspaces(data.workspaces);
         setAuthed(true); setNeedsWorkspace(false); setLoading(false);
+        // Auto-open join modal if ?join= param in URL
+        try {
+          const joinCode = new URLSearchParams(window.location.search).get('join');
+          if (joinCode) {
+            setWsJoinInitialCode(joinCode);
+            setWsJoinModalOpen(true);
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        } catch (_) {}
       })
       .catch(() => { setAuthed(false); setLoading(false); });
   }, []);
@@ -536,9 +547,10 @@ function App() {
     } catch (e) { window.showToast?.('Proje oluşturulamadı: ' + e.message, 'error'); }
   };
 
-  const openChat = (dmWithSlug) => {
+  const openChat = (dmWithSlug, msgId) => {
     const slug = typeof dmWithSlug === 'string' ? dmWithSlug : null;
     setChatDmWith(slug);
+    setChatHighlightMsgId(msgId || null);
     setChatOpen(true);
     window.__CHAT_OPEN__ = true;
   };
@@ -739,12 +751,12 @@ function App() {
         onClose={() => { setNotifOpen(false); setNotifCount(0); }}
         socket={socket}
         onOpenTask={(task) => { setNotifOpen(false); setDrawerTask(task); }}
-        onOpenChat={(slug) => { setNotifOpen(false); openChat(slug); }}
+        onOpenChat={(slug, msgId) => { setNotifOpen(false); openChat(slug, msgId); }}
         currentWsId={currentWsId}
       />
       <ChatPanel
         open={chatOpen}
-        onClose={() => { setChatOpen(false); setChatDmWith(null); window.__CHAT_OPEN__ = false; }}
+        onClose={() => { setChatOpen(false); setChatDmWith(null); setChatHighlightMsgId(null); window.__CHAT_OPEN__ = false; }}
         onlineUsers={onlineSet}
         onlineStatuses={onlineUsers}
         members={members}
@@ -753,14 +765,16 @@ function App() {
         unreadCounts={unreadCounts}
         markAsRead={markAsRead}
         wsId={currentWsId}
+        highlightMsgId={chatHighlightMsgId}
       />
       <TweaksPanel tweaks={tweaks} setTweak={setTweak} visible={tweaksAvailable} />
       {projectModal && canManageProjects && <NewProjectModal onClose={() => setProjectModal(false)} onCreate={handleCreateProject} />}
       {wsJoinModalOpen && (
         <AddWorkspaceModal
-          onClose={() => setWsJoinModalOpen(false)}
+          initialCode={wsJoinInitialCode}
+          onClose={() => { setWsJoinModalOpen(false); setWsJoinInitialCode(''); }}
           onDone={async (wsId) => {
-            setWsJoinModalOpen(false);
+            setWsJoinModalOpen(false); setWsJoinInitialCode('');
             await handleSwitchWorkspace(wsId);
           }}
         />
@@ -855,10 +869,10 @@ function NewProjectModal({ onClose, onCreate }) {
 
 // ── Add/Join Workspace Modal ──────────────────────────────────────────────
 
-function AddWorkspaceModal({ onClose, onDone }) {
-  const [tab, setTab]         = React.useState('create');
+function AddWorkspaceModal({ onClose, onDone, initialCode = '' }) {
+  const [tab, setTab]         = React.useState(initialCode ? 'join' : 'create');
   const [wsName, setWsName]   = React.useState('');
-  const [code, setCode]       = React.useState('');
+  const [code, setCode]       = React.useState(initialCode);
   const [error, setError]     = React.useState('');
   const [busy, setBusy]       = React.useState(false);
   const [pending, setPending] = React.useState(false);

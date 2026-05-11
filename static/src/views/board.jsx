@@ -211,7 +211,7 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
   );
 }
 
-function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dragging, tweaks, onOpenModal, onTitleChange, canManageTasks, canManageProjects, onDeleteColumn, onUpdateColumn, onTouchLongPress, onToggleDone }) {
+function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dragging, tweaks, onOpenModal, onTitleChange, canManageTasks, canManageProjects, onDeleteColumn, onUpdateColumn, onTouchLongPress, onToggleDone, onColumnDragStart, onColumnDragOver, onColumnDrop, isColDragOver }) {
   const [dragOver, setDragOver] = useBoardState(false);
   const [menuOpen, setMenuOpen] = useBoardState(false);
   const [menuPos, setMenuPos] = useBoardState(null);
@@ -270,15 +270,24 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
   };
 
   return (
-    <div className="column">
-      <div 
+    <div
+      className="column"
+      data-col-drag-over={isColDragOver}
+      onDragOver={e => { e.preventDefault(); onColumnDragOver?.(col.id); }}
+      onDrop={e => { e.preventDefault(); onColumnDrop?.(col.id); }}
+    >
+      <div
         className="col-header"
         ref={headerRef}
+        draggable={!!(canManageProjects && !renaming && !menuOpen)}
         data-dragging={columnDragging}
+        onDragStart={e => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; onColumnDragStart?.(col.id); }}
+        onDragEnd={e => { e.stopPropagation(); }}
         onTouchStart={handleColumnTouchStart}
         onTouchMove={handleColumnTouchMove}
         onTouchEnd={handleColumnTouchEnd}
         onTouchCancel={handleColumnTouchEnd}
+        style={canManageProjects && !renaming ? { cursor: 'grab' } : undefined}
       >
         <div className="col-dot" style={{ background: col.is_done ? 'var(--status-green)' : col.color }} />
         {renaming ? (
@@ -381,6 +390,8 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
 
 function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpenModal, onTitleChange, canManageTasks, canManageProjects, switching }) {
   const [draggingId, setDraggingId] = useBoardState(null);
+  const [draggingColId, setDraggingColId] = useBoardState(null);
+  const [overColId, setOverColId] = useBoardState(null);
   const [trashHover, setTrashHover] = useBoardState(false);
   const [filterOpen, setFilterOpen] = useBoardState(false);
   const [activeLabels, setActiveLabels] = useBoardState(new Set());
@@ -407,6 +418,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
   const touchGhostRef = useBoardRef(null);
   const boardRef = useBoardRef(null);
   const scrollRafRef = useBoardRef(null);
+  const panRef = useBoardRef(null); // { active, startX, startScroll }
 
   // Listen for sidebar "Görevlerim" shortcut
   useBoardEf(() => {
@@ -451,6 +463,53 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
   };
 
   const stopAutoScroll = () => cancelAnimationFrame(scrollRafRef.current);
+
+  // ── Board pan (middle-click drag) ─────────────────────────────────────────
+  useBoardEf(() => {
+    const onMove = (e) => {
+      if (!panRef.current?.active || !boardRef.current) return;
+      boardRef.current.scrollLeft = panRef.current.startScroll - (e.clientX - panRef.current.startX);
+    };
+    const onUp = () => { if (panRef.current) panRef.current.active = false; if (boardRef.current) boardRef.current.style.cursor = ''; };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+  }, []);
+
+  const handleBoardMouseDown = (e) => {
+    if (e.button !== 1) return; // middle mouse only
+    e.preventDefault();
+    panRef.current = { active: true, startX: e.clientX, startScroll: boardRef.current?.scrollLeft || 0 };
+    if (boardRef.current) boardRef.current.style.cursor = 'grabbing';
+  };
+
+  // ── Column drag-to-reorder ────────────────────────────────────────────────
+  const handleColumnDragStart = (colId) => {
+    if (!canManageProjects) return;
+    setDraggingColId(colId);
+  };
+  const handleColumnDragOver = (colId) => {
+    if (!draggingColId || colId === draggingColId) return;
+    setOverColId(colId);
+  };
+  const handleColumnDrop = async (targetColId) => {
+    const fromId = draggingColId;
+    setDraggingColId(null);
+    setOverColId(null);
+    if (!fromId || fromId === targetColId) return;
+    const fromIdx = columns.findIndex(c => c.id === fromId);
+    const toIdx   = columns.findIndex(c => c.id === targetColId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const newCols = [...columns];
+    const [removed] = newCols.splice(fromIdx, 1);
+    newCols.splice(toIdx, 0, removed);
+    setColumns(newCols);
+    window.DATA.COLUMNS = newCols;
+    const projectId = window.CURRENT_PROJECT_ID;
+    const orderedIds = newCols.map(c => c.db_id).filter(Boolean);
+    try { await API.reorderColumns(projectId, orderedIds); }
+    catch (e) { window.showToast?.('Kolon sırası kaydedilemedi', 'error'); }
+  };
 
   const handleDragStart = (e, task) => {
     e.dataTransfer.effectAllowed = 'move';
@@ -653,7 +712,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
         onClear={clearFilters}
       />
     )}
-    <div className="board" ref={boardRef} onDragOver={handleBoardDragOver} onDragEnd={stopAutoScroll}>
+    <div className="board" ref={boardRef} onDragOver={handleBoardDragOver} onDragEnd={stopAutoScroll} onMouseDown={handleBoardMouseDown}>
       {columns.map(col => (
         <Column
           key={col.id}
@@ -673,6 +732,10 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
           onUpdateColumn={handleUpdateColumn}
           onTouchLongPress={handleTouchLongPress}
           onToggleDone={handleToggleDone}
+          onColumnDragStart={handleColumnDragStart}
+          onColumnDragOver={handleColumnDragOver}
+          onColumnDrop={handleColumnDrop}
+          isColDragOver={overColId === col.id}
         />
       ))}
       {canManageProjects && (isAddingColumn ? (

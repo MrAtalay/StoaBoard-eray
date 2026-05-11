@@ -43,6 +43,7 @@ def _migrate_db():
             if is_pg else
             "ALTER TABLE tasks ADD COLUMN assignee_dates TEXT DEFAULT '{}'"),
         ('notifications', 'chat_channel', "ALTER TABLE notifications ADD COLUMN chat_channel VARCHAR(20)"),
+        ('notifications', 'message_id', "ALTER TABLE notifications ADD COLUMN message_id INTEGER"),
     ]
     index_migrations = [
         "CREATE INDEX IF NOT EXISTS ix_task_project_id  ON tasks(project_id)",
@@ -112,7 +113,7 @@ def create_app():
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
         response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
-        if response.status_code == 200 and request.path.startswith('/static/uploads/'):
+        if response.status_code == 200 and (request.path.startswith('/static/uploads/') or request.path.startswith('/api/media/')):
             response.headers['Cache-Control'] = 'public, max-age=2592000'  # 30 days
         elif response.status_code == 200 and request.path.endswith(('.png', '.ico')):
             response.headers['Cache-Control'] = 'public, max-age=86400'

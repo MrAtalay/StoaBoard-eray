@@ -339,6 +339,7 @@ class Notification(db.Model):
     sender_slug = db.Column(db.String(80), nullable=True)
     workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'), nullable=True)
     chat_channel = db.Column(db.String(20), nullable=True)  # 'general' | 'dm' | None
+    message_id = db.Column(db.Integer, db.ForeignKey('chat_messages.id', ondelete='SET NULL'), nullable=True)
 
     def to_dict(self):
         return {
@@ -350,6 +351,7 @@ class Notification(db.Model):
             'sender_slug': self.sender_slug,
             'workspace_id': self.workspace_id,
             'chat_channel': self.chat_channel,
+            'message_id': self.message_id,
         }
 
 
@@ -370,6 +372,18 @@ class ActivityLog(db.Model):
             'time': _time_ago(self.created_at),
             'text': self.text,
         }
+
+
+class UploadedFile(db.Model):
+    """Persistent file storage in PostgreSQL — avoids ephemeral-disk loss on Railway."""
+    __tablename__ = 'uploaded_files'
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(100), nullable=False)
+    purpose = db.Column(db.String(20), default='chat')  # chat | avatar | logo
+    data = db.Column(db.LargeBinary, nullable=False)
+    size = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=_now)
 
 
 class WorkspaceJoinRequest(db.Model):
