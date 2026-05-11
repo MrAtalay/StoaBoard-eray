@@ -241,6 +241,7 @@ class Task(db.Model):
                                order_by='Subtask.position', cascade='all, delete-orphan')
     comments = db.relationship('Comment', backref='task', lazy='select',
                                order_by='Comment.created_at', cascade='all, delete-orphan')
+    creator = db.relationship('User', foreign_keys=[created_by])
 
     def to_dict(self):
         col = self.column
@@ -249,6 +250,7 @@ class Task(db.Model):
         comment_count = len(self.comments)
         subtask_list = self.subtasks
 
+        creator_slug = self.creator.slug if self.creator else None
         d = {
             'id': str(self.id),
             'col': col.slug if col else 'backlog',
@@ -264,6 +266,7 @@ class Task(db.Model):
             'comments': comment_count,
             'attachments': 0,
             'project_id': self.project_id,
+            'created_by': creator_slug,
         }
         if subtask_list:
             done_count = sum(1 for s in subtask_list if s.done)
@@ -335,6 +338,7 @@ class Notification(db.Model):
     task_id = db.Column(db.Integer, db.ForeignKey('tasks.id', ondelete='SET NULL'), nullable=True)
     sender_slug = db.Column(db.String(80), nullable=True)
     workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'), nullable=True)
+    chat_channel = db.Column(db.String(20), nullable=True)  # 'general' | 'dm' | None
 
     def to_dict(self):
         return {
@@ -345,6 +349,7 @@ class Notification(db.Model):
             'task_id': self.task_id,
             'sender_slug': self.sender_slug,
             'workspace_id': self.workspace_id,
+            'chat_channel': self.chat_channel,
         }
 
 
@@ -364,6 +369,26 @@ class ActivityLog(db.Model):
             'who': who,
             'time': _time_ago(self.created_at),
             'text': self.text,
+        }
+
+
+class WorkspaceJoinRequest(db.Model):
+    __tablename__ = 'workspace_join_requests'
+    id = db.Column(db.Integer, primary_key=True)
+    workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    status = db.Column(db.String(20), default='pending')  # pending | approved | rejected
+    created_at = db.Column(db.DateTime, default=_now)
+
+    user = db.relationship('User')
+    workspace = db.relationship('Workspace')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user': self.user.to_dict() if self.user else None,
+            'status': self.status,
+            'time': _time_ago(self.created_at),
         }
 
 

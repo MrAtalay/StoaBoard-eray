@@ -194,6 +194,13 @@ function App() {
         if (data.workspaces) setWorkspaces(data.workspaces);
       }).catch(() => {});
     });
+    sock.on('join_request_approved', ({ workspace_id }) => {
+      window.showToast?.('Takıma katılım isteğiniz onaylandı!', 'success');
+      handleSwitchWorkspace(workspace_id);
+    });
+    sock.on('join_request_rejected', () => {
+      window.showToast?.('Takıma katılım isteğiniz reddedildi.', 'error');
+    });
 
     // Real-time notifications (from DM / @mention / task assignment)
     sock.on('notification', (notif) => {
@@ -234,6 +241,8 @@ function App() {
       if (!isViewingThis && window.__INCREMENT_UNREAD__) {
         const wsKey = window.__CURRENT_WS_ID__ ? `general_${window.__CURRENT_WS_ID__}` : 'general';
         window.__INCREMENT_UNREAD__(isDM ? `dm_${msg.from}` : wsKey);
+        // Track new media items separately for the Media tab badge
+        if (msg.file_url) window.__INCREMENT_UNREAD__('media');
       }
 
       // Notification sound — not DND, sound enabled, not viewing this conversation
@@ -847,11 +856,12 @@ function NewProjectModal({ onClose, onCreate }) {
 // ── Add/Join Workspace Modal ──────────────────────────────────────────────
 
 function AddWorkspaceModal({ onClose, onDone }) {
-  const [tab, setTab]       = React.useState('create');
-  const [wsName, setWsName] = React.useState('');
-  const [code, setCode]     = React.useState('');
-  const [error, setError]   = React.useState('');
-  const [busy, setBusy]     = React.useState(false);
+  const [tab, setTab]         = React.useState('create');
+  const [wsName, setWsName]   = React.useState('');
+  const [code, setCode]       = React.useState('');
+  const [error, setError]     = React.useState('');
+  const [busy, setBusy]       = React.useState(false);
+  const [pending, setPending] = React.useState(false);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -872,7 +882,12 @@ function AddWorkspaceModal({ onClose, onDone }) {
     setError(''); setBusy(true);
     try {
       const res = await API.joinWorkspace(code.trim());
-      onDone(res.workspace_id);
+      if (res.pending) {
+        setBusy(false);
+        setPending(true);
+      } else {
+        onDone(res.workspace_id);
+      }
     } catch (err) {
       setError(err.message || 'Geçersiz davet kodu');
       setBusy(false);
@@ -887,42 +902,56 @@ function AddWorkspaceModal({ onClose, onDone }) {
           <div className="modal-sub">Yeni bir takım kur veya mevcut bir takıma katıl.</div>
         </div>
         <div className="modal-body" style={{ paddingTop: 0 }}>
-          <div className="modal-tabs" style={{ marginBottom: 20 }}>
-            <button className="modal-tab-btn" data-active={tab === 'create'} onClick={() => { setTab('create'); setError(''); }}>Takım Kur</button>
-            <button className="modal-tab-btn" data-active={tab === 'join'}   onClick={() => { setTab('join');   setError(''); }}>Takıma Katıl</button>
-          </div>
-          {error && (
-            <div style={{ padding:'8px 12px', borderRadius:8, background:'oklch(58% 0.13 10 / 0.12)', color:'var(--status-rose)', fontSize:12, marginBottom:12 }}>
-              {error}
+          {pending ? (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>İstek Gönderildi</div>
+              <div style={{ fontSize: 13, color: 'var(--ink-muted)', marginBottom: 20, lineHeight: 1.5 }}>
+                Katılım isteğiniz takım sahibine iletildi.<br />
+                Onaylandığında otomatik olarak ekleneceğiz.
+              </div>
+              <button className="btn btn-primary" onClick={onClose}>Tamam</button>
             </div>
-          )}
-          {tab === 'create' ? (
-            <form onSubmit={handleCreate}>
-              <div className="field">
-                <label>Takım Adı</label>
-                <input autoFocus placeholder="Örn: Yeni Proje, Kişisel…" value={wsName} onChange={e => setWsName(e.target.value)} required />
-              </div>
-              <div className="modal-foot">
-                <button type="button" className="btn btn-ghost" onClick={onClose}>İptal</button>
-                <button type="submit" className="btn btn-primary" disabled={busy || !wsName.trim()}>
-                  {busy ? 'Oluşturuluyor…' : 'Takımı Kur'}
-                </button>
-              </div>
-            </form>
           ) : (
-            <form onSubmit={handleJoin}>
-              <div className="field">
-                <label>Davet Kodu</label>
-                <input autoFocus placeholder="ABCD1234" value={code} onChange={e => setCode(e.target.value.toUpperCase())} maxLength={8}
-                  style={{ fontFamily:'var(--font-mono)', letterSpacing:'0.1em', fontSize:18, textAlign:'center' }} required />
+            <>
+              <div className="modal-tabs" style={{ marginBottom: 20 }}>
+                <button className="modal-tab-btn" data-active={tab === 'create'} onClick={() => { setTab('create'); setError(''); }}>Takım Kur</button>
+                <button className="modal-tab-btn" data-active={tab === 'join'}   onClick={() => { setTab('join');   setError(''); }}>Takıma Katıl</button>
               </div>
-              <div className="modal-foot">
-                <button type="button" className="btn btn-ghost" onClick={onClose}>İptal</button>
-                <button type="submit" className="btn btn-primary" disabled={busy || code.length < 6}>
-                  {busy ? 'Katılınıyor…' : 'Takıma Katıl'}
-                </button>
-              </div>
-            </form>
+              {error && (
+                <div style={{ padding:'8px 12px', borderRadius:8, background:'oklch(58% 0.13 10 / 0.12)', color:'var(--status-rose)', fontSize:12, marginBottom:12 }}>
+                  {error}
+                </div>
+              )}
+              {tab === 'create' ? (
+                <form onSubmit={handleCreate}>
+                  <div className="field">
+                    <label>Takım Adı</label>
+                    <input autoFocus placeholder="Örn: Yeni Proje, Kişisel…" value={wsName} onChange={e => setWsName(e.target.value)} required />
+                  </div>
+                  <div className="modal-foot">
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>İptal</button>
+                    <button type="submit" className="btn btn-primary" disabled={busy || !wsName.trim()}>
+                      {busy ? 'Oluşturuluyor…' : 'Takımı Kur'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleJoin}>
+                  <div className="field">
+                    <label>Davet Kodu</label>
+                    <input autoFocus placeholder="ABCD1234" value={code} onChange={e => setCode(e.target.value.toUpperCase())} maxLength={8}
+                      style={{ fontFamily:'var(--font-mono)', letterSpacing:'0.1em', fontSize:18, textAlign:'center' }} required />
+                  </div>
+                  <div className="modal-foot">
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>İptal</button>
+                    <button type="submit" className="btn btn-primary" disabled={busy || code.length < 6}>
+                      {busy ? 'Gönderiliyor…' : 'Katılım İsteği Gönder'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </>
           )}
         </div>
       </div>

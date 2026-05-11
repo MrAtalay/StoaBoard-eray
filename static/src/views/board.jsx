@@ -64,6 +64,9 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
   const colData = DATA.COLUMNS.find(c => c.id === task.col);
   const isDone = colData?.is_done || false;
   const overdue = DATA.isOverdue(task.due, task.col);
+  const me = window.CURRENT_USER?.id;
+  const isAssignedToMe = me && (task.assignees || []).includes(me);
+  const creator = task.created_by ? DATA.MEMBERS.find(m => m.id === task.created_by) : null;
   const titleRef = useBoardRef(null);
   const [editing, setEditing] = useBoardState(false);
   const touchState = useBoardRef({ timer: null, startX: 0, startY: 0, moved: false });
@@ -124,6 +127,7 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
       data-overdue={overdue && !isDone}
       data-show-progress={tweaks.showProgress}
       data-show-tags={tweaks.showTags}
+      style={{ position: 'relative' }}
       onClick={() => !editing && onOpen(task)}
       onDragStart={(e) => onDragStart(e, task)}
       onDragEnd={onDragEnd}
@@ -131,6 +135,13 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
       onTouchMove={canManageTasks ? handleTouchMove : undefined}
       onTouchEnd={handleTouchEnd}
     >
+      {isAssignedToMe && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+          background: 'var(--accent)', borderRadius: '8px 8px 0 0',
+          opacity: 0.85,
+        }} />
+      )}
       {(task.labels || []).length > 0 && (
         <div className="card-tags">
           {(task.labels || []).map(l => {
@@ -188,6 +199,12 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
           {members.length > 0 && (
             <div className="card-assignees"><AvatarStack members={members} size="sm" max={3} /></div>
           )}
+        </div>
+      )}
+      {creator && (
+        <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
+          <Icon name="user" size={9} />
+          <span>Oluşturan: {creator.name.split(' ')[0]}</span>
         </div>
       )}
     </div>

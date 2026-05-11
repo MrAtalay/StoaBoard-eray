@@ -282,6 +282,87 @@ const ROLE_COLORS = [
   'oklch(50% 0.14 340)', 'oklch(65% 0.11 70)',  'oklch(50% 0.04 250)',
 ];
 
+function JoinRequestsSection() {
+  const [requests, setRequests] = React.useState([]);
+  const [loading, setLoading]   = React.useState(true);
+
+  React.useEffect(() => {
+    API.getJoinRequests()
+      .then(setRequests)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Live update via socket
+  React.useEffect(() => {
+    const sock = window.SOCKET;
+    if (!sock) return;
+    const onNew = (req) => {
+      setRequests(prev => prev.some(r => r.id === req.id) ? prev : [req, ...prev]);
+    };
+    sock.on('join_request_new', onNew);
+    return () => sock.off('join_request_new', onNew);
+  }, []);
+
+  const handleApprove = async (id) => {
+    try {
+      await API.approveJoinRequest(id);
+      setRequests(prev => prev.filter(r => r.id !== id));
+      window.showToast?.('Katılım isteği onaylandı.', 'success');
+    } catch (e) { window.showToast?.(e.message, 'error'); }
+  };
+
+  const handleReject = async (id) => {
+    try {
+      await API.rejectJoinRequest(id);
+      setRequests(prev => prev.filter(r => r.id !== id));
+      window.showToast?.('Katılım isteği reddedildi.', 'info');
+    } catch (e) { window.showToast?.(e.message, 'error'); }
+  };
+
+  return (
+    <div className="settings-section">
+      <div>
+        <h3>Katılım İstekleri {requests.length > 0 && <span style={{ fontSize: 12, fontWeight: 400, background: 'var(--status-rose)', color: 'white', borderRadius: 99, padding: '1px 7px', marginLeft: 6 }}>{requests.length}</span>}</h3>
+        <p className="desc">Takıma katılmak isteyen kullanıcıları onaylayın veya reddedin.</p>
+      </div>
+      <div className="settings-card settings-panel" style={{ padding: 0, overflow: 'hidden' }}>
+        {loading ? (
+          <div style={{ padding: '16px 20px', color: 'var(--ink-faint)', fontSize: 13 }}>Yükleniyor…</div>
+        ) : requests.length === 0 ? (
+          <div style={{ padding: '16px 20px', color: 'var(--ink-muted)', fontSize: 13 }}>Bekleyen katılım isteği yok.</div>
+        ) : requests.map((req, i) => (
+          <div key={req.id} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '12px 16px',
+            borderBottom: i < requests.length - 1 ? '1px solid var(--line)' : 'none',
+          }}>
+            <Avatar member={req.user} size="sm" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 500, fontSize: 13 }}>{req.user?.name || '—'}</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{req.time}</div>
+            </div>
+            <button
+              className="btn btn-primary"
+              style={{ fontSize: 12, padding: '4px 14px' }}
+              onClick={() => handleApprove(req.id)}
+            >
+              Onayla
+            </button>
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: 12, padding: '4px 14px', color: 'var(--status-rose)' }}
+              onClick={() => handleReject(req.id)}
+            >
+              Reddet
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersChange }) {
   const me       = window.CURRENT_USER || DATA.MEMBERS[0] || {};
   const ws       = window.DATA.WORKSPACE || {};
@@ -687,6 +768,9 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           </div>
         </div>
       )}
+
+      {/* ── Join Requests ── (owner only) */}
+      {isOwner && <JoinRequestsSection />}
 
       {/* ── Workspace / Invite code ── (owner only) */}
       {isOwner && (

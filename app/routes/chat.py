@@ -191,6 +191,9 @@ def on_chat_message(data):
                 m_notif = Notification(
                     user_id=mentioned.id,
                     text=f'<strong>{user.name}</strong> senden bahsetti: {preview}',
+                    sender_slug=user.slug,
+                    workspace_id=workspace_id,
+                    chat_channel='dm' if receiver else 'general',
                 )
                 db.session.add(m_notif)
                 db.session.flush()

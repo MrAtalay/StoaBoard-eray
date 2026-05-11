@@ -141,6 +141,11 @@ window.API = {
   updateMember: (slug, data) => apiFetch(`/api/workspaces/members/${slug}`, { method: 'PATCH',  body: data }),
   removeMember: (slug)       => apiFetch(`/api/workspaces/members/${slug}`, { method: 'DELETE' }),
 
+  // Join requests (owner actions)
+  getJoinRequests:    ()    => apiFetch('/api/workspaces/me/join-requests'),
+  approveJoinRequest: (id)  => apiFetch(`/api/workspaces/join-requests/${id}/approve`, { method: 'POST' }),
+  rejectJoinRequest:  (id)  => apiFetch(`/api/workspaces/join-requests/${id}/reject`,  { method: 'POST' }),
+
   // Workspace logo
   uploadWorkspaceLogo: (wsId, formData) => {
     return fetch(`/api/workspaces/${wsId}/logo`, {

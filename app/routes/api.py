@@ -11,7 +11,7 @@ from app.models import (
     User, Workspace, WorkspaceMember, WorkspaceRole,
     Project, BoardColumn,
     Task, Label, TaskLabel, TaskAssignee, Subtask, Comment,
-    Notification, ActivityLog, ChatMessage, _now
+    Notification, ActivityLog, ChatMessage, WorkspaceJoinRequest, _now
 )
 from app import online_state
 
@@ -525,24 +525,130 @@ def join_workspace():
         db.session.commit()
         return jsonify({'ok': True, 'workspace_id': ws.id})
 
-    default_role = WorkspaceRole.query.filter_by(workspace_id=ws.id, is_default=True).first()
+    # Check for existing pending request
+    pending = WorkspaceJoinRequest.query.filter_by(
+        user_id=user.id, workspace_id=ws.id, status='pending'
+    ).first()
+    if pending:
+        return jsonify({'ok': True, 'pending': True, 'message': 'Katılım isteğiniz bekleniyor.'})
 
-    member = WorkspaceMember(
-        workspace_id=ws.id, user_id=user.id, role='member',
-        role_id=default_role.id if default_role else None,
-    )
-    db.session.add(member)
-    user.current_workspace_id = ws.id
+    # Create join request (owner must approve)
+    join_req = WorkspaceJoinRequest(workspace_id=ws.id, user_id=user.id)
+    db.session.add(join_req)
+    db.session.flush()
+
+    # Notify the workspace owner
+    owner = User.query.get(ws.owner_id)
+    if owner:
+        notif = Notification(
+            user_id=owner.id,
+            text=f'<strong>{user.name}</strong> takıma katılmak istiyor.',
+            sender_slug=user.slug,
+            workspace_id=ws.id,
+        )
+        db.session.add(notif)
+        db.session.flush()
+        _push_notification(owner.id, notif)
+
     db.session.commit()
 
-    # Notify existing workspace members in real-time
     from app import socketio as _sio
     try:
-        _sio.emit('member_joined', {'member': _member_to_dict(member)}, to=f'ws_{ws.id}')
+        _sio.emit('join_request_new', join_req.to_dict(), to=f'ws_{ws.id}')
     except Exception:
         pass
 
-    return jsonify({'ok': True, 'workspace_id': ws.id})
+    return jsonify({'ok': True, 'pending': True, 'message': 'Katılım isteğiniz gönderildi. Oda sahibinin onayı bekleniyor.'})
+
+
+@api_bp.route('/workspaces/me/join-requests', methods=['GET'])
+@_login_required
+def list_join_requests():
+    user = _current_user()
+    member = _current_member(user)
+    if not member or member.role != 'owner':
+        return jsonify({'error': 'Yetki gerekli'}), 403
+    reqs = WorkspaceJoinRequest.query.filter_by(
+        workspace_id=member.workspace_id, status='pending'
+    ).order_by(WorkspaceJoinRequest.created_at.desc()).all()
+    return jsonify([r.to_dict() for r in reqs])
+
+
+@api_bp.route('/workspaces/join-requests/<int:req_id>/approve', methods=['POST'])
+@_login_required
+def approve_join_request(req_id):
+    user = _current_user()
+    member = _current_member(user)
+    if not member or member.role != 'owner':
+        return jsonify({'error': 'Yetki gerekli'}), 403
+
+    join_req = WorkspaceJoinRequest.query.filter_by(
+        id=req_id, workspace_id=member.workspace_id
+    ).first_or_404()
+    if join_req.status != 'pending':
+        return jsonify({'error': 'Bu istek zaten işlendi'}), 400
+
+    join_req.status = 'approved'
+    default_role = WorkspaceRole.query.filter_by(workspace_id=join_req.workspace_id, is_default=True).first()
+    new_member = WorkspaceMember(
+        workspace_id=join_req.workspace_id, user_id=join_req.user_id, role='member',
+        role_id=default_role.id if default_role else None,
+    )
+    db.session.add(new_member)
+    join_req.user.current_workspace_id = join_req.workspace_id
+
+    notif = Notification(
+        user_id=join_req.user_id,
+        text=f'<strong>{join_req.workspace.name}</strong> takımına katılım isteğiniz onaylandı!',
+        workspace_id=join_req.workspace_id,
+    )
+    db.session.add(notif)
+    db.session.flush()
+    _push_notification(join_req.user_id, notif)
+    db.session.commit()
+
+    from app import socketio as _sio
+    try:
+        _sio.emit('join_request_approved', {'workspace_id': join_req.workspace_id}, to=f'user_{join_req.user_id}')
+        _sio.emit('member_joined', {'member': _member_to_dict(new_member)}, to=f'ws_{join_req.workspace_id}')
+    except Exception:
+        pass
+
+    return jsonify({'ok': True})
+
+
+@api_bp.route('/workspaces/join-requests/<int:req_id>/reject', methods=['POST'])
+@_login_required
+def reject_join_request(req_id):
+    user = _current_user()
+    member = _current_member(user)
+    if not member or member.role != 'owner':
+        return jsonify({'error': 'Yetki gerekli'}), 403
+
+    join_req = WorkspaceJoinRequest.query.filter_by(
+        id=req_id, workspace_id=member.workspace_id
+    ).first_or_404()
+    if join_req.status != 'pending':
+        return jsonify({'error': 'Bu istek zaten işlendi'}), 400
+
+    join_req.status = 'rejected'
+    notif = Notification(
+        user_id=join_req.user_id,
+        text=f'<strong>{join_req.workspace.name}</strong> takımına katılım isteğiniz reddedildi.',
+        workspace_id=join_req.workspace_id,
+    )
+    db.session.add(notif)
+    db.session.flush()
+    _push_notification(join_req.user_id, notif)
+    db.session.commit()
+
+    from app import socketio as _sio
+    try:
+        _sio.emit('join_request_rejected', {'workspace_id': join_req.workspace_id}, to=f'user_{join_req.user_id}')
+    except Exception:
+        pass
+
+    return jsonify({'ok': True})
 
 
 # ── List & Switch workspaces ───────────────────────────────────────────────

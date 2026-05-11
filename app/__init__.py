@@ -42,6 +42,7 @@ def _migrate_db():
             "ALTER TABLE tasks ADD COLUMN assignee_dates JSONB DEFAULT '{}'"
             if is_pg else
             "ALTER TABLE tasks ADD COLUMN assignee_dates TEXT DEFAULT '{}'"),
+        ('notifications', 'chat_channel', "ALTER TABLE notifications ADD COLUMN chat_channel VARCHAR(20)"),
     ]
     index_migrations = [
         "CREATE INDEX IF NOT EXISTS ix_task_project_id  ON tasks(project_id)",

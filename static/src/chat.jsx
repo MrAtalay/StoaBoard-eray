@@ -25,8 +25,22 @@ function Lightbox({ src, onClose }) {
   );
 }
 
-// ── Emoji reactions ───────────────────────────────────────────────────────
-const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👀'];
+// ── Emoji reactions — 100 emoji pack ─────────────────────────────────────
+const EMOJI_PACK = [
+  '👍','❤️','😂','😮','😢','🔥','🎉','👀',
+  '😊','😍','🤩','😎','🤔','😅','😆','🥰',
+  '😭','😤','🤯','😱','🤗','😏','😒','🙃',
+  '🙌','👏','🤝','✌️','🤞','🤙','👋','💪',
+  '🎊','🏆','🥇','⭐','✨','💫','🌟','🎯',
+  '💯','🔑','💡','⚡','🌈','💎','🌺','🍀',
+  '🚀','🛸','🎭','🎨','🎵','🎸','🎮','🎲',
+  '🍕','🍔','🍣','☕','🍺','🎂','🍰','🍫',
+  '🐶','🐱','🦊','🐼','🦁','🐸','🦄','🐉',
+  '🌍','🌊','🏔️','🌅','🌃','🏠','🏖️','🌵',
+  '💬','📢','📌','📎','🔔','🔒','📱','💻',
+  '😇','🤓','🤑','🥳','😴','🥺','🫡','👻',
+  '💀','🤖','👽','🫶',
+];
 
 // ── File size formatter ───────────────────────────────────────────────────
 function fmtSize(bytes) {
@@ -41,9 +55,23 @@ function fmtMsgTime(msg) {
   const raw = msg.ts || msg.created_at;
   if (raw) {
     try {
-      // Add 'Z' only if no timezone info present (Python naive UTC isoformat has none)
       const iso = (raw.endsWith('Z') || raw.includes('+')) ? raw : raw + 'Z';
       return new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    } catch(e) {}
+  }
+  return msg.time || '';
+}
+// ── Full date+time formatter for media/links ──────────────────────────────
+function fmtMsgDateTime(msg) {
+  const raw = msg.ts || msg.created_at;
+  if (raw) {
+    try {
+      const iso = (raw.endsWith('Z') || raw.includes('+')) ? raw : raw + 'Z';
+      const d = new Date(iso);
+      const TR_MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+      const dateStr = `${d.getDate()} ${TR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+      const timeStr = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      return `${dateStr} · ${timeStr}`;
     } catch(e) {}
   }
   return msg.time || '';
@@ -98,6 +126,7 @@ function MsgContent({ msg, onImageClick }) {
           <span>{msg.file_name || 'Görsel bulunamadı'}</span>
         </div>
         {msg.text && <div className="chat-bubble-text">{msg.text}</div>}
+        <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 3 }}>{fmtMsgDateTime(msg)}</div>
       </div>
     );
   }
@@ -116,6 +145,7 @@ function MsgContent({ msg, onImageClick }) {
           <span>{msg.file_name || 'Video bulunamadı'}</span>
         </div>
         {msg.text && <div className="chat-bubble-text">{msg.text}</div>}
+        <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 3 }}>{fmtMsgDateTime(msg)}</div>
       </div>
     );
   }
@@ -126,6 +156,7 @@ function MsgContent({ msg, onImageClick }) {
         <a href={msg.file_url} target="_blank" rel="noreferrer" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {msg.file_name || 'Dosya'}
         </a>
+        <div style={{ fontSize: 10, color: 'var(--ink-faint)', width: '100%', marginTop: 2 }}>{fmtMsgDateTime(msg)}</div>
         {msg.text && <div className="chat-bubble-text" style={{ marginTop: 4 }}>{msg.text}</div>}
       </div>
     );
@@ -156,6 +187,13 @@ function MediaList({ media, allMembers, onImageClick }) {
                 <img src={m.file_url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy"
                   onError={(e) => { e.currentTarget.style.opacity = '0'; }}
                 />
+                <div style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  background: 'oklch(0% 0 0 / 0.55)', color: 'white',
+                  fontSize: 9, padding: '3px 5px', lineHeight: 1.3,
+                }}>
+                  {fmtMsgDateTime(m)}
+                </div>
               </div>
             ))}
           </div>
@@ -173,7 +211,7 @@ function MediaList({ media, allMembers, onImageClick }) {
                 <div key={m.id} style={{ background: 'var(--bg-dim)', borderRadius: 8, padding: 8 }}>
                   <video src={m.file_url} controls style={{ width: '100%', borderRadius: 6, maxHeight: 180 }} />
                   <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4 }}>
-                    {sender?.name || m.from} · {fmtMsgTime(m)}
+                    {sender?.name || m.from} · {fmtMsgDateTime(m)}
                   </div>
                 </div>
               );
@@ -195,7 +233,7 @@ function MediaList({ media, allMembers, onImageClick }) {
                   <Icon name="paperclip" size={14} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.file_name}</div>
-                    <div style={{ fontSize: 10, color: 'var(--ink-faint)' }}>{sender?.name || m.from} · {fmtMsgTime(m)}</div>
+                    <div style={{ fontSize: 10, color: 'var(--ink-faint)' }}>{sender?.name || m.from} · {fmtMsgDateTime(m)}</div>
                   </div>
                   <Icon name="chevronRight" size={12} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
                 </a>
@@ -339,6 +377,8 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
     } else if (tab === 'general') {
       const key = wsId ? `general_${wsId}` : 'general';
       markAsRead(key);
+    } else if (tab === 'media') {
+      markAsRead('media');
     }
   }, [open, dmWith, tab, wsId]);
 
@@ -538,10 +578,17 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
     const key = String(msgId);
     setReactions(prev => {
       const msgR = { ...(prev[key] || {}) };
-      const users = [...(msgR[emoji] || [])];
-      const idx = users.indexOf(me);
-      if (idx >= 0) users.splice(idx, 1); else users.push(me);
-      if (users.length === 0) delete msgR[emoji]; else msgR[emoji] = users;
+      // Check if user already had this exact emoji (for toggle-off)
+      const alreadyHad = (msgR[emoji] || []).includes(me);
+      // Remove user from ALL emojis (enforce max 1 per user per message)
+      Object.keys(msgR).forEach(e => {
+        const users = (msgR[e] || []).filter(u => u !== me);
+        if (users.length === 0) delete msgR[e]; else msgR[e] = users;
+      });
+      // Add emoji only if user didn't already have it (toggle off when clicking same)
+      if (!alreadyHad) {
+        msgR[emoji] = [...(msgR[emoji] || []), me];
+      }
       const next = Object.keys(msgR).length === 0
         ? (({ [key]: _removed, ...rest }) => rest)(prev)
         : { ...prev, [key]: msgR };
@@ -663,13 +710,14 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
           <div style={{
             position: 'fixed',
             bottom: window.innerHeight - emojiPicker.y + 8,
-            left: Math.max(8, Math.min(emojiPicker.x - 144, window.innerWidth - 298)),
+            left: Math.max(8, Math.min(emojiPicker.x - 160, window.innerWidth - 336)),
             zIndex: 9998,
             background: 'var(--bg-raised)', border: '1px solid var(--line)',
             borderRadius: 14, boxShadow: '0 8px 24px oklch(0% 0 0 / 0.18)',
-            padding: '6px 8px', display: 'flex', gap: 2,
+            padding: '8px', display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)',
+            gap: 2, maxHeight: 200, overflowY: 'auto', width: 320,
           }}>
-            {QUICK_EMOJIS.map(emoji => (
+            {EMOJI_PACK.map(emoji => (
               <button key={emoji}
                 className="chat-emoji-opt"
                 onClick={() => toggleReaction(emojiPicker.msgId, emoji)}
@@ -722,30 +770,34 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
         {/* Tabs */}
         {!dmWith && (
           <div className="chat-tabs">
-            <button data-active={tab === 'general'} onClick={() => setTab('general')}>
-              <Icon name="users" size={13} /> Genel
-              {(unreadCounts || {}).general > 0 && (
-                <span className="chat-tab-count" style={{ background: 'var(--status-rose)' }}>
-                  {(unreadCounts || {}).general > 9 ? '9+' : (unreadCounts || {}).general}
-                </span>
-              )}
-            </button>
-            <button data-active={tab === 'dm'} onClick={() => setTab('dm')}>
-              {(() => {
-                const totalDm = Object.entries(unreadCounts || {}).filter(([k]) => k.startsWith('dm_')).reduce((s, [,v]) => s + v, 0);
-                return (<>
+            {(() => {
+              const fmtBadge = (n) => n > 99 ? '+99' : `+${n}`;
+              const generalCount = (unreadCounts || {})[wsId ? `general_${wsId}` : 'general'] || 0;
+              const totalDm = Object.entries(unreadCounts || {}).filter(([k]) => k.startsWith('dm_')).reduce((s, [,v]) => s + v, 0);
+              const mediaCount = (unreadCounts || {}).media || 0;
+              return (<>
+                <button data-active={tab === 'general'} onClick={() => setTab('general')}>
+                  <Icon name="users" size={13} /> Genel
+                  {generalCount > 0 && (
+                    <span className="chat-tab-count" style={{ background: 'var(--status-rose)' }}>
+                      {fmtBadge(generalCount)}
+                    </span>
+                  )}
+                </button>
+                <button data-active={tab === 'dm'} onClick={() => setTab('dm')}>
                   <Icon name="msg" size={13} /> Direkt
-                  {totalDm > 0 && <span className="chat-tab-count" style={{ background: 'var(--status-rose)' }}>{totalDm > 9 ? '9+' : totalDm}</span>}
-                </>);
-              })()}
-            </button>
-            <button data-active={tab === 'media'} onClick={() => setTab('media')}>
-              <Icon name="paperclip" size={13} /> Medya
-            </button>
-            <button data-active={tab === 'starred'} onClick={() => setTab('starred')}>
-              <Icon name="star" size={13} /> Yıldız
-              {starredMsgs.size > 0 && <span className="chat-tab-count">{starredMsgs.size}</span>}
-            </button>
+                  {totalDm > 0 && <span className="chat-tab-count" style={{ background: 'var(--status-rose)' }}>{fmtBadge(totalDm)}</span>}
+                </button>
+                <button data-active={tab === 'media'} onClick={() => setTab('media')}>
+                  <Icon name="paperclip" size={13} /> Medya
+                  {mediaCount > 0 && <span className="chat-tab-count" style={{ background: 'var(--status-rose)' }}>{fmtBadge(mediaCount)}</span>}
+                </button>
+                <button data-active={tab === 'starred'} onClick={() => setTab('starred')}>
+                  <Icon name="star" size={13} /> Yıldız
+                  {starredMsgs.size > 0 && <span className="chat-tab-count">{starredMsgs.size}</span>}
+                </button>
+              </>);
+            })()}
           </div>
         )}
 

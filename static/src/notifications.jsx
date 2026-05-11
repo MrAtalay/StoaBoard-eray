@@ -74,6 +74,13 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
       if (task) { onOpenTask?.(task); onClose(); return; }
       if (window.__OPEN_TASK_BY_ID__) { window.__OPEN_TASK_BY_ID__(n.task_id); onClose(); return; }
     }
+    // @mention in general chat → open general channel (not DM)
+    if (n.chat_channel === 'general') {
+      onOpenChat?.(null);
+      onClose();
+      return;
+    }
+    // DM message or DM mention → open DM with sender
     if (n.sender_slug) {
       onOpenChat?.(n.sender_slug);
       onClose();
