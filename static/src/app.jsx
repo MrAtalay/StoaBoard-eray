@@ -212,6 +212,13 @@ function App() {
     sock.on('join_request_rejected', () => {
       window.showToast?.('Takıma katılım isteğiniz reddedildi.', 'error');
     });
+    sock.on('member_role_changed', (updatedMember) => {
+      setMembers(prev => {
+        const next = prev.map(m => m.id === updatedMember.id ? { ...m, ...updatedMember } : m);
+        window.DATA.MEMBERS = next;
+        return next;
+      });
+    });
 
     // Real-time notifications (from DM / @mention / task assignment)
     sock.on('notification', (notif) => {
@@ -583,7 +590,7 @@ function App() {
         if (data.needs_workspace) {
           window.CURRENT_USER = data.user;
           setAuthed(true); setNeedsWorkspace(true);
-          return;
+          return; // WorkspaceSetupPage reads ?join= from URL itself
         }
         _applyBootstrap(data);
         setTasks(data.tasks || []);
@@ -591,6 +598,15 @@ function App() {
         if (data.online_users) _applyOnlineUsers(data.online_users);
         if (data.workspaces)   setWorkspaces(data.workspaces);
         setAuthed(true); setNeedsWorkspace(false);
+        // If user already has a workspace but signed in via an invite link, open join modal
+        try {
+          const joinCode = new URLSearchParams(window.location.search).get('join');
+          if (joinCode) {
+            setWsJoinInitialCode(joinCode);
+            setWsJoinModalOpen(true);
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        } catch (_) {}
       })
       .catch((e) => window.showToast?.('Veri yüklenemedi: ' + e.message, 'error'));
   };

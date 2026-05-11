@@ -339,17 +339,22 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
                     <button className="col-menu-item" onClick={() => { setMenuOpen(false); setRenaming(true); setRenameVal(col.title_tr || col.title || ''); }}>
                       <Icon name="edit" size={13} /> Yeniden adlandır
                     </button>
-                    {confirmDelete ? (
-                      <div className="col-menu-confirm">
-                        <span>Emin misiniz?</span>
-                        <button className="col-menu-confirm-yes" onClick={() => { setConfirmDelete(false); setMenuOpen(false); onDeleteColumn?.(col.db_id, col.id); }}>Sil</button>
-                        <button className="col-menu-confirm-no" onClick={() => setConfirmDelete(false)}>İptal</button>
-                      </div>
-                    ) : (
-                      <button className="col-menu-item col-menu-item-danger" onClick={() => setConfirmDelete(true)}>
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        className="col-menu-item col-menu-item-danger"
+                        style={{ visibility: confirmDelete ? 'hidden' : 'visible', pointerEvents: confirmDelete ? 'none' : 'auto' }}
+                        onClick={() => setConfirmDelete(true)}
+                      >
                         <Icon name="trash" size={13} /> Kolonu sil
                       </button>
-                    )}
+                      {confirmDelete && (
+                        <div className="col-menu-confirm" style={{ position: 'absolute', inset: 0 }}>
+                          <span>Emin misiniz?</span>
+                          <button className="col-menu-confirm-yes" onClick={() => { setConfirmDelete(false); setMenuOpen(false); onDeleteColumn?.(col.db_id, col.id); }}>Sil</button>
+                          <button className="col-menu-confirm-no" onClick={() => setConfirmDelete(false)}>İptal</button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </div>

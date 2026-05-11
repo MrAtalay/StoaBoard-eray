@@ -1163,12 +1163,13 @@ input, textarea, select, [contenteditable="true"] {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 8px 14px;
   border-top: 1px solid var(--line);
   font-size: 12px;
   color: var(--ink-muted);
   flex-wrap: nowrap;
-  min-height: 36px;
+  background: var(--bg-raised);
+  border-radius: 0 0 12px 12px;
 }
 .col-menu-confirm > span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .col-menu-confirm-yes {

@@ -887,7 +887,14 @@ def update_member(slug):
             target.role_id = None
 
     db.session.commit()
-    return jsonify(_member_to_dict(target))
+    result = _member_to_dict(target)
+    # Broadcast role change so the affected member updates permissions in real-time
+    from app import socketio as _sio
+    try:
+        _sio.emit('member_role_changed', result, to=f'ws_{actor.workspace_id}')
+    except Exception:
+        pass
+    return jsonify(result)
 
 
 @api_bp.route('/workspaces/members/<slug>', methods=['DELETE'])

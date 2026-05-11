@@ -782,9 +782,9 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                 <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>PNG, JPG, WEBP — maks. 5 MB</div>
               </div>
             </div>
-            <div style={{ borderTop: '1px solid var(--line)', marginTop: 16, paddingTop: 16 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink-muted)', display: 'block', marginBottom: 6 }}>Takım Adı</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div className="field" style={{ borderTop: '1px solid var(--line)', marginTop: 16, paddingTop: 16 }}>
+              <label>Takım Adı</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <input
                   value={wsName}
                   onChange={e => setWsName(e.target.value)}
@@ -792,7 +792,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                   placeholder={ws.name || 'Takım adı…'}
                   style={{ flex: 1, minWidth: 140 }}
                 />
-                <button className="btn btn-primary" style={{ fontSize: 12, flexShrink: 0 }} disabled={wsNameBusy || !wsName.trim() || wsName.trim() === ws.name} onClick={saveWsName}>
+                <button className="btn btn-primary" style={{ fontSize: 12, flexShrink: 0, marginBottom: 0 }} disabled={wsNameBusy || !wsName.trim() || wsName.trim() === ws.name} onClick={saveWsName}>
                   {wsNameBusy ? 'Kaydediliyor…' : wsNameSaved ? '✓ Kaydedildi' : 'Kaydet'}
                 </button>
               </div>
@@ -825,7 +825,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                 <div style={{ display:'flex', gap:16, alignItems:'flex-start', marginBottom:12, flexWrap:'wrap' }}>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(inviteCode)}&bgcolor=ffffff&color=1d3461&qzone=1&format=png`}
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(`${window.location.origin}/?join=${inviteCode}`)}&bgcolor=ffffff&color=1d3461&qzone=1&format=png`}
                       alt="QR Kod"
                       style={{ width:140, height:140, borderRadius:8, border:'1px solid var(--line)', display:'block' }}
                     />
