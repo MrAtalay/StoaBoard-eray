@@ -35,6 +35,21 @@ def _migrate_db():
             "ALTER TABLE board_columns ADD COLUMN is_done INTEGER DEFAULT 0"),
         ('notifications', 'task_id', "ALTER TABLE notifications ADD COLUMN task_id INTEGER"),
         ('notifications', 'sender_slug', "ALTER TABLE notifications ADD COLUMN sender_slug VARCHAR(80)"),
+        ('users', 'avatar_photo_url', "ALTER TABLE users ADD COLUMN avatar_photo_url VARCHAR(300)"),
+        ('notifications', 'workspace_id', "ALTER TABLE notifications ADD COLUMN workspace_id INTEGER"),
+        ('tasks', 'start_date', "ALTER TABLE tasks ADD COLUMN start_date DATE"),
+        ('tasks', 'assignee_dates',
+            "ALTER TABLE tasks ADD COLUMN assignee_dates JSONB DEFAULT '{}'"
+            if is_pg else
+            "ALTER TABLE tasks ADD COLUMN assignee_dates TEXT DEFAULT '{}'"),
+    ]
+    index_migrations = [
+        "CREATE INDEX IF NOT EXISTS ix_task_project_id  ON tasks(project_id)",
+        "CREATE INDEX IF NOT EXISTS ix_task_column_id   ON tasks(column_id)",
+        "CREATE INDEX IF NOT EXISTS ix_task_created_at  ON tasks(created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_task_assignee_task_id ON task_assignees(task_id)",
+        "CREATE INDEX IF NOT EXISTS ix_task_label_task_id    ON task_labels(task_id)",
+        "CREATE INDEX IF NOT EXISTS ix_notification_user_id  ON notifications(user_id)",
     ]
 
     column_cache = {}
@@ -49,6 +64,14 @@ def _migrate_db():
             continue
         with db.engine.begin() as conn:
             conn.execute(text(sql))
+
+    # Indexes (idempotent — IF NOT EXISTS)
+    with db.engine.begin() as conn:
+        for idx_sql in index_migrations:
+            try:
+                conn.execute(text(idx_sql))
+            except Exception:
+                pass
 
 
 def create_app():

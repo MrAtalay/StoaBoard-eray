@@ -16,13 +16,19 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
   const [fullscreen, setFullscreen]     = useDrawerState(false);
   const [duplicating, setDuplicating]   = useDrawerState(false);
   const [dueVal, setDueVal]             = useDrawerState('');
+  const [startVal, setStartVal]         = useDrawerState('');
+  const [assigneeDatesVal, setAssigneeDatesVal] = useDrawerState({});
   const statusRef   = useDrawerRef(null);
   const priorityRef = useDrawerRef(null);
   const labelRef    = useDrawerRef(null);
   const assigneeRef = useDrawerRef(null);
   const textareaRef = useDrawerRef(null);
 
-  useDrawerEffect(() => { setDueVal(task?.due || ''); }, [task?.id, task?.due]);
+  useDrawerEffect(() => {
+    setDueVal(task?.due || '');
+    setStartVal(task?.start || '');
+    setAssigneeDatesVal(task?.assignee_dates || {});
+  }, [task?.id, task?.due, task?.start]);
 
   // Fetch full task detail (doc + comments + subtasks) when drawer opens
   useDrawerEffect(() => {
@@ -65,9 +71,11 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
         desc: task.desc,
         col: task.col,
         priority: task.priority,
+        start: task.start || null,
         due: task.due || null,
         labels: task.labels || [],
         assignees: task.assignees || [],
+        assignee_dates: task.assignee_dates || null,
       });
       if (onCreateTask) onCreateTask(newTask);
       onClose();
@@ -287,18 +295,48 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
               )}
             </div>
 
-            <div className="prop-label"><Icon name="calendar" size={13} /> Bitiş</div>
-            <div className="prop-value" style={{ gap: 6 }}>
+            <div className="prop-label"><Icon name="calendar" size={13} /> Tarihler</div>
+            <div className="prop-value" style={{ gap: 4, flexDirection: 'column', alignItems: 'stretch' }}>
               {canManageTasks ? (
-                <DatePicker
-                  value={dueVal}
-                  onChange={(v) => { setDueVal(v || ''); patchTask({ due: v || null }); }}
-                />
+                <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                  <DatePicker value={startVal} onChange={(v) => { setStartVal(v || ''); patchTask({ start: v || null }); }} />
+                  <span style={{ color:'var(--ink-muted)', fontSize:12, flexShrink:0 }}>–</span>
+                  <DatePicker value={dueVal} onChange={(v) => { setDueVal(v || ''); patchTask({ due: v || null }); }} />
+                </div>
               ) : (
-                dueVal
-                  ? <span style={{ fontSize: 13, color: DATA.isOverdue(dueVal, task.col) ? 'var(--status-rose)' : 'var(--ink)' }}>{DATA.fmtDate(dueVal)}</span>
-                  : <span style={{ color: 'var(--ink-muted)', fontSize: 13 }}>—</span>
+                <span style={{ fontSize:13, color: dueVal && DATA.isOverdue(dueVal, task.col) ? 'var(--status-rose)' : 'var(--ink)' }}>
+                  {startVal && dueVal ? `${DATA.fmtDate(startVal)} – ${DATA.fmtDate(dueVal)}`
+                    : dueVal ? DATA.fmtDate(dueVal)
+                    : startVal ? DATA.fmtDate(startVal)
+                    : '—'}
+                </span>
               )}
+              {/* Per-assignee date rows */}
+              {members.filter(m => assigneeDatesVal[m.id]?.start || assigneeDatesVal[m.id]?.end).map(m => {
+                const d = assigneeDatesVal[m.id] || {};
+                const patchAd = (field, val) => {
+                  const next = { ...assigneeDatesVal, [m.id]: { ...(assigneeDatesVal[m.id] || {}), [field]: val || null } };
+                  setAssigneeDatesVal(next);
+                  patchTask({ assignee_dates: next });
+                };
+                return (
+                  <div key={m.id} style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+                    <div style={{ width:8, height:8, borderRadius:'50%', background:m.color, flexShrink:0 }} />
+                    <span style={{ fontSize:11, color:'var(--ink-muted)', minWidth:44 }}>{m.name.split(' ')[0]}</span>
+                    {canManageTasks ? (
+                      <div style={{ display:'flex', gap:4, flex:1 }}>
+                        <DatePicker value={d.start || ''} onChange={(v) => patchAd('start', v)} />
+                        <DatePicker value={d.end   || ''} onChange={(v) => patchAd('end',   v)} />
+                      </div>
+                    ) : (
+                      <span style={{ fontSize:11, color:'var(--ink)' }}>
+                        {d.start && d.end ? `${DATA.fmtDate(d.start)} – ${DATA.fmtDate(d.end)}`
+                          : DATA.fmtDate(d.start || d.end)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="prop-label"><Icon name="tag" size={13} /> Etiketler</div>

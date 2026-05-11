@@ -19,6 +19,10 @@ function LabelsSection({ canManage }) {
   const [newTone, setNewTone] = React.useState('blue');
   const [adding, setAdding] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [editingSlug, setEditingSlug] = React.useState(null);
+  const [editName, setEditName] = React.useState('');
+  const [editTone, setEditTone] = React.useState('blue');
+  const [editBusy, setEditBusy] = React.useState(false);
 
   const toSlug = (s) =>
     s.toLowerCase()
@@ -35,6 +39,26 @@ function LabelsSection({ canManage }) {
       setLabels(next);
       DATA.LABELS = next;
     } catch (e) { window.showToast?.('Etiket silinemedi: ' + e.message, 'error'); }
+  };
+
+  const handleStartEdit = (slug, label) => {
+    setEditingSlug(slug);
+    setEditName(label.tr);
+    setEditTone(label.tone || 'blue');
+  };
+
+  const handleSaveEdit = async () => {
+    const name = editName.trim();
+    if (!name || !projectId || !editingSlug) return;
+    setEditBusy(true);
+    try {
+      const result = await API.updateLabel(projectId, editingSlug, { name, tone: editTone });
+      const next = { ...labels, ...result };
+      setLabels(next);
+      DATA.LABELS = next;
+      setEditingSlug(null);
+    } catch (e) { window.showToast?.('Etiket güncellenemedi: ' + e.message, 'error'); }
+    finally { setEditBusy(false); }
   };
 
   const handleAdd = async () => {
@@ -66,13 +90,52 @@ function LabelsSection({ canManage }) {
           <div style={{ padding: '18px 20px', fontSize: 13, color: 'var(--ink-muted)' }}>Henüz etiket yok.</div>
         )}
         {Object.entries(labels).map(([slug, label], i, arr) => (
-          <div key={slug} className="label-row" style={{ borderBottom: i < arr.length - 1 ? '1px solid var(--line)' : 'none' }}>
-            <span className="tag" data-tone={label.tone} style={{ flexShrink: 0 }}>{label.tr}</span>
-            <span className="label-row-slug">{slug}</span>
-            {canManage && (
-              <button className="icon-btn label-row-del" title="Sil" onClick={() => handleDelete(slug)}>
-                <Icon name="trash" size={13} />
-              </button>
+          <div key={slug} style={{ borderBottom: i < arr.length - 1 || canManage ? '1px solid var(--line)' : 'none' }}>
+            {editingSlug === slug ? (
+              <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    autoFocus
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') setEditingSlug(null); }}
+                    style={{ flex: 1, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--accent)', background: 'var(--bg-raised)', color: 'var(--ink)', fontSize: 13, outline: 'none' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {LABEL_TONES.map(t => (
+                    <button
+                      key={t.id}
+                      title={t.label}
+                      className="label-tone-dot"
+                      data-active={editTone === t.id}
+                      style={{ background: `var(--status-${t.id})` }}
+                      onClick={() => setEditTone(t.id)}
+                    />
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={handleSaveEdit} disabled={editBusy || !editName.trim()}>
+                    {editBusy ? '…' : 'Kaydet'}
+                  </button>
+                  <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setEditingSlug(null)}>İptal</button>
+                </div>
+              </div>
+            ) : (
+              <div className="label-row">
+                <span className="tag" data-tone={label.tone} style={{ flexShrink: 0 }}>{label.tr}</span>
+                <span className="label-row-slug">{slug}</span>
+                {canManage && (
+                  <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+                    <button className="icon-btn" title="Düzenle" onClick={() => handleStartEdit(slug, label)}>
+                      <Icon name="edit" size={13} />
+                    </button>
+                    <button className="icon-btn label-row-del" title="Sil" onClick={() => handleDelete(slug)}>
+                      <Icon name="trash" size={13} />
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         ))}
@@ -237,6 +300,9 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
   const [deleteEmail, setDeleteEmail] = React.useState('');
   const [deleteBusy, setDeleteBusy] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState('');
+  const [avatarUrl, setAvatarUrl]     = React.useState(me.avatar_photo_url || null);
+  const [avatarBusy, setAvatarBusy]   = React.useState(false);
+  const avatarInputRef = React.useRef(null);
 
   const [inviteCode, setInviteCode]   = React.useState(ws.invite_code || null);
   const [codeLoading, setCodeLoading] = React.useState(false);
@@ -293,6 +359,34 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       setTimeout(() => setSaved(false), 2000);
     } catch (e) { window.showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
     finally { setBusy(false); }
+  };
+
+  const uploadAvatar = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await API.uploadAvatar(fd);
+      setAvatarUrl(res.avatar_photo_url);
+      window.CURRENT_USER = { ...window.CURRENT_USER, avatar_photo_url: res.avatar_photo_url };
+      const idx = DATA.MEMBERS.findIndex(m => m.id === me.id);
+      if (idx >= 0) DATA.MEMBERS[idx] = { ...DATA.MEMBERS[idx], avatar_photo_url: res.avatar_photo_url };
+    } catch (err) { window.showToast?.('Fotoğraf yüklenemedi: ' + err.message, 'error'); }
+    finally { setAvatarBusy(false); if (avatarInputRef.current) avatarInputRef.current.value = ''; }
+  };
+
+  const removeAvatar = async () => {
+    setAvatarBusy(true);
+    try {
+      await API.deleteAvatar();
+      setAvatarUrl(null);
+      window.CURRENT_USER = { ...window.CURRENT_USER, avatar_photo_url: null };
+      const idx = DATA.MEMBERS.findIndex(m => m.id === me.id);
+      if (idx >= 0) DATA.MEMBERS[idx] = { ...DATA.MEMBERS[idx], avatar_photo_url: null };
+    } catch (err) { window.showToast?.('Fotoğraf silinemedi: ' + err.message, 'error'); }
+    finally { setAvatarBusy(false); }
   };
 
 
@@ -460,7 +554,29 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
         </div>
         <div className="settings-card">
           <div style={{ display:'flex', gap:16, alignItems:'center', marginBottom:18 }}>
-            <Avatar member={me} size="lg" />
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              {avatarUrl ? (
+                <div style={{ width: 56, height: 56, borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--line)' }}>
+                  <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              ) : (
+                <Avatar member={{ ...me, avatar_photo_url: null }} size="lg" />
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={uploadAvatar} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost" style={{ fontSize: 12 }} disabled={avatarBusy} onClick={() => avatarInputRef.current?.click()}>
+                  <Icon name="upload" size={12} /> {avatarBusy ? 'Yükleniyor…' : 'Fotoğraf Yükle'}
+                </button>
+                {avatarUrl && (
+                  <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--status-rose)' }} disabled={avatarBusy} onClick={removeAvatar}>
+                    Kaldır
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>PNG, JPG, WEBP — maks. 5 MB</div>
+            </div>
           </div>
           <div className="field-row">
             <div className="field">
@@ -859,6 +975,15 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                 <span className="tweak-toggle-desc">Chat mesajları için anlık bildirim al</span>
               </div>
               <div className="toggle" data-on={tweaks.notifyMessages !== false} />
+            </div>
+            <div className="tweak-toggle"
+              style={{ opacity: tweaks.notifyMessages === false ? 0.4 : 1 }}
+              onClick={() => tweaks.notifyMessages !== false && setTweak('soundEnabled', tweaks.soundEnabled === false)}>
+              <div className="tweak-toggle-info">
+                <span>Bildirim sesi</span>
+                <span className="tweak-toggle-desc">Yeni mesajlarda kısa bir ses çalar. Rahatsız Etme modunda çalmaz.</span>
+              </div>
+              <div className="toggle" data-on={tweaks.notifyMessages !== false && tweaks.soundEnabled !== false} />
             </div>
             <div className="tweak-toggle"
               style={{ opacity: tweaks.notifyMessages === false ? 0.4 : 1 }}

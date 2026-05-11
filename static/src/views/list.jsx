@@ -6,6 +6,7 @@ function ListView({ tasks, onOpenTask, onMoveTask, canManageTasks = true }) {
   const [activeLabels, setActiveLabels] = useListState(new Set());
   const [activePriority, setActivePriority] = useListState(null);
   const [activeOverdue, setActiveOverdue] = useListState(false);
+  const [activeMyTasks, setActiveMyTasks] = useListState(() => localStorage.getItem('stoa.filterMyTasks') === 'true');
 
   const toggleLabel = (slug) => setActiveLabels(prev => {
     const next = new Set(prev);
@@ -14,12 +15,22 @@ function ListView({ tasks, onOpenTask, onMoveTask, canManageTasks = true }) {
   });
   const togglePriority = (p) => setActivePriority(prev => prev === p ? null : p);
   const toggleOverdue = () => setActiveOverdue(prev => !prev);
-  const clearFilters = () => { setActiveLabels(new Set()); setActivePriority(null); setActiveOverdue(false); };
+  const toggleMyTasks = () => setActiveMyTasks(prev => {
+    const next = !prev;
+    localStorage.setItem('stoa.filterMyTasks', next ? 'true' : 'false');
+    return next;
+  });
+  const clearFilters = () => {
+    setActiveLabels(new Set()); setActivePriority(null); setActiveOverdue(false);
+    setActiveMyTasks(false); localStorage.removeItem('stoa.filterMyTasks');
+  };
 
+  const myId = window.CURRENT_USER?.id;
   const visibleTasks = tasks.filter(t => {
     if (activePriority && t.priority !== activePriority) return false;
     if (activeLabels.size > 0 && !(t.labels || []).some(l => activeLabels.has(l))) return false;
     if (activeOverdue && !DATA.isOverdue(t.due, t.col)) return false;
+    if (activeMyTasks && myId && !(t.assignees || []).includes(myId)) return false;
     return true;
   });
 
@@ -34,9 +45,11 @@ function ListView({ tasks, onOpenTask, onMoveTask, canManageTasks = true }) {
       activeLabels={activeLabels}
       activePriority={activePriority}
       activeOverdue={activeOverdue}
+      activeMyTasks={activeMyTasks}
       onToggleLabel={toggleLabel}
       onTogglePriority={togglePriority}
       onToggleOverdue={toggleOverdue}
+      onToggleMyTasks={toggleMyTasks}
       onClear={clearFilters}
     />
     <div className="list-view">

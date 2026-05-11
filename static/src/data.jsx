@@ -82,6 +82,10 @@ window.API = {
   // Profile
   updateProfile: (data) => apiFetch('/api/users/me', { method: 'PUT', body: data }),
   deleteAccount: (email) => apiFetch('/api/users/me', { method: 'DELETE', body: { email } }),
+  uploadAvatar: (formData) => fetch('/api/users/me/avatar', {
+    method: 'POST', credentials: 'same-origin', body: formData,
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.error || 'Yükleme başarısız')))),
+  deleteAvatar: () => apiFetch('/api/users/me/avatar', { method: 'DELETE' }),
 
   // Projects
   getProjects:   ()          => apiFetch('/api/projects'),
@@ -92,6 +96,8 @@ window.API = {
   // Labels
   createLabel: (projectId, data) =>
     apiFetch(`/api/projects/${projectId}/labels`, { method: 'POST', body: data }),
+  updateLabel: (projectId, slug, data) =>
+    apiFetch(`/api/projects/${projectId}/labels/${slug}`, { method: 'PATCH', body: data }),
   deleteLabel: (projectId, slug) =>
     apiFetch(`/api/projects/${projectId}/labels/${slug}`, { method: 'DELETE' }),
 

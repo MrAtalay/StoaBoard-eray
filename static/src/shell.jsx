@@ -69,6 +69,13 @@ function ToastContainer() {
 
 function Avatar({ member, size = 'sm' }) {
   if (!member) return null;
+  if (member.avatar_photo_url) {
+    return (
+      <div className="avatar" data-size={size} style={{ background: 'var(--bg-subtle)', padding: 0, overflow: 'hidden' }} title={member.name}>
+        <img src={member.avatar_photo_url} alt={member.initials} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      </div>
+    );
+  }
   return (
     <div className="avatar" data-size={size} style={{ background: member.color || 'var(--ink-muted)' }} title={member.name}>
       {member.initials}
@@ -101,11 +108,16 @@ function Sidebar({
   wsSwitcherOpen, onWsSwitcherToggle,
   currentStatus, onStatusChange,
   mobileOpen, onMobileClose,
+  unreadCounts,
+  currentWsId,
 }) {
   const me = window.CURRENT_USER || {};
   const online = onlineUsers || new Set();
   const statuses = onlineStatuses || new Map();
   const teamMembers = (membersProp || DATA.MEMBERS || []).filter(m => m.id !== me.id);
+  const unreads = unreadCounts || {};
+  const generalKey = currentWsId ? `general_${currentWsId}` : 'general';
+  const generalUnread = unreads[generalKey] || 0;
 
   const myStatus = typeof currentStatus === 'string' ? currentStatus : (currentStatus?.current || 'online');
 
@@ -219,7 +231,26 @@ function Sidebar({
         <NavItem icon="layoutBoard" label="Pano"       sub="Board"    onClick={() => onView('board')}     active={view === 'board'} />
         <NavItem icon="list"        label="Liste"      sub="List"     onClick={() => onView('list')}      active={view === 'list'} />
         <NavItem icon="calendar"    label="Takvim"     sub="Calendar" onClick={() => onView('calendar')}  active={view === 'calendar'} />
-        <NavItem icon="msg"         label="Sohbet"     sub="Chat"     onClick={() => onChatOpen()} />
+        <NavItem icon="user"        label="Görevlerim" sub="My Tasks" onClick={() => {
+          localStorage.setItem('stoa.filterMyTasks', 'true');
+          window.dispatchEvent(new CustomEvent('stoa:activateMyTasks'));
+          onView('board');
+        }} active={false} />
+      </div>
+
+      <div className="sidebar-section">
+        <div className="sidebar-section-title"><span>Kanallar</span></div>
+        <div className="project-item" onClick={() => onChatOpen()}>
+          <div style={{ width:18, height:18, borderRadius:5, background:'var(--bg-dim)', display:'grid', placeItems:'center', color:'var(--ink-muted)', flexShrink:0, fontWeight:700, fontSize:13 }}>
+            #
+          </div>
+          <span className="sidebar-label">Genel</span>
+          {generalUnread > 0 && (
+            <span className="nav-badge" data-new="true" style={{ marginLeft: 'auto' }}>
+              {generalUnread > 9 ? '9+' : generalUnread}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="sidebar-section">
@@ -244,10 +275,11 @@ function Sidebar({
       </div>
 
       <div className="sidebar-section">
-        <div className="sidebar-section-title"><span>Takım</span></div>
+        <div className="sidebar-section-title"><span>Direkt Mesajlar</span></div>
         {teamMembers.slice(0, 6).map(m => {
           const mStatus = statuses.get(m.id) || (online.has(m.id) ? 'online' : 'offline');
           const dotColor = { online: 'var(--status-green)', away: 'oklch(75% 0.14 75)', dnd: 'var(--status-rose)', offline: 'var(--ink-faint)' }[mStatus];
+          const dmUnread = unreads[`dm_${m.id}`] || 0;
           return (
             <div className="project-item" key={m.id} onClick={() => onChatOpen && onChatOpen(m.id)}>
               <div style={{ position: 'relative', flexShrink: 0, display: 'flex' }}>
@@ -255,7 +287,11 @@ function Sidebar({
                 <span style={{ position: 'absolute', bottom: -1, right: -1, width: 7, height: 7, borderRadius: '50%', background: dotColor, border: '1.5px solid var(--bg)' }} />
               </div>
               <span className="sidebar-label">{m.name}</span>
-              <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+              {dmUnread > 0 && (
+                <span className="nav-badge" data-new="true" style={{ marginLeft: 'auto' }}>
+                  {dmUnread > 9 ? '9+' : dmUnread}
+                </span>
+              )}
             </div>
           );
         })}
@@ -268,15 +304,18 @@ function Sidebar({
 
       <div className="sidebar-footer">
         <NavItem icon="settings" label="Ayarlar" sub="Settings" onClick={() => onView('settings')} active={view === 'settings'} />
-        <StatusProfileWidget me={me} myStatus={myStatus} onStatusChange={onStatusChange} />
+        <StatusProfileWidget me={me} myStatus={myStatus} onStatusChange={onStatusChange} collapsed={collapsed} />
       </div>
     </aside>
   );
 }
 
 // ── Status Profile Widget ──────────────────────────────────────────────────
-function StatusProfileWidget({ me, myStatus, onStatusChange }) {
+function StatusProfileWidget({ me, myStatus, onStatusChange, collapsed }) {
   const [open, setOpen] = useState(false);
+  const [popupPos, setPopupPos] = useState({ bottom: 60, left: 8, width: 200 });
+  const triggerRef = React.useRef(null);
+  const popupRef = React.useRef(null);
 
   const statusOptions = [
     { key: 'online', label: 'Çevrimiçi',      color: 'var(--status-green)' },
@@ -285,14 +324,40 @@ function StatusProfileWidget({ me, myStatus, onStatusChange }) {
   ];
   const current = statusOptions.find(s => s.key === myStatus) || statusOptions[0];
 
+  const handleToggle = () => {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPopupPos({
+        bottom: window.innerHeight - rect.top + 6,
+        left: rect.left,
+        width: Math.max(rect.width, 200),
+      });
+    }
+    setOpen(v => !v);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      const inTrigger = triggerRef.current && triggerRef.current.contains(e.target);
+      const inPopup = popupRef.current && popupRef.current.contains(e.target);
+      if (!inTrigger && !inPopup) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={triggerRef}>
       {open && (
-        <div style={{
-          position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 4,
+        <div ref={popupRef} style={{
+          position: 'fixed',
+          bottom: popupPos.bottom,
+          left: popupPos.left,
+          width: popupPos.width,
           background: 'var(--bg-raised)', border: '1px solid var(--line)',
-          borderRadius: 10, boxShadow: '0 4px 16px oklch(0% 0 0 / 0.12)',
-          overflow: 'hidden', zIndex: 200,
+          borderRadius: 10, boxShadow: '0 4px 16px oklch(0% 0 0 / 0.18)',
+          overflow: 'hidden', zIndex: 9999,
         }}>
           <div style={{ padding: '6px 10px 4px', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ink-faint)' }}>
             Durum
@@ -315,7 +380,9 @@ function StatusProfileWidget({ me, myStatus, onStatusChange }) {
           ))}
         </div>
       )}
-      <div className="user-profile" onClick={() => setOpen(v => !v)} style={{ cursor: 'pointer' }}>
+      <div className="user-profile" onClick={handleToggle} style={{ cursor: 'pointer' }}
+        title={collapsed ? `${me.name} — ${current.label}` : undefined}
+      >
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <Avatar member={me} size="md" />
           <span style={{
@@ -325,22 +392,26 @@ function StatusProfileWidget({ me, myStatus, onStatusChange }) {
             border: '1.5px solid var(--bg)',
           }} />
         </div>
-        <div className="user-meta">
-          <div className="user-name">{me.name}</div>
-          <div className="user-status" style={{ color: current.color, '--user-status-dot': current.color }}>{current.label}</div>
-        </div>
-        <Icon name="chevronUp" size={12} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
+        {!collapsed && (
+          <>
+            <div className="user-meta">
+              <div className="user-name">{me.name}</div>
+              <div className="user-status" style={{ color: current.color, '--user-status-dot': current.color }}>{current.label}</div>
+            </div>
+            <Icon name="chevronUp" size={12} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function NavItem({ icon, label, sub, badge, active, onClick }) {
+function NavItem({ icon, label, sub, badge, badgeUnread, active, onClick }) {
   return (
     <div className="nav-item" data-active={!!active} onClick={onClick} title={sub}>
       <Icon name={icon} size={16} />
       <span className="sidebar-label">{label}</span>
-      {badge && <span className="nav-badge" data-new={badge === 'Yeni'}>{badge}</span>}
+      {badge && <span className="nav-badge" data-new={badge === 'Yeni' || !!badgeUnread}>{badge}</span>}
     </div>
   );
 }

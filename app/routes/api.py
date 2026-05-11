@@ -2,7 +2,8 @@ import re
 import os
 import uuid
 import secrets
-from sqlalchemy import or_
+from sqlalchemy import or_, func
+from sqlalchemy.orm import joinedload, subqueryload
 from flask import Blueprint, request, jsonify, session
 from datetime import date
 from app import db
@@ -58,12 +59,11 @@ def _log_activity(project_id, user, text):
 
 
 def _get_online_slugs():
-    result = []
-    for uid in online_state.get_online_ids():
-        u = User.query.get(uid)
-        if u:
-            result.append({'slug': u.slug, 'status': online_state.get_status(uid)})
-    return result
+    ids = list(online_state.get_online_ids())
+    if not ids:
+        return []
+    users = User.query.filter(User.id.in_(ids)).all()
+    return [{'slug': u.slug, 'status': online_state.get_status(u.id)} for u in users]
 
 
 def _current_member(user):
@@ -185,8 +185,13 @@ def bootstrap():
             'user': _user_private_dict(user),
         })
 
-    # All workspaces the user belongs to (for switcher)
-    all_memberships = WorkspaceMember.query.filter_by(user_id=user.id).all()
+    # All workspaces the user belongs to (for switcher) — eager load workspace
+    all_memberships = (
+        WorkspaceMember.query
+        .filter_by(user_id=user.id)
+        .options(joinedload(WorkspaceMember.workspace))
+        .all()
+    )
     workspaces_list = []
     for wm in all_memberships:
         wd = wm.workspace.to_dict()
@@ -205,14 +210,55 @@ def bootstrap():
 
     members = [
         _member_to_dict(wm)
-        for wm in WorkspaceMember.query.filter_by(workspace_id=ws.id).all()
+        for wm in (
+            WorkspaceMember.query
+            .filter_by(workspace_id=ws.id)
+            .options(
+                joinedload(WorkspaceMember.user),
+                joinedload(WorkspaceMember.workspace_role),
+            )
+            .all()
+        )
         if wm.user
     ]
 
     online_users = _get_online_slugs()
 
     projects = Project.query.filter_by(workspace_id=ws.id).all()
-    sidebar_projects = [p.to_dict() for p in projects]
+
+    # Batch open-task counts: one query for all projects
+    if projects:
+        project_ids = [p.id for p in projects]
+        done_col_ids = {
+            c.project_id: c.id
+            for c in BoardColumn.query.filter(
+                BoardColumn.project_id.in_(project_ids),
+                BoardColumn.is_done == True,
+            ).all()
+        }
+        open_rows = (
+            db.session.query(Task.project_id, func.count(Task.id))
+            .filter(
+                Task.project_id.in_(project_ids),
+                ~Task.column_id.in_([cid for cid in done_col_ids.values()]) if done_col_ids else True,
+            )
+            .group_by(Task.project_id)
+            .all()
+        )
+        open_counts = {pid: cnt for pid, cnt in open_rows}
+    else:
+        open_counts = {}
+
+    def _project_to_dict_fast(p):
+        return {
+            'id': str(p.id),
+            'name': p.name,
+            'color': p.color,
+            'open': open_counts.get(p.id, 0),
+            'icon': p.icon or 'folder',
+        }
+
+    sidebar_projects = [_project_to_dict_fast(p) for p in projects]
 
     base_payload = {
         'user': _user_private_dict(user, member),
@@ -243,7 +289,18 @@ def bootstrap():
 
     columns = [c.to_dict() for c in project.columns]
     labels = {lbl.slug: lbl.to_dict_value() for lbl in project.labels}
-    tasks = [t.to_dict() for t in project.tasks.all()]
+    tasks_q = (
+        Task.query
+        .filter_by(project_id=project.id)
+        .options(
+            joinedload(Task.column),
+            subqueryload(Task.assignees).joinedload(TaskAssignee.user),
+            subqueryload(Task.label_links).joinedload(TaskLabel.label),
+            subqueryload(Task.subtasks),
+            subqueryload(Task.comments),
+        )
+    )
+    tasks = [t.to_dict() for t in tasks_q.all()]
 
     notifs = (
         Notification.query
@@ -269,30 +326,62 @@ def bootstrap():
 
 
 def _throughput_for_project(project_id):
+    import re as _re
     from datetime import datetime, timedelta
-    days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
-    result = []
+    TR_DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
     today = datetime.now().date()
-    done_col = BoardColumn.query.filter_by(project_id=project_id, slug='done').first()
-    review_col = BoardColumn.query.filter_by(project_id=project_id, slug='review').first()
-    doing_col = BoardColumn.query.filter_by(project_id=project_id, slug='doing').first()
+    week_start = datetime.combine(today - timedelta(days=6), datetime.min.time())
+
+    # Build title → category map from board columns (index both title and title_tr)
+    cols = BoardColumn.query.filter_by(project_id=project_id).all()
+    title_to_cat = {}
+    for c in cols:
+        is_review = 'review' in (c.slug or '').lower() or 'inceleme' in (c.title or '').lower() or 'inceleme' in (c.title_tr or '').lower()
+        cat = 'done' if c.is_done else ('review' if is_review else 'progress')
+        for title in [c.title, c.title_tr]:
+            key = (title or '').strip().lower()
+            if key:
+                title_to_cat[key] = cat
+
+    # Fetch activity log move events for last 7 days
+    logs = (
+        ActivityLog.query
+        .filter(
+            ActivityLog.project_id == project_id,
+            ActivityLog.text.contains('kartını'),
+            ActivityLog.text.contains('taşıdı'),
+            ActivityLog.created_at >= week_start,
+        )
+        .with_entities(ActivityLog.created_at, ActivityLog.text)
+        .all()
+    )
+
+    # Parse <strong>COLUMN_TITLE</strong> from log text, bucket by day + category
+    _strong_re = _re.compile(r'<strong>(.*?)</strong>')
+    daily = {}
+    for log_at, log_text in logs:
+        m = _strong_re.search(log_text)
+        if not m:
+            continue
+        col_title = m.group(1).strip().lower()
+        cat = title_to_cat.get(col_title)
+        if not cat:
+            continue
+        day_str = str(log_at.date())
+        bucket = daily.setdefault(day_str, {'done': 0, 'review': 0, 'progress': 0})
+        bucket[cat] += 1
+
+    result = []
     for i in range(6, -1, -1):
         d = today - timedelta(days=i)
-        day_label = days[d.weekday()]
-        done_count = 0
-        review_count = 0
-        doing_count = 0
-        if done_col:
-            done_count = Task.query.filter(
-                Task.column_id == done_col.id,
-                Task.created_at >= datetime.combine(d, datetime.min.time()),
-                Task.created_at < datetime.combine(d + timedelta(1), datetime.min.time()),
-            ).count()
-        if review_col:
-            review_count = Task.query.filter(Task.column_id == review_col.id).count()
-        if doing_col:
-            doing_count = Task.query.filter(Task.column_id == doing_col.id).count()
-        result.append({'day': day_label, 'done': done_count, 'review': review_count, 'progress': doing_count})
+        day_str = str(d)
+        bucket = daily.get(day_str, {'done': 0, 'review': 0, 'progress': 0})
+        result.append({
+            'day': TR_DAYS[d.weekday()],
+            'done': bucket['done'],
+            'review': bucket['review'],
+            'progress': bucket['progress'],
+        })
     return result
 
 
@@ -746,6 +835,7 @@ def create_task(project_id):
     if not col:
         col = project.columns[0] if project.columns else None
 
+    raw_ad = data.get('assignee_dates') or {}
     task = Task(
         column_id=col.id if col else None,
         project_id=project_id,
@@ -754,6 +844,8 @@ def create_task(project_id):
         priority=data.get('priority') or 'mid',
         progress=0,
         due_date=_parse_date(data.get('due')),
+        start_date=_parse_date(data.get('start')),
+        assignee_dates=raw_ad if raw_ad else None,
         created_by=user.id,
         position=_next_position(project_id, col.id if col else None),
     )
@@ -772,11 +864,8 @@ def create_task(project_id):
         if assignee:
             db.session.add(TaskAssignee(task_id=task.id, user_id=assignee.id))
             if assignee.id != user.id:
-                notif_text = (
-                    f'<em>{user.name}</em> seni '
-                    f'<strong>{title}</strong> görevine atadı'
-                )
-                notif = Notification(user_id=assignee.id, text=notif_text, sender_slug=user.slug)
+                notif_text = f'<strong>{title}</strong> görevi size atandı.'
+                notif = Notification(user_id=assignee.id, text=notif_text, sender_slug=user.slug, workspace_id=project.workspace_id)
                 db.session.add(notif)
                 notifs_to_push.append((assignee.id, notif))
 
@@ -827,6 +916,10 @@ def update_task(task_id):
         task.progress = int(data['progress'])
     if 'due' in data:
         task.due_date = _parse_date(data['due'])
+    if 'start' in data:
+        task.start_date = _parse_date(data['start'])
+    if 'assignee_dates' in data:
+        task.assignee_dates = data['assignee_dates'] or None
 
     if 'col' in data:
         new_col = BoardColumn.query.filter_by(
@@ -866,11 +959,8 @@ def update_task(task_id):
         notifs_to_push = []
         for aid in new_assignee_ids - old_assignee_ids:
             if aid != user.id:  # kendine bildirim gitmesin
-                notif_text = (
-                    f'<em>{user.name}</em> seni '
-                    f'<strong>{task.title}</strong> görevine atadı'
-                )
-                notif = Notification(user_id=aid, text=notif_text, task_id=task.id, sender_slug=user.slug)
+                notif_text = f'<strong>{task.title}</strong> görevi size atandı.'
+                notif = Notification(user_id=aid, text=notif_text, task_id=task.id, sender_slug=user.slug, workspace_id=project.workspace_id)
                 db.session.add(notif)
                 notifs_to_push.append((aid, notif))
 
@@ -1013,7 +1103,7 @@ def add_comment(task_id):
     for ta in task.assignees:
         if ta.user_id != user.id:
             notif_text = f'<em>{user.name}</em> yorum yazdı: "{text[:60]}{"..." if len(text) > 60 else ""}"'
-            notif = Notification(user_id=ta.user_id, text=notif_text, task_id=task_id, sender_slug=user.slug)
+            notif = Notification(user_id=ta.user_id, text=notif_text, task_id=task_id, sender_slug=user.slug, workspace_id=project.workspace_id)
             db.session.add(notif)
             notifs_to_push.append((ta.user_id, notif))
 
@@ -1165,6 +1255,29 @@ def create_label(project_id):
     return jsonify({label.slug: label.to_dict_value()}), 201
 
 
+@api_bp.route('/projects/<int:project_id>/labels/<slug>', methods=['PATCH'])
+@_login_required
+def update_label(project_id, slug):
+    user = _current_user()
+    project = Project.query.get_or_404(project_id)
+    _, denied = _require_project_permission(
+        user, project, 'manage_projects', 'Etiket güncelleme yetkiniz yok'
+    )
+    if denied:
+        return denied
+    label = Label.query.filter_by(project_id=project_id, slug=slug).first_or_404()
+    data = request.get_json(silent=True) or {}
+    if 'name' in data:
+        name = data['name'].strip()
+        if name:
+            label.name_en = name
+            label.name_tr = name
+    if 'tone' in data:
+        label.color_tone = data['tone']
+    db.session.commit()
+    return jsonify({label.slug: label.to_dict_value()})
+
+
 @api_bp.route('/projects/<int:project_id>/labels/<slug>', methods=['DELETE'])
 @_login_required
 def delete_label(project_id, slug):
@@ -1243,7 +1356,7 @@ def create_notification():
         if not target_user:
             return jsonify({'error': 'Kullanıcı bulunamadı'}), 404
     
-    notif = Notification(user_id=target_user_id, text=text)
+    notif = Notification(user_id=target_user_id, text=text, workspace_id=user.current_workspace_id)
     db.session.add(notif)
     db.session.commit()
     _push_notification(target_user_id, notif)
@@ -1321,6 +1434,49 @@ def update_me():
         user_id=user.id, workspace_id=user.current_workspace_id
     ).first()
     return jsonify(_user_private_dict(user, wm_current))
+
+
+# ── Avatar upload ──────────────────────────────────────────────────────────
+
+@api_bp.route('/users/me/avatar', methods=['POST'])
+@_login_required
+def upload_avatar():
+    import os, uuid
+    from werkzeug.utils import secure_filename
+    user = _current_user()
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'Dosya bulunamadı'}), 400
+    if f.content_length and f.content_length > 5 * 1024 * 1024:
+        return jsonify({'error': 'Dosya 5 MB\'ı geçemez'}), 413
+    ext = os.path.splitext(secure_filename(f.filename))[1].lower()
+    if ext not in ('.jpg', '.jpeg', '.png', '.webp', '.gif'):
+        return jsonify({'error': 'Geçersiz dosya türü'}), 400
+    safe_name = f'{uuid.uuid4().hex}{ext}'
+    upload_dir = os.path.join('static', 'uploads', 'avatars')
+    os.makedirs(upload_dir, exist_ok=True)
+    old_url = user.avatar_photo_url
+    f.save(os.path.join(upload_dir, safe_name))
+    user.avatar_photo_url = f'/static/uploads/avatars/{safe_name}'
+    db.session.commit()
+    if old_url and old_url.startswith('/static/uploads/avatars/'):
+        try: os.remove(old_url.lstrip('/'))
+        except OSError: pass
+    return jsonify({'avatar_photo_url': user.avatar_photo_url})
+
+
+@api_bp.route('/users/me/avatar', methods=['DELETE'])
+@_login_required
+def delete_avatar():
+    import os
+    user = _current_user()
+    old_url = user.avatar_photo_url
+    user.avatar_photo_url = None
+    db.session.commit()
+    if old_url and old_url.startswith('/static/uploads/avatars/'):
+        try: os.remove(old_url.lstrip('/'))
+        except OSError: pass
+    return jsonify({'avatar_photo_url': None})
 
 
 # ── Projects ───────────────────────────────────────────────────────────────
@@ -1633,6 +1789,7 @@ def create_chat_message():
             user_id=receiver.id,
             text=f'<strong>{user.name}</strong> sana mesaj gönderdi: {text[:80]}',
             sender_slug=user.slug,
+            workspace_id=workspace_id,
         )
         db.session.add(notif)
         db.session.flush()
@@ -1654,6 +1811,7 @@ def create_chat_message():
                 m_notif = Notification(
                     user_id=mentioned.id,
                     text=f'<strong>{user.name}</strong> senden bahsetti: {preview}',
+                    workspace_id=workspace_id,
                 )
                 db.session.add(m_notif)
                 db.session.flush()

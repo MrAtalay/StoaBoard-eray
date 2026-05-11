@@ -145,14 +145,17 @@ function DatePicker({ value, onChange }) {
 window.DatePicker = DatePicker;
 
 // ── Add Task Modal ─────────────────────────────────────────────────────────
-function AddTaskModal({ open, onClose, defaultCol, onCreate }) {
+function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
   const [title, setTitle]         = useModalState('');
   const [desc, setDesc]           = useModalState('');
   const [col, setCol]             = useModalState(defaultCol || 'todo');
   const [priority, setPriority]   = useModalState('mid');
+  const [startDate, setStartDate] = useModalState('');
   const [due, setDue]             = useModalState('');
   const [labels, setLabels]       = useModalState([]);
   const [assignees, setAssignees] = useModalState([]);
+  const [assigneeDates, setAssigneeDates] = useModalState({});
+  const [showPerAssignee, setShowPerAssignee] = useModalState(false);
   const [busy, setBusy]           = useModalState(false);
   const [titleError, setTitleError] = useModalState(false);
   const [dueError, setDueError]     = useModalState(false);
@@ -191,23 +194,40 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate }) {
 
   React.useEffect(() => { if (defaultCol) setCol(defaultCol); }, [defaultCol, open]);
   React.useEffect(() => {
-    if (!open) { setTitle(''); setDesc(''); setLabels([]); setBusy(false); setTitleError(false); setDueError(false); setDue(''); }
+    if (!open) {
+      setTitle(''); setDesc(''); setLabels([]); setBusy(false); setTitleError(false); setDueError(false);
+      setDue(''); setStartDate(''); setAssigneeDates({}); setShowPerAssignee(false);
+    }
     if (open) {
       const me = window.CURRENT_USER;
       setAssignees(me ? [me.id] : []);
+      if (initialDates?.start) setStartDate(initialDates.start);
+      if (initialDates?.end)   setDue(initialDates.end);
     }
   }, [open]);
 
   const toggleLabel    = (k) => setLabels(ls => ls.includes(k) ? ls.filter(x => x !== k) : [...ls, k]);
   const toggleAssignee = (k) => setAssignees(as => as.includes(k) ? as.filter(x => x !== k) : [...as, k]);
 
+  const setAsgDate = (slug, field, val) => {
+    setAssigneeDates(ad => ({ ...ad, [slug]: { ...(ad[slug] || {}), [field]: val || null } }));
+  };
+
   const submit = async () => {
     if (busy) return;
     if (!title.trim()) { setTitleError(true); return; }
-    if (!due) { setDueError(true); return; }
     setBusy(true);
+    const cleanAd = {};
+    for (const [slug, d] of Object.entries(assigneeDates)) {
+      if (d.start || d.end) cleanAd[slug] = d;
+    }
     try {
-      await onCreate({ title: title.trim(), desc, col, priority, due: due || null, labels, assignees });
+      await onCreate({
+        title: title.trim(), desc, col, priority,
+        start: startDate || null, due: due || null,
+        labels, assignees,
+        assignee_dates: Object.keys(cleanAd).length ? cleanAd : null,
+      });
       onClose();
     } catch (e) {
       window.showToast?.('Görev oluşturulamadı: ' + e.message, 'error');
@@ -288,14 +308,49 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate }) {
                 )}
               </div>
             </div>
+          </div>
+          <div className="field-row">
             <div className="field">
-              <label style={{ color: dueError ? 'var(--status-rose)' : undefined }}>
-                Bitiş <span style={{ color: 'var(--status-rose)' }}>*</span>
-              </label>
+              <label>Başlangıç</label>
+              <DatePicker value={startDate} onChange={(v) => setStartDate(v)} />
+            </div>
+            <div className="field">
+              <label>Bitiş</label>
               <DatePicker value={due} onChange={(v) => { setDue(v); setDueError(false); }} />
-              {dueError && <span style={{ fontSize: 11, color: 'var(--status-rose)' }}>Bitiş tarihi zorunludur</span>}
             </div>
           </div>
+          {assignees.length > 1 && (
+            <div className="field">
+              <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', userSelect:'none' }}
+                onClick={() => setShowPerAssignee(s => !s)}>
+                <Icon name={showPerAssignee ? 'chevronDown' : 'chevronRight'} size={11} />
+                Kişi bazlı tarihler
+              </label>
+              {showPerAssignee && (
+                <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:8 }}>
+                  {assignees.map(slug => {
+                    const member = DATA.MEMBERS.find(m => m.id === slug);
+                    if (!member) return null;
+                    const d = assigneeDates[slug] || {};
+                    return (
+                      <div key={slug} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:80 }}>
+                          <div style={{ width:8, height:8, borderRadius:'50%', background:member.color, flexShrink:0 }} />
+                          <span style={{ fontSize:12, color:'var(--ink-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {member.name.split(' ')[0]}
+                          </span>
+                        </div>
+                        <div style={{ flex:1, display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+                          <DatePicker value={d.start || ''} onChange={(v) => setAsgDate(slug, 'start', v)} />
+                          <DatePicker value={d.end   || ''} onChange={(v) => setAsgDate(slug, 'end',   v)} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <div className="field">
             <label>Etiketler</label>
             <div className="chips">

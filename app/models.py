@@ -32,6 +32,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(255))
     avatar_color = db.Column(db.String(100), default='oklch(58% 0.13 25)')
     avatar_initials = db.Column(db.String(10))
+    avatar_photo_url = db.Column(db.String(300), nullable=True)
     role_title = db.Column(db.String(100))
     last_seen = db.Column(db.DateTime, default=_now)
     created_at = db.Column(db.DateTime, default=_now)
@@ -54,6 +55,7 @@ class User(db.Model):
             'role': self.role_title or '',
             'initials': self.avatar_initials or '',
             'color': self.avatar_color or 'oklch(58% 0.13 25)',
+            'avatar_photo_url': self.avatar_photo_url or None,
             'status': self.status or 'offline',
             'away_timeout': self.away_timeout or 15,
         }
@@ -195,6 +197,7 @@ class Label(db.Model):
 
 class TaskLabel(db.Model):
     __tablename__ = 'task_labels'
+    __table_args__ = (db.Index('ix_task_label_task_id', 'task_id'),)
     task_id = db.Column(db.Integer, db.ForeignKey('tasks.id'), primary_key=True)
     label_id = db.Column(db.Integer, db.ForeignKey('labels.id'), primary_key=True)
     label = db.relationship('Label')
@@ -202,6 +205,7 @@ class TaskLabel(db.Model):
 
 class TaskAssignee(db.Model):
     __tablename__ = 'task_assignees'
+    __table_args__ = (db.Index('ix_task_assignee_task_id', 'task_id'),)
     task_id = db.Column(db.Integer, db.ForeignKey('tasks.id'), primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
     user = db.relationship('User')
@@ -209,6 +213,11 @@ class TaskAssignee(db.Model):
 
 class Task(db.Model):
     __tablename__ = 'tasks'
+    __table_args__ = (
+        db.Index('ix_task_project_id', 'project_id'),
+        db.Index('ix_task_column_id', 'column_id'),
+        db.Index('ix_task_created_at', 'created_at'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     column_id = db.Column(db.Integer, db.ForeignKey('board_columns.id'))
     project_id = db.Column(db.Integer, db.ForeignKey('projects.id'))
@@ -217,6 +226,8 @@ class Task(db.Model):
     priority = db.Column(db.String(20), default='mid')
     progress = db.Column(db.Integer, default=0)
     due_date = db.Column(db.Date)
+    start_date = db.Column(db.Date, nullable=True)
+    assignee_dates = db.Column(db.JSON, nullable=True)  # {slug: {start, end}}
     doc = db.Column(db.JSON)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=_now)
@@ -247,6 +258,8 @@ class Task(db.Model):
             'priority': self.priority or 'mid',
             'assignees': assignee_slugs,
             'due': self.due_date.isoformat() if self.due_date else None,
+            'start': self.start_date.isoformat() if self.start_date else None,
+            'assignee_dates': self.assignee_dates or {},
             'progress': self.progress or 0,
             'comments': comment_count,
             'attachments': 0,
@@ -313,6 +326,7 @@ class Comment(db.Model):
 
 class Notification(db.Model):
     __tablename__ = 'notifications'
+    __table_args__ = (db.Index('ix_notification_user_id', 'user_id'),)
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     text = db.Column(db.Text, nullable=False)
@@ -320,6 +334,7 @@ class Notification(db.Model):
     created_at = db.Column(db.DateTime, default=_now)
     task_id = db.Column(db.Integer, db.ForeignKey('tasks.id', ondelete='SET NULL'), nullable=True)
     sender_slug = db.Column(db.String(80), nullable=True)
+    workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'), nullable=True)
 
     def to_dict(self):
         return {
@@ -329,6 +344,7 @@ class Notification(db.Model):
             'text': self.text,
             'task_id': self.task_id,
             'sender_slug': self.sender_slug,
+            'workspace_id': self.workspace_id,
         }
 
 

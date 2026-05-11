@@ -2,6 +2,26 @@
 
 const { useState: useS, useEffect: useEf, useRef: useRef } = React;
 
+function _playDing() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx  = new Ctx();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.22, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.28);
+    osc.onended = () => ctx.close();
+  } catch (e) {}
+}
+
 function App() {
   const [authed, setAuthed]                 = useS(false);
   const [loading, setLoading]               = useS(true);
@@ -12,6 +32,7 @@ function App() {
   const [drawerTask, setDrawerTask]         = useS(null);
   const [modalOpen, setModalOpen]           = useS(false);
   const [modalCol, setModalCol]             = useS('todo');
+  const [modalInitialDates, setModalInitialDates] = useS(null);
   const [cmdOpen, setCmdOpen]               = useS(false);
   const [notifOpen, setNotifOpen]           = useS(false);
   const [chatOpen, setChatOpen]             = useS(false);
@@ -27,6 +48,8 @@ function App() {
   const [wsJoinModalOpen, setWsJoinModalOpen] = useS(false);
   const [wsLogoUrl, setWsLogoUrl]           = useS(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useS(false);
+  const [projectSwitching, setProjectSwitching]   = useS(false);
+  const switchAbortRef = useRef(null);
 
   const activityTimer  = useRef(null);
   const currentStatus  = useRef('online');
@@ -35,6 +58,12 @@ function App() {
   const pendingGTimer  = useRef(null);
   const [myStatusState, setMyStatusState] = useS('online');
   const [notifCount, setNotifCount]       = useS(0);
+  const [currentWsId, setCurrentWsId]   = useS(() => window.DATA?.WORKSPACE?.id || null);
+
+  const [unreadCounts, setUnreadCounts] = useS(() => {
+    try { return JSON.parse(localStorage.getItem('stoa.unread') || '{}'); }
+    catch { return {}; }
+  });
 
   const [tweaks, setTweaks] = useS(() => {
     const saved = localStorage.getItem('stoa.tweaks');
@@ -173,34 +202,49 @@ function App() {
       if (!window.DATA.NOTIFICATIONS.some(n => n.id === notif.id)) {
         window.DATA.NOTIFICATIONS.unshift(notif);
         setNotifCount(c => c + 1);
+        const twks = JSON.parse(localStorage.getItem('stoa.tweaks') || '{}');
+        const myStatus = window.__MY_STATUS__ || 'online';
+        if (myStatus !== 'dnd' && twks.soundEnabled !== false) _playDing();
       }
     });
 
-    // Global chat_message handler — shows toast when not viewing that conversation
+    // Global chat_message handler — unread counts + sound + toast
     if (!window.__TOAST_LAST_MSG__) window.__TOAST_LAST_MSG__ = {};
     sock.on('chat_message', (msg) => {
       const me = window.CURRENT_USER?.id;
       if (!msg || msg.from === me) return;
 
-      const isDM = !!msg.to;
-      const chatOpen    = window.__CHAT_OPEN__;
-      const chatDmWith  = window.__CHAT_DM_WITH__;
-
-      // Suppress if user is already viewing this exact conversation
-      if (chatOpen) {
-        if (!isDM && !chatDmWith) return;          // genel kanalda
-        if (isDM && chatDmWith === msg.from) return; // o kişiyle DM'de
-      }
+      const isDM       = !!msg.to;
+      const chatIsOpen = window.__CHAT_OPEN__;
+      const chatDmWith = window.__CHAT_DM_WITH__;
+      const isViewingThis = chatIsOpen && (
+        (!isDM && !chatDmWith) ||
+        (isDM && chatDmWith === msg.from)
+      );
 
       // Muted check
       const muted = window.__MUTED_USERS__ ||
         new Set(JSON.parse(localStorage.getItem('stoa.muted') || '[]'));
       if (muted.has(msg.from)) return;
 
-      const twks = JSON.parse(localStorage.getItem('stoa.tweaks') || '{}');
-      if (twks.notifyMessages === false || twks.notifyToasts === false) return;
-      if ((window.__MY_STATUS__ || 'online') === 'dnd') return;
+      const twks     = JSON.parse(localStorage.getItem('stoa.tweaks') || '{}');
+      const myStatus = window.__MY_STATUS__ || 'online';
 
+      // Unread counter — always increment unless currently viewing this conversation
+      if (!isViewingThis && window.__INCREMENT_UNREAD__) {
+        const wsKey = window.__CURRENT_WS_ID__ ? `general_${window.__CURRENT_WS_ID__}` : 'general';
+        window.__INCREMENT_UNREAD__(isDM ? `dm_${msg.from}` : wsKey);
+      }
+
+      // Notification sound — not DND, sound enabled, not viewing this conversation
+      if (!isViewingThis && myStatus !== 'dnd' && twks.soundEnabled !== false) {
+        _playDing();
+      }
+
+      // Toast notification
+      if (isViewingThis) return;
+      if (twks.notifyMessages === false || twks.notifyToasts === false) return;
+      if (myStatus === 'dnd') return;
       if (isDM  && twks.notifyDMs       === false) return;
       if (!isDM && twks.notifyGroupChat === false) return;
 
@@ -281,6 +325,27 @@ function App() {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
+  // Expose stable unread increment function via window global (safe in socket handler)
+  useEf(() => {
+    window.__INCREMENT_UNREAD__ = (key) => {
+      setUnreadCounts(prev => {
+        const next = { ...prev, [key]: (prev[key] || 0) + 1 };
+        localStorage.setItem('stoa.unread', JSON.stringify(next));
+        return next;
+      });
+    };
+  }, []); // setUnreadCounts is stable — no deps needed
+
+  const markAsRead = (key) => {
+    setUnreadCounts(prev => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      localStorage.setItem('stoa.unread', JSON.stringify(next));
+      return next;
+    });
+  };
+
   function setOwnStatus(status, options = {}) {
     const normalized = ['online', 'away', 'dnd'].includes(status) ? status : 'online';
     const isManualAway = options.manual && normalized === 'away';
@@ -347,6 +412,8 @@ function App() {
     window.DATA.THROUGHPUT    = data.throughput    || [];
     window.CURRENT_USER       = data.user;
     window.CURRENT_PROJECT_ID = data.current_project;
+    window.__CURRENT_WS_ID__  = data.workspace?.id || null;
+    setCurrentWsId(data.workspace?.id || null);
 
     const unread = (data.notifications || []).filter(n => n.unread).length;
     setNotifCount(unread);
@@ -431,13 +498,24 @@ function App() {
   // ── Project switch ────────────────────────────────────────────────────────
 
   const switchProject = async (projectId) => {
+    if (switchAbortRef.current === projectId) return; // same project already loading
+    switchAbortRef.current = projectId;
+    setProjectSwitching(true);
     try {
       const data = await API.bootstrap(projectId);
+      if (switchAbortRef.current !== projectId) return; // superseded by a newer click
       _applyBootstrap(data);
       setTasks(data.tasks || []);
       setCurrentProject(data.current_project ? { id: data.current_project } : null);
       setView('board');
-    } catch (e) { console.error('switchProject failed:', e.message); }
+    } catch (e) {
+      console.error('switchProject failed:', e.message);
+    } finally {
+      if (switchAbortRef.current === projectId) {
+        switchAbortRef.current = null;
+        setProjectSwitching(false);
+      }
+    }
   };
 
   const handleCreateProject = async (name, color, icon) => {
@@ -509,9 +587,10 @@ function App() {
 
   const openDrawer = (task) => setDrawerTask(task);
   const closeDrawer = () => setDrawerTask(null);
-  const openModal = (colId) => {
+  const openModal = (colId, dates = null) => {
     if (!canManageTasks) return;
     setModalCol(colId || 'todo');
+    setModalInitialDates(dates || null);
     setModalOpen(true);
   };
 
@@ -583,6 +662,8 @@ function App() {
         wsSwitcherOpen={wsSwitcherOpen}
         onWsSwitcherToggle={() => setWsSwitcherOpen(v => !v)}
         onAddWorkspace={() => { setWsSwitcherOpen(false); setWsJoinModalOpen(true); }}
+        unreadCounts={unreadCounts}
+        currentWsId={currentWsId}
         currentStatus={myStatusState}
         onStatusChange={(s) => {
           clearTimeout(activityTimer.current);
@@ -622,9 +703,9 @@ function App() {
           </div>
         ) : (
           <>
-            {view === 'board'     && <BoardView tasks={tasks} onOpenTask={openDrawer} onMoveTask={moveTask} onDeleteTask={deleteTask} tweaks={tweaks} onOpenModal={openModal} onTitleChange={updateTitle} canManageTasks={canManageTasks} canManageProjects={canManageProjects} />}
+            {view === 'board'     && <BoardView key={currentProject?.id || 'default'} tasks={tasks} onOpenTask={openDrawer} onMoveTask={moveTask} onDeleteTask={deleteTask} tweaks={tweaks} onOpenModal={openModal} onTitleChange={updateTitle} canManageTasks={canManageTasks} canManageProjects={canManageProjects} switching={projectSwitching} />}
             {view === 'list'      && <ListView tasks={tasks} onOpenTask={openDrawer} onMoveTask={moveTask} canManageTasks={canManageTasks} />}
-            {view === 'calendar'  && <CalendarView tasks={tasks} onOpenTask={openDrawer} />}
+            {view === 'calendar'  && <CalendarView tasks={tasks} onOpenTask={openDrawer} onOpenModal={openModal} canCreateTasks={canManageTasks} />}
             {view === 'dashboard' && <DashboardView tasks={tasks} onOpenTask={openDrawer} onView={setView} />}
           </>
         )}
@@ -642,7 +723,7 @@ function App() {
         onCreateTask={(newTask) => setTasks(prev => [newTask, ...prev])}
         canManageTasks={canManageTasks}
       />
-      <AddTaskModal open={canManageTasks && modalOpen} onClose={() => setModalOpen(false)} defaultCol={modalCol} onCreate={createTask} />
+      <AddTaskModal open={canManageTasks && modalOpen} onClose={() => { setModalOpen(false); setModalInitialDates(null); }} defaultCol={modalCol} onCreate={createTask} initialDates={modalInitialDates} />
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onAction={handleCmd} />
       <NotifPanel
         open={notifOpen}
@@ -650,6 +731,7 @@ function App() {
         socket={socket}
         onOpenTask={(task) => { setNotifOpen(false); setDrawerTask(task); }}
         onOpenChat={(slug) => { setNotifOpen(false); openChat(slug); }}
+        currentWsId={currentWsId}
       />
       <ChatPanel
         open={chatOpen}
@@ -659,6 +741,9 @@ function App() {
         members={members}
         socket={socket}
         initialDmWith={chatDmWith}
+        unreadCounts={unreadCounts}
+        markAsRead={markAsRead}
+        wsId={currentWsId}
       />
       <TweaksPanel tweaks={tweaks} setTweak={setTweak} visible={tweaksAvailable} />
       {projectModal && canManageProjects && <NewProjectModal onClose={() => setProjectModal(false)} onCreate={handleCreateProject} />}

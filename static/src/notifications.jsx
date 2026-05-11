@@ -13,7 +13,7 @@ function _notifIcon(type) {
   return { message: 'msg', task: 'circleCheck', mention: 'tag', info: 'bell' }[type] || 'bell';
 }
 
-function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat }) {
+function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId }) {
   const [tab, setTab]     = React.useState('all');
   const [items, setItems] = React.useState(() => DATA.NOTIFICATIONS || []);
   const panelRef = React.useRef(null);
@@ -80,8 +80,12 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat }) {
     }
   };
 
-  const filtered    = tab === 'unread' ? items.filter(n => n.unread) : items;
-  const unreadCount = items.filter(n => n.unread).length;
+  // Show current workspace's notifications + DM notifications always
+  const visibleItems = currentWsId
+    ? items.filter(n => !n.workspace_id || n.workspace_id === currentWsId || _notifType(n.text) === 'message')
+    : items;
+  const filtered    = tab === 'unread' ? visibleItems.filter(n => n.unread) : visibleItems;
+  const unreadCount = visibleItems.filter(n => n.unread).length;
 
   return (
     <>

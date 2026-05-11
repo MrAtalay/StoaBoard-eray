@@ -166,9 +166,9 @@ function DashboardView({ tasks, onOpenTask, onView }) {
             )}
           </div>
           <div className="legend">
-            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--ink)' }} /> Tamamlandı</div>
-            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--ink-muted)' }} /> İncelemede</div>
-            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--ink-faint)' }} /> Devam eden</div>
+            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--status-green)' }} /> Tamamlandı</div>
+            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--status-amber)' }} /> İncelemede</div>
+            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--status-blue)' }} /> Devam eden</div>
           </div>
         </div>
 

@@ -4,9 +4,9 @@ const { useState: useBoardState, useRef: useBoardRef, useEffect: useBoardEf } = 
 
 const COL_NAME_MAX = 30;
 
-function FilterBar({ activeLabels, activePriority, activeOverdue, onToggleLabel, onTogglePriority, onToggleOverdue, onClear }) {
+function FilterBar({ activeLabels, activePriority, activeOverdue, activeMyTasks, onToggleLabel, onTogglePriority, onToggleOverdue, onToggleMyTasks, onClear }) {
   const labelEntries = Object.entries(DATA.LABELS || {});
-  const hasFilters = activeLabels.size > 0 || activePriority !== null || activeOverdue;
+  const hasFilters = activeLabels.size > 0 || activePriority !== null || activeOverdue || activeMyTasks;
   const priorities = [
     { id: 'high', label: 'Yüksek' },
     { id: 'mid',  label: 'Orta'   },
@@ -43,6 +43,11 @@ function FilterBar({ activeLabels, activePriority, activeOverdue, onToggleLabel,
         <button className="filter-priority-chip" data-active={activeOverdue} onClick={onToggleOverdue}>
           <Icon name="calendar" size={11} />
           Süresi geçmiş
+        </button>
+        <div className="filter-bar-divider" />
+        <button className="filter-priority-chip" data-active={activeMyTasks} onClick={onToggleMyTasks}>
+          <Icon name="user" size={11} />
+          Bana atananlar
         </button>
       </div>
       {hasFilters && (
@@ -357,13 +362,15 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
   );
 }
 
-function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpenModal, onTitleChange, canManageTasks, canManageProjects }) {
+function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpenModal, onTitleChange, canManageTasks, canManageProjects, switching }) {
   const [draggingId, setDraggingId] = useBoardState(null);
   const [trashHover, setTrashHover] = useBoardState(false);
   const [filterOpen, setFilterOpen] = useBoardState(false);
   const [activeLabels, setActiveLabels] = useBoardState(new Set());
   const [activePriority, setActivePriority] = useBoardState(null);
   const [activeOverdue, setActiveOverdue] = useBoardState(false);
+  const [activeMyTasks, setActiveMyTasks] = useBoardState(() => localStorage.getItem('stoa.filterMyTasks') === 'true');
+  const [searchQuery, setSearchQuery] = useBoardState('');
   const [columns, setColumns] = useBoardState(() => {
     // Initial load: deduplicate from DATA.COLUMNS
     const cols = DATA.COLUMNS || [];
@@ -383,6 +390,13 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
   const touchGhostRef = useBoardRef(null);
   const boardRef = useBoardRef(null);
   const scrollRafRef = useBoardRef(null);
+
+  // Listen for sidebar "Görevlerim" shortcut
+  useBoardEf(() => {
+    const handler = () => setActiveMyTasks(true);
+    window.addEventListener('stoa:activateMyTasks', handler);
+    return () => window.removeEventListener('stoa:activateMyTasks', handler);
+  }, []);
 
   // Sync columns ONLY on initial load, not on every tasks change
   useBoardEf(() => {
@@ -488,16 +502,28 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
   });
   const togglePriority = (p) => setActivePriority(prev => prev === p ? null : p);
   const toggleOverdue = () => setActiveOverdue(prev => !prev);
-  const clearFilters = () => { setActiveLabels(new Set()); setActivePriority(null); setActiveOverdue(false); };
+  const toggleMyTasks = () => setActiveMyTasks(prev => {
+    const next = !prev;
+    localStorage.setItem('stoa.filterMyTasks', next ? 'true' : 'false');
+    return next;
+  });
+  const clearFilters = () => {
+    setActiveLabels(new Set()); setActivePriority(null); setActiveOverdue(false);
+    setActiveMyTasks(false); localStorage.removeItem('stoa.filterMyTasks'); setSearchQuery('');
+  };
 
+  const q = searchQuery.toLowerCase().trim();
+  const myId = window.CURRENT_USER?.id;
   const visibleTasks = tasks.filter(t => {
+    if (q && !t.title.toLowerCase().includes(q)) return false;
     if (activePriority && t.priority !== activePriority) return false;
     if (activeLabels.size > 0 && !(t.labels || []).some(l => activeLabels.has(l))) return false;
     if (activeOverdue && !DATA.isOverdue(t.due, t.col)) return false;
+    if (activeMyTasks && myId && !(t.assignees || []).includes(myId)) return false;
     return true;
   });
 
-  const activeFilterCount = (activePriority ? 1 : 0) + activeLabels.size + (activeOverdue ? 1 : 0);
+  const activeFilterCount = (activePriority ? 1 : 0) + activeLabels.size + (activeOverdue ? 1 : 0) + (q ? 1 : 0) + (activeMyTasks ? 1 : 0);
 
   const handleToggleDone = async (col) => {
     const newIsDone = !col.is_done;
@@ -576,15 +602,37 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
         Filtrele
         {activeFilterCount > 0 && <span className="filter-count">{activeFilterCount}</span>}
       </button>
+      <div className="board-search-wrap">
+        <Icon name="search" size={13} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
+        <input
+          className="board-search-input"
+          placeholder="Görev ara…"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
+        {searchQuery && (
+          <button style={{ color: 'var(--ink-faint)', display: 'grid', placeItems: 'center', padding: 2 }} onClick={() => setSearchQuery('')}>
+            <Icon name="x" size={11} />
+          </button>
+        )}
+      </div>
+      {switching && (
+        <div style={{ fontSize: 12, color: 'var(--ink-faint)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'spin 0.7s linear infinite' }} />
+          Proje yükleniyor…
+        </div>
+      )}
     </div>
     {filterOpen && (
       <FilterBar
         activeLabels={activeLabels}
         activePriority={activePriority}
         activeOverdue={activeOverdue}
+        activeMyTasks={activeMyTasks}
         onToggleLabel={toggleLabel}
         onTogglePriority={togglePriority}
         onToggleOverdue={toggleOverdue}
+        onToggleMyTasks={toggleMyTasks}
         onClear={clearFilters}
       />
     )}

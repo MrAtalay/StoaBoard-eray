@@ -2,9 +2,11 @@
 
 const { useState: useBoardState, useRef: useBoardRef, useEffect: useBoardEf } = React;
 
-function FilterBar({ activeLabels, activePriority, onToggleLabel, onTogglePriority, onClear }) {
+const COL_NAME_MAX = 30;
+
+function FilterBar({ activeLabels, activePriority, activeOverdue, onToggleLabel, onTogglePriority, onToggleOverdue, onClear }) {
   const labelEntries = Object.entries(DATA.LABELS || {});
-  const hasFilters = activeLabels.size > 0 || activePriority !== null;
+  const hasFilters = activeLabels.size > 0 || activePriority !== null || activeOverdue;
   const priorities = [
     { id: 'high', label: 'Yüksek' },
     { id: 'mid',  label: 'Orta'   },
@@ -13,7 +15,6 @@ function FilterBar({ activeLabels, activePriority, onToggleLabel, onTogglePriori
 
   return (
     <div className="filter-bar">
-      <Icon name="filter" size={13} />
       {labelEntries.length > 0 && (
         <div className="filter-bar-section">
           {labelEntries.map(([slug, lab]) => (
@@ -38,6 +39,11 @@ function FilterBar({ activeLabels, activePriority, onToggleLabel, onTogglePriori
             {p.label}
           </button>
         ))}
+        <div className="filter-bar-divider" />
+        <button className="filter-priority-chip" data-active={activeOverdue} onClick={onToggleOverdue}>
+          <Icon name="calendar" size={11} />
+          Süresi geçmiş
+        </button>
       </div>
       {hasFilters && (
         <button className="filter-clear-btn" onClick={onClear}>
@@ -48,13 +54,14 @@ function FilterBar({ activeLabels, activePriority, onToggleLabel, onTogglePriori
   );
 }
 
-function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleChange }) {
-  const members = task.assignees.map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleChange, canManageTasks, onTouchLongPress }) {
+  const members = (task.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
   const colData = DATA.COLUMNS.find(c => c.id === task.col);
   const isDone = colData?.is_done || false;
   const overdue = DATA.isOverdue(task.due, task.col);
   const titleRef = useBoardRef(null);
   const [editing, setEditing] = useBoardState(false);
+  const touchState = useBoardRef({ timer: null, startX: 0, startY: 0, moved: false });
 
   const handleTitleDblClick = (e) => {
     e.stopPropagation();
@@ -76,21 +83,52 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
     if (e.key === 'Escape') { e.preventDefault(); titleRef.current.textContent = task.title; titleRef.current?.blur(); }
   };
 
+  const handleTouchStart = (e) => {
+    if (!canManageTasks || editing) return;
+    const touch = e.touches[0];
+    touchState.current = { timer: null, startX: touch.clientX, startY: touch.clientY, moved: false };
+    touchState.current.timer = setTimeout(() => {
+      if (!touchState.current.moved) {
+        onTouchLongPress?.(task, touchState.current.startX, touchState.current.startY);
+      }
+    }, 400);
+  };
+
+  const handleTouchMove = (e) => {
+    const ts = touchState.current;
+    if (!ts.timer) return;
+    const touch = e.touches[0];
+    if (Math.abs(touch.clientX - ts.startX) > 8 || Math.abs(touch.clientY - ts.startY) > 8) {
+      ts.moved = true;
+      clearTimeout(ts.timer);
+      ts.timer = null;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    clearTimeout(touchState.current?.timer);
+    touchState.current.timer = null;
+  };
+
   return (
     <div
       className="card"
-      draggable={!editing}
+      draggable={!editing && canManageTasks}
       data-dragging={dragging}
       data-done={isDone}
+      data-overdue={overdue && !isDone}
       data-show-progress={tweaks.showProgress}
       data-show-tags={tweaks.showTags}
       onClick={() => !editing && onOpen(task)}
       onDragStart={(e) => onDragStart(e, task)}
       onDragEnd={onDragEnd}
+      onTouchStart={canManageTasks ? handleTouchStart : undefined}
+      onTouchMove={canManageTasks ? handleTouchMove : undefined}
+      onTouchEnd={handleTouchEnd}
     >
-      {task.labels.length > 0 && (
+      {(task.labels || []).length > 0 && (
         <div className="card-tags">
-          {task.labels.map(l => {
+          {(task.labels || []).map(l => {
             const lab = DATA.LABELS[l];
             if (!lab) return null;
             return <span key={l} className="tag" data-tone={lab.tone}>{lab.tr}</span>;
@@ -103,7 +141,7 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
         className="card-title"
         contentEditable={editing}
         suppressContentEditableWarning
-        onDoubleClick={handleTitleDblClick}
+        onDoubleClick={canManageTasks ? handleTitleDblClick : undefined}
         onBlur={handleTitleBlur}
         onKeyDown={handleTitleKey}
       >
@@ -151,43 +189,149 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
   );
 }
 
-function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dragging, tweaks, onOpenModal, onTitleChange, onToggleDone }) {
+function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dragging, tweaks, onOpenModal, onTitleChange, canManageTasks, canManageProjects, onDeleteColumn, onUpdateColumn, onTouchLongPress, onToggleDone }) {
   const [dragOver, setDragOver] = useBoardState(false);
   const [menuOpen, setMenuOpen] = useBoardState(false);
+  const [menuPos, setMenuPos] = useBoardState(null);
+  const [confirmDelete, setConfirmDelete] = useBoardState(false);
+  const [renaming, setRenaming] = useBoardState(false);
+  const [renameVal, setRenameVal] = useBoardState(col.title_tr || col.title || '');
+  const [columnDragging, setColumnDragging] = useBoardState(false);
   const menuRef = useBoardRef(null);
+  const moreRef = useBoardRef(null);
+  const headerRef = useBoardRef(null);
+  const touchState = useBoardRef({ timer: null, startX: 0, startY: 0, moved: false });
 
   useBoardEf(() => {
-    const handler = (e) => { if (menuOpen && menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    if (!menuOpen) { setConfirmDelete(false); return; }
+    const onDown = (e) => {
+      if (!menuRef.current?.contains(e.target) && !moreRef.current?.contains(e.target))
+        setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
   }, [menuOpen]);
+
+  const handleColumnTouchStart = (e) => {
+    if (!canManageProjects || renaming || menuOpen) return;
+    const touch = e.touches[0];
+    touchState.current = { timer: null, startX: touch.clientX, startY: touch.clientY, moved: false };
+    touchState.current.timer = setTimeout(() => {
+      if (!touchState.current.moved) {
+        // Long press detected - start dragging column for deletion
+        setColumnDragging(true);
+      }
+    }, 500);
+  };
+
+  const handleColumnTouchMove = (e) => {
+    const ts = touchState.current;
+    if (!ts.timer) return;
+    const touch = e.touches[0];
+    if (Math.abs(touch.clientX - ts.startX) > 10 || Math.abs(touch.clientY - ts.startY) > 10) {
+      ts.moved = true;
+      clearTimeout(ts.timer);
+    }
+  };
+
+  const handleColumnTouchEnd = () => {
+    const ts = touchState.current;
+    clearTimeout(ts?.timer);
+    setColumnDragging(false);
+  };
+
+  const handleRename = async () => {
+    const newTitle = renameVal.trim();
+    setRenaming(false);
+    if (!newTitle || newTitle === col.title_tr) return;
+    await onUpdateColumn?.(col.db_id, { title: newTitle, title_tr: newTitle });
+  };
 
   return (
     <div className="column">
-      <div className="col-header">
+      <div 
+        className="col-header"
+        ref={headerRef}
+        data-dragging={columnDragging}
+        onTouchStart={handleColumnTouchStart}
+        onTouchMove={handleColumnTouchMove}
+        onTouchEnd={handleColumnTouchEnd}
+        onTouchCancel={handleColumnTouchEnd}
+      >
         <div className="col-dot" style={{ background: col.is_done ? 'var(--status-green)' : col.color }} />
-        <span className="col-title">{col.title_tr}</span>
-        {col.is_done && <span style={{ fontSize: 10, color: 'var(--status-green)', fontWeight: 600, letterSpacing: '0.04em' }}>BİTTİ</span>}
-        <span className="col-count">{tasks.length}</span>
-        <div className="col-actions" ref={menuRef} style={{ position: 'relative' }}>
-          <button onClick={() => onOpenModal(col.id)} title="Yeni görev"><Icon name="plus" size={14} /></button>
-          <button title="Daha fazla" onClick={() => setMenuOpen(!menuOpen)}><Icon name="moreH" size={14} /></button>
-          {menuOpen && (
-            <div className="col-menu" style={{ position: 'absolute', top: '100%', right: 0, zIndex: 50 }}>
-              <button className="col-menu-item" onClick={() => { onToggleDone(col); setMenuOpen(false); }}>
-                <Icon name={col.is_done ? 'minus' : 'check'} size={13} />
-                {col.is_done ? 'Bitti işaretini kaldır' : 'Bitti kolonu olarak işaretle'}
-              </button>
-            </div>
+        {renaming ? (
+          <>
+          <input
+            value={renameVal}
+            maxLength={COL_NAME_MAX}
+            onChange={e => setRenameVal(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleRename();
+              if (e.key === 'Escape') { setRenaming(false); setRenameVal(col.title_tr || ''); }
+            }}
+            autoFocus
+            style={{ flex: 1, background: 'transparent', border: 'none', borderBottom: `1.5px solid ${renameVal.length >= COL_NAME_MAX ? 'var(--status-rose)' : 'var(--accent)'}`, outline: 'none', color: 'var(--ink)', fontSize: 13, fontWeight: 600, padding: '1px 0', minWidth: 0 }}
+          />
+          {renameVal.length >= COL_NAME_MAX - 5 && (
+            <span style={{ fontSize: 10, color: renameVal.length >= COL_NAME_MAX ? 'var(--status-rose)' : 'var(--ink-muted)', flexShrink: 0 }}>
+              {renameVal.length}/{COL_NAME_MAX}
+            </span>
           )}
+          </>
+        ) : (
+          <span className="col-title">{col.title_tr}</span>
+        )}
+        <span className="col-count">{tasks.length}</span>
+        <div className="col-actions">
+          {canManageTasks && <button onClick={() => onOpenModal(col.id)} title="Yeni görev"><Icon name="plus" size={14} /></button>}
+          <div style={{ position: 'relative' }}>
+            <button ref={moreRef} title="Daha fazla" onClick={() => {
+              if (!menuOpen && moreRef.current) {
+                const r = moreRef.current.getBoundingClientRect();
+                setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+              }
+              setMenuOpen(v => !v);
+            }}>
+              <Icon name="moreH" size={14} />
+            </button>
+            {menuOpen && menuPos && (
+              <div ref={menuRef} className="col-menu" style={{ top: menuPos.top, right: menuPos.right }}>
+                <div className="col-menu-info">{tasks.length} görev · {col.title_tr}</div>
+                {canManageProjects && (
+                  <>
+                    <div className="col-menu-divider" />
+                    <button className="col-menu-item" onClick={() => { setMenuOpen(false); onToggleDone?.(col); }}>
+                      <Icon name={col.is_done ? 'minus' : 'check'} size={13} />
+                      {col.is_done ? 'Bitti işaretini kaldır' : 'Bitti kolonu olarak işaretle'}
+                    </button>
+                    <button className="col-menu-item" onClick={() => { setMenuOpen(false); setRenaming(true); setRenameVal(col.title_tr || col.title || ''); }}>
+                      <Icon name="edit" size={13} /> Yeniden adlandır
+                    </button>
+                    {confirmDelete ? (
+                      <div className="col-menu-confirm">
+                        <span>Emin misiniz?</span>
+                        <button className="col-menu-confirm-yes" onClick={() => { setConfirmDelete(false); setMenuOpen(false); onDeleteColumn?.(col.db_id, col.id); }}>Sil</button>
+                        <button className="col-menu-confirm-no" onClick={() => setConfirmDelete(false)}>İptal</button>
+                      </div>
+                    ) : (
+                      <button className="col-menu-item col-menu-item-danger" onClick={() => setConfirmDelete(true)}>
+                        <Icon name="trash" size={13} /> Kolonu sil
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       <div
         className="col-body"
         data-drag-over={dragOver}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragOver={(e) => { if (!canManageTasks) return; e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => { e.preventDefault(); setDragOver(false); onDropCard(col.id); }}
+        onDrop={(e) => { if (!canManageTasks) return; e.preventDefault(); setDragOver(false); onDropCard(col.id); }}
       >
         {tasks.map(t => (
           <Card
@@ -199,20 +343,28 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
             dragging={dragging === t.id}
             tweaks={tweaks}
             onTitleChange={onTitleChange}
+            canManageTasks={canManageTasks}
+            onTouchLongPress={onTouchLongPress}
           />
         ))}
-        <button className="col-add" onClick={() => onOpenModal(col.id)}>
-          <Icon name="plus" size={13} /> Görev ekle
-        </button>
+        {canManageTasks && (
+          <button className="col-add" onClick={() => onOpenModal(col.id)}>
+            <Icon name="plus" size={13} /> Görev ekle
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-function BoardView({ tasks, onOpenTask, onMoveTask, tweaks, onOpenModal, onTitleChange }) {
+function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpenModal, onTitleChange, canManageTasks, canManageProjects, switching }) {
   const [draggingId, setDraggingId] = useBoardState(null);
+  const [trashHover, setTrashHover] = useBoardState(false);
+  const [filterOpen, setFilterOpen] = useBoardState(false);
   const [activeLabels, setActiveLabels] = useBoardState(new Set());
   const [activePriority, setActivePriority] = useBoardState(null);
+  const [activeOverdue, setActiveOverdue] = useBoardState(false);
+  const [searchQuery, setSearchQuery] = useBoardState('');
   const [columns, setColumns] = useBoardState(() => {
     // Initial load: deduplicate from DATA.COLUMNS
     const cols = DATA.COLUMNS || [];
@@ -225,7 +377,13 @@ function BoardView({ tasks, onOpenTask, onMoveTask, tweaks, onOpenModal, onTitle
   });
   const [isAddingColumn, setIsAddingColumn] = useBoardState(false);
   const [newColumnTitle, setNewColumnTitle] = useBoardState("");
+  const [addingColumnBusy, setAddingColumnBusy] = useBoardState(false);
   const initialColumnsSet = useBoardRef(false);
+
+  const trashZoneRef = useBoardRef(null);
+  const touchGhostRef = useBoardRef(null);
+  const boardRef = useBoardRef(null);
+  const scrollRafRef = useBoardRef(null);
 
   // Sync columns ONLY on initial load, not on every tasks change
   useBoardEf(() => {
@@ -242,30 +400,86 @@ function BoardView({ tasks, onOpenTask, onMoveTask, tweaks, onOpenModal, onTitle
     setColumns(dedupedCols);
   }, []); // Empty dependency — only run once on mount
 
+  const handleBoardDragOver = (e) => {
+    const board = boardRef.current;
+    if (!board) return;
+    const rect = board.getBoundingClientRect();
+    const ZONE = 80;
+    const SPEED = 12;
+    const x = e.clientX;
+    let vel = 0;
+    if (x < rect.left + ZONE) vel = -SPEED * (1 - (x - rect.left) / ZONE);
+    else if (x > rect.right - ZONE) vel = SPEED * (1 - (rect.right - x) / ZONE);
+    cancelAnimationFrame(scrollRafRef.current);
+    if (vel !== 0) {
+      const step = () => {
+        board.scrollLeft += vel;
+        scrollRafRef.current = requestAnimationFrame(step);
+      };
+      scrollRafRef.current = requestAnimationFrame(step);
+    }
+  };
+
+  const stopAutoScroll = () => cancelAnimationFrame(scrollRafRef.current);
+
   const handleDragStart = (e, task) => {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', task.id);
     setDraggingId(task.id);
   };
-
-  const handleDragEnd = () => setDraggingId(null);
-
+  const handleDragEnd = () => { stopAutoScroll(); setDraggingId(null); setTrashHover(false); };
   const handleDrop = (targetColId) => {
-    if (draggingId) {
-      onMoveTask(draggingId, targetColId);
-      setDraggingId(null);
-    }
+    if (draggingId) { onMoveTask(draggingId, targetColId); setDraggingId(null); }
   };
 
-  const handleToggleDone = async (col) => {
-    const newIsDone = !col.is_done;
-    setColumns(prev => prev.map(c => c.id === col.id ? { ...c, is_done: newIsDone } : c));
-    DATA.COLUMNS = DATA.COLUMNS.map(c => c.id === col.id ? { ...c, is_done: newIsDone } : c);
-    try {
-      await API.updateColumn(col.db_id, { is_done: newIsDone });
-    } catch (e) {
-      console.error('toggleDone error:', e);
-    }
+  const handleTouchLongPress = (task, startX, startY) => {
+    if (!canManageTasks) return;
+
+    setDraggingId(task.id);
+
+    const ghost = document.createElement('div');
+    ghost.className = 'card-touch-ghost';
+    ghost.textContent = task.title;
+    ghost.style.left = `${startX - 60}px`;
+    ghost.style.top  = `${startY - 22}px`;
+    document.body.appendChild(ghost);
+    touchGhostRef.current = ghost;
+
+    const isOverTrash = (x, y) => {
+      const el = trashZoneRef.current;
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    };
+
+    const taskId = task.id;
+
+    const onMove = (e) => {
+      e.preventDefault();
+      const t = e.touches[0];
+      if (touchGhostRef.current) {
+        touchGhostRef.current.style.left = `${t.clientX - 60}px`;
+        touchGhostRef.current.style.top  = `${t.clientY - 22}px`;
+      }
+      setTrashHover(isOverTrash(t.clientX, t.clientY));
+    };
+
+    const onEnd = (e) => {
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+      document.removeEventListener('touchcancel', onEnd);
+      touchGhostRef.current?.remove();
+      touchGhostRef.current = null;
+      const t = e.changedTouches[0];
+      const shouldDelete = isOverTrash(t.clientX, t.clientY);
+      setDraggingId(null);
+      setTrashHover(false);
+      if (shouldDelete) onDeleteTask?.(taskId);
+    };
+
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
+    document.addEventListener('touchcancel', onEnd);
   };
 
   const toggleLabel = (slug) => setActiveLabels(prev => {
@@ -274,48 +488,130 @@ function BoardView({ tasks, onOpenTask, onMoveTask, tweaks, onOpenModal, onTitle
     return next;
   });
   const togglePriority = (p) => setActivePriority(prev => prev === p ? null : p);
-  const clearFilters = () => { setActiveLabels(new Set()); setActivePriority(null); };
+  const toggleOverdue = () => setActiveOverdue(prev => !prev);
+  const clearFilters = () => { setActiveLabels(new Set()); setActivePriority(null); setActiveOverdue(false); setSearchQuery(''); };
 
+  const q = searchQuery.toLowerCase().trim();
   const visibleTasks = tasks.filter(t => {
+    if (q && !t.title.toLowerCase().includes(q)) return false;
     if (activePriority && t.priority !== activePriority) return false;
-    if (activeLabels.size > 0 && !t.labels.some(l => activeLabels.has(l))) return false;
+    if (activeLabels.size > 0 && !(t.labels || []).some(l => activeLabels.has(l))) return false;
+    if (activeOverdue && !DATA.isOverdue(t.due, t.col)) return false;
     return true;
   });
 
+  const activeFilterCount = (activePriority ? 1 : 0) + activeLabels.size + (activeOverdue ? 1 : 0) + (q ? 1 : 0);
+
+  const handleToggleDone = async (col) => {
+    const newIsDone = !col.is_done;
+    const updatedCols = columns.map(c => c.id === col.id ? { ...c, is_done: newIsDone } : c);
+    setColumns(updatedCols);
+    window.DATA.COLUMNS = DATA.COLUMNS.map(c => c.id === col.id ? { ...c, is_done: newIsDone } : c);
+    try { await API.updateColumn(col.db_id, { is_done: newIsDone }); }
+    catch (e) { console.error('toggleDone error:', e); }
+  };
+
+  const handleDeleteColumn = async (dbId, slugId) => {
+    const prevColumns = columns;
+    const nextColumns = columns.filter(c => c.id !== slugId);
+    setColumns(nextColumns);
+    window.DATA.COLUMNS = nextColumns;
+    try {
+      await API.deleteColumn(dbId);
+    } catch (e) {
+      setColumns(prevColumns);
+      window.DATA.COLUMNS = prevColumns;
+      window.showToast?.('Kolon silinemedi: ' + e.message, 'error');
+    }
+  };
+
+  const handleUpdateColumn = async (dbId, data) => {
+    const prevColumns = columns;
+    const nextColumns = columns.map(c => c.db_id === dbId ? { ...c, ...data } : c);
+    setColumns(nextColumns);
+    window.DATA.COLUMNS = nextColumns;
+    try {
+      const updated = await API.updateColumn(dbId, data);
+      const finalColumns = columns.map(c => c.db_id === dbId ? { ...c, ...updated } : c);
+      setColumns(finalColumns);
+      window.DATA.COLUMNS = finalColumns;
+    } catch (e) {
+      setColumns(prevColumns);
+      window.DATA.COLUMNS = prevColumns;
+      window.showToast?.('Kolon güncellenemedi: ' + e.message, 'error');
+    }
+  };
+
   const handleAddColumn = async () => {
     const title = newColumnTitle.trim();
-    if (!title) return;
+    if (!title || addingColumnBusy) return;
 
     const projectId = window.CURRENT_PROJECT_ID || DATA.currentProject?.id;
     if (!projectId) {
-      alert('Proje seçili değil.');
+      window.showToast?.('Proje seçili değil.', 'error');
       return;
     }
 
+    setAddingColumnBusy(true);
     try {
-      const createdColumn = await API.createColumn(projectId, { title });
-      // Optimistic update - add to state immediately
-      const nextColumns = [...columns, createdColumn];
+      const created = await API.createColumn(projectId, { title });
+      const nextColumns = [...columns, created];
       setColumns(nextColumns);
       window.DATA.COLUMNS = nextColumns;
       setNewColumnTitle("");
       setIsAddingColumn(false);
     } catch (e) {
-      alert('Kolon oluşturulamadı: ' + (e.message || 'Sunucu hatası'));
-      console.error('createColumn error:', e);
+      window.showToast?.('Kolon oluşturulamadı: ' + e.message, 'error');
+    } finally {
+      setAddingColumnBusy(false);
     }
   };
 
   return (
-    <React.Fragment>
-    <FilterBar
-      activeLabels={activeLabels}
-      activePriority={activePriority}
-      onToggleLabel={toggleLabel}
-      onTogglePriority={togglePriority}
-      onClear={clearFilters}
-    />
-    <div className="board">
+    <>
+    <div className="board-toolbar">
+      <button
+        className="filter-toggle-btn"
+        data-active={filterOpen || activeFilterCount > 0}
+        onClick={() => setFilterOpen(v => !v)}
+      >
+        <Icon name="filter" size={13} />
+        Filtrele
+        {activeFilterCount > 0 && <span className="filter-count">{activeFilterCount}</span>}
+      </button>
+      <div className="board-search-wrap">
+        <Icon name="search" size={13} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
+        <input
+          className="board-search-input"
+          placeholder="Görev ara…"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
+        {searchQuery && (
+          <button style={{ color: 'var(--ink-faint)', display: 'grid', placeItems: 'center', padding: 2 }} onClick={() => setSearchQuery('')}>
+            <Icon name="x" size={11} />
+          </button>
+        )}
+      </div>
+      {switching && (
+        <div style={{ fontSize: 12, color: 'var(--ink-faint)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'spin 0.7s linear infinite' }} />
+          Proje yükleniyor…
+        </div>
+      )}
+    </div>
+    {filterOpen && (
+      <FilterBar
+        activeLabels={activeLabels}
+        activePriority={activePriority}
+        activeOverdue={activeOverdue}
+        onToggleLabel={toggleLabel}
+        onTogglePriority={togglePriority}
+        onToggleOverdue={toggleOverdue}
+        onClear={clearFilters}
+      />
+    )}
+    <div className="board" ref={boardRef} onDragOver={handleBoardDragOver} onDragEnd={stopAutoScroll}>
       {columns.map(col => (
         <Column
           key={col.id}
@@ -329,35 +625,68 @@ function BoardView({ tasks, onOpenTask, onMoveTask, tweaks, onOpenModal, onTitle
           tweaks={tweaks}
           onOpenModal={onOpenModal}
           onTitleChange={onTitleChange}
+          canManageTasks={canManageTasks}
+          canManageProjects={canManageProjects}
+          onDeleteColumn={handleDeleteColumn}
+          onUpdateColumn={handleUpdateColumn}
+          onTouchLongPress={handleTouchLongPress}
           onToggleDone={handleToggleDone}
         />
       ))}
-
-      {isAddingColumn ? (
+      {canManageProjects && (isAddingColumn ? (
         <div className="add-column-form">
-          <input
-            autoFocus
-            className="add-column-input"
-            placeholder="Kolon başlığı yazın..."
-            value={newColumnTitle}
-            onChange={(e) => setNewColumnTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleAddColumn();
-              if (e.key === 'Escape') setIsAddingColumn(false);
-            }}
-          />
+          <div>
+            <input
+              autoFocus
+              className="add-column-input"
+              placeholder="Kolon başlığı yazın..."
+              maxLength={COL_NAME_MAX}
+              value={newColumnTitle}
+              onChange={(e) => setNewColumnTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAddColumn();
+                if (e.key === 'Escape') setIsAddingColumn(false);
+              }}
+              style={newColumnTitle.length >= COL_NAME_MAX ? { borderColor: 'var(--status-rose)' } : {}}
+            />
+            {newColumnTitle.length >= COL_NAME_MAX - 5 && (
+              <div style={{ textAlign: 'right', fontSize: 10, marginTop: 4, color: newColumnTitle.length >= COL_NAME_MAX ? 'var(--status-rose)' : 'var(--ink-muted)' }}>
+                {newColumnTitle.length}/{COL_NAME_MAX}
+              </div>
+            )}
+          </div>
           <div className="add-column-actions">
-            <button className="btn-save" onClick={handleAddColumn}>Ekle</button>
-            <button className="btn-cancel" onClick={() => setIsAddingColumn(false)}>İptal</button>
+            <button className="btn-save" onClick={handleAddColumn} disabled={addingColumnBusy || !newColumnTitle.trim()}>
+              {addingColumnBusy ? 'Ekleniyor…' : 'Ekle'}
+            </button>
+            <button className="btn-cancel" onClick={() => { setIsAddingColumn(false); setNewColumnTitle(''); }} disabled={addingColumnBusy}>İptal</button>
           </div>
         </div>
       ) : (
         <button className="add-column-btn" onClick={() => setIsAddingColumn(true)}>
           <Icon name="plus" size={14} /> Kolon ekle
         </button>
-      )}
+      ))}
     </div>
-    </React.Fragment>
+    {draggingId && canManageTasks && (
+      <div
+        ref={trashZoneRef}
+        className="board-trash-zone"
+        data-hover={trashHover}
+        onDragOver={(e) => { e.preventDefault(); setTrashHover(true); }}
+        onDragLeave={() => setTrashHover(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setTrashHover(false);
+          onDeleteTask?.(draggingId);
+          setDraggingId(null);
+        }}
+      >
+        <Icon name="trash" size={16} />
+        <span>{trashHover ? 'Bırak ve sil' : 'Silmek için buraya sürükle'}</span>
+      </div>
+    )}
+    </>
   );
 }
 

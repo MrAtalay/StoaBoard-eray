@@ -25,6 +25,9 @@ function Lightbox({ src, onClose }) {
   );
 }
 
+// ── Emoji reactions ───────────────────────────────────────────────────────
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👀'];
+
 // ── File size formatter ───────────────────────────────────────────────────
 function fmtSize(bytes) {
   if (!bytes) return '';
@@ -35,9 +38,12 @@ function fmtSize(bytes) {
 
 // ── Time formatter (converts UTC ISO timestamp to local HH:MM) ────────────
 function fmtMsgTime(msg) {
-  if (msg.ts) {
+  const raw = msg.ts || msg.created_at;
+  if (raw) {
     try {
-      return new Date(msg.ts + 'Z').toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      // Add 'Z' only if no timezone info present (Python naive UTC isoformat has none)
+      const iso = (raw.endsWith('Z') || raw.includes('+')) ? raw : raw + 'Z';
+      return new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
     } catch(e) {}
   }
   return msg.time || '';
@@ -167,7 +173,7 @@ function MediaList({ media, allMembers, onImageClick }) {
                 <div key={m.id} style={{ background: 'var(--bg-dim)', borderRadius: 8, padding: 8 }}>
                   <video src={m.file_url} controls style={{ width: '100%', borderRadius: 6, maxHeight: 180 }} />
                   <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4 }}>
-                    {sender?.name || m.from} · {m.time}
+                    {sender?.name || m.from} · {fmtMsgTime(m)}
                   </div>
                 </div>
               );
@@ -189,7 +195,7 @@ function MediaList({ media, allMembers, onImageClick }) {
                   <Icon name="paperclip" size={14} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.file_name}</div>
-                    <div style={{ fontSize: 10, color: 'var(--ink-faint)' }}>{sender?.name || m.from} · {m.time}</div>
+                    <div style={{ fontSize: 10, color: 'var(--ink-faint)' }}>{sender?.name || m.from} · {fmtMsgTime(m)}</div>
                   </div>
                   <Icon name="chevronRight" size={12} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
                 </a>
@@ -248,7 +254,7 @@ function MediaGallery({ allMembers, onImageClick }) {
 }
 
 // ── Main Chat Panel ───────────────────────────────────────────────────────
-function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith }) {
+function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith, unreadCounts, markAsRead, wsId }) {
   const [tab, setTab]             = useChatS('general');
   const [dmWith, setDmWith]       = useChatS(null);
   const [messages, setMessages]   = useChatS([]);
@@ -257,7 +263,6 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
   const [uploading, setUploading] = useChatS(false);
   const [lightbox, setLightbox]   = useChatS(null);
   const [pendingFile, setPendingFile] = useChatS(null);
-  const [hoveredMsg, setHoveredMsg] = useChatS(null);
   const [deleteMenu, setDeleteMenu] = useChatS(null); // {msgId, isMine, starred, x, y}
   const [starredMsgs, setStarredMsgs] = useChatS(() => {
     try { return new Set(JSON.parse(localStorage.getItem('stoa.starred') || '[]').map(m => String(m.id || m))); }
@@ -271,6 +276,11 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
     try { return new Set(JSON.parse(localStorage.getItem('stoa.muted') || '[]')); }
     catch { return new Set(); }
   });
+  const [reactions, setReactions] = useChatS(() => {
+    try { return JSON.parse(localStorage.getItem('stoa.reactions') || '{}'); }
+    catch { return {}; }
+  });
+  const [emojiPicker, setEmojiPicker] = useChatS(null); // { msgId, x, y }
 
   const bottomRef   = useChatRef(null);
   const typingTimer = useChatRef(null);
@@ -314,7 +324,26 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
     }
   }, [open, initialDmWith]);
 
+  // Reset general messages when workspace changes
+  useChatE(() => {
+    if (!wsId || dmWith) return;
+    setMessages([]);
+    msgIds.current = new Set();
+  }, [wsId]);
+
+  // Mark conversation as read when user views it
+  useChatE(() => {
+    if (!open || !markAsRead) return;
+    if (dmWith) {
+      markAsRead(`dm_${dmWith}`);
+    } else if (tab === 'general') {
+      const key = wsId ? `general_${wsId}` : 'general';
+      markAsRead(key);
+    }
+  }, [open, dmWith, tab, wsId]);
+
   // ── Load history — AbortController prevents stale responses on rapid DM switches ──
+  // wsId in deps so general messages reload when workspace switches
   useChatE(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -329,7 +358,7 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
       })
       .catch(err => { if (err.name !== 'AbortError') setMessages([]); });
     return () => controller.abort();
-  }, [open, dmWith]);
+  }, [open, dmWith, wsId]);
 
   // ── Socket listeners — use `socket` prop as dependency (fixes stale/null issue) ──
   useChatE(() => {
@@ -502,8 +531,33 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
     }
   };
 
-  const openDm = (slug) => { setDmWith(slug); setMessages([]); setTypingUser(null); setPendingFile(null); };
+  const openDm = (slug) => { setDmWith(slug); setMessages([]); setTypingUser(null); setPendingFile(null); markAsRead?.(`dm_${slug}`); };
   const backToGeneral = () => { setDmWith(null); setMessages([]); setPendingFile(null); };
+
+  const toggleReaction = (msgId, emoji) => {
+    const key = String(msgId);
+    setReactions(prev => {
+      const msgR = { ...(prev[key] || {}) };
+      const users = [...(msgR[emoji] || [])];
+      const idx = users.indexOf(me);
+      if (idx >= 0) users.splice(idx, 1); else users.push(me);
+      if (users.length === 0) delete msgR[emoji]; else msgR[emoji] = users;
+      const next = Object.keys(msgR).length === 0
+        ? (({ [key]: _removed, ...rest }) => rest)(prev)
+        : { ...prev, [key]: msgR };
+      localStorage.setItem('stoa.reactions', JSON.stringify(next));
+      return next;
+    });
+    setEmojiPicker(null);
+  };
+
+  const openEmojiPicker = (e, msgId) => {
+    e.stopPropagation();
+    const key = String(msgId);
+    if (emojiPicker?.msgId === key) { setEmojiPicker(null); return; }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setEmojiPicker({ msgId: key, x: rect.left + rect.width / 2, y: rect.top });
+  };
 
   const toggleMute = (userId) => {
     setMutedUsers(prev => {
@@ -603,6 +657,31 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
         </>,
         document.body
       )}
+      {emojiPicker && ReactDOM.createPortal(
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9997 }} onClick={() => setEmojiPicker(null)} />
+          <div style={{
+            position: 'fixed',
+            bottom: window.innerHeight - emojiPicker.y + 8,
+            left: Math.max(8, Math.min(emojiPicker.x - 144, window.innerWidth - 298)),
+            zIndex: 9998,
+            background: 'var(--bg-raised)', border: '1px solid var(--line)',
+            borderRadius: 14, boxShadow: '0 8px 24px oklch(0% 0 0 / 0.18)',
+            padding: '6px 8px', display: 'flex', gap: 2,
+          }}>
+            {QUICK_EMOJIS.map(emoji => (
+              <button key={emoji}
+                className="chat-emoji-opt"
+                onClick={() => toggleReaction(emojiPicker.msgId, emoji)}
+                title={emoji}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </>,
+        document.body
+      )}
       <div className="chat-overlay" data-open={open} onClick={onClose} />
       <div className="chat-panel" data-open={open}>
 
@@ -645,9 +724,20 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
           <div className="chat-tabs">
             <button data-active={tab === 'general'} onClick={() => setTab('general')}>
               <Icon name="users" size={13} /> Genel
+              {(unreadCounts || {}).general > 0 && (
+                <span className="chat-tab-count" style={{ background: 'var(--status-rose)' }}>
+                  {(unreadCounts || {}).general > 9 ? '9+' : (unreadCounts || {}).general}
+                </span>
+              )}
             </button>
             <button data-active={tab === 'dm'} onClick={() => setTab('dm')}>
-              <Icon name="msg" size={13} /> Direkt
+              {(() => {
+                const totalDm = Object.entries(unreadCounts || {}).filter(([k]) => k.startsWith('dm_')).reduce((s, [,v]) => s + v, 0);
+                return (<>
+                  <Icon name="msg" size={13} /> Direkt
+                  {totalDm > 0 && <span className="chat-tab-count" style={{ background: 'var(--status-rose)' }}>{totalDm > 9 ? '9+' : totalDm}</span>}
+                </>);
+              })()}
             </button>
             <button data-active={tab === 'media'} onClick={() => setTab('media')}>
               <Icon name="paperclip" size={13} /> Medya
@@ -699,6 +789,7 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
               <div className="chat-empty">Henüz başka üye yok.</div>
             ) : members.map(m => {
               const mStatus = statuses.get(m.id) || (online.has(m.id) ? 'online' : 'offline');
+              const dmUnread = (unreadCounts || {})[`dm_${m.id}`] || 0;
               return (
                 <div key={m.id} className="chat-member-row" onClick={() => openDm(m.id)}>
                   <div style={{ position: 'relative', flexShrink: 0, display: 'flex' }}>
@@ -707,13 +798,24 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
                       <StatusDot status={mStatus} />
                     </span>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: dmUnread > 0 ? 600 : 500 }}>{m.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--ink-faint)' }}>
                       {_statusLabel(mStatus)}
                     </div>
                   </div>
-                  <Icon name="chevronRight" size={14} style={{ marginLeft: 'auto', color: 'var(--ink-faint)' }} />
+                  {dmUnread > 0 ? (
+                    <span style={{
+                      minWidth: 18, height: 18, borderRadius: 9,
+                      background: 'var(--status-rose)', color: 'white',
+                      fontSize: 10, fontWeight: 700, lineHeight: '18px',
+                      textAlign: 'center', padding: '0 5px', flexShrink: 0,
+                    }}>
+                      {dmUnread > 9 ? '9+' : dmUnread}
+                    </span>
+                  ) : (
+                    <Icon name="chevronRight" size={14} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
+                  )}
                 </div>
               );
             })}
@@ -732,13 +834,13 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
                 const sender = allMembers.find(m => m.id === msg.from);
                 const prevMsg = messages[i - 1];
                 const showSender = !isMine && (!prevMsg || prevMsg.from !== msg.from);
-                const isHovered = hoveredMsg === (msg.id || i);
                 const canDelete = !msg._temp && !msg.deleted;
+                const msgKey = String(msg.id);
+                const msgReactions = reactions[msgKey] || {};
+                const hasReactions = Object.keys(msgReactions).length > 0;
                 return (
                   <div key={msg.id || i} className={`chat-msg ${isMine ? 'mine' : 'theirs'}`}
                     style={{ position: 'relative' }}
-                    onMouseEnter={() => setHoveredMsg(msg.id || i)}
-                    onMouseLeave={() => setHoveredMsg(null)}
                   >
                     {!isMine && (
                       <div className="chat-msg-avatar" style={{ visibility: showSender ? 'visible' : 'hidden' }}>
@@ -759,19 +861,43 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
                             <span style={{ position: 'absolute', top: 4, right: 6, fontSize: 10, color: 'var(--status-yellow)', pointerEvents: 'none' }}>★</span>
                           )}
                         </div>
-                        {canDelete && isHovered && (
-                          <button
-                            className="chat-msg-action-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setDeleteMenu({ msgId: msg.id, isMine, starred: starredMsgs.has(String(msg.id)), msg, x: isMine ? rect.left - 160 : rect.right + 4, y: rect.top });
-                            }}
-                          >
-                            <Icon name="chevronDown" size={12} />
-                          </button>
+                        {canDelete && (
+                          <>
+                            <button
+                              className="chat-msg-action-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setDeleteMenu({ msgId: msg.id, isMine, starred: starredMsgs.has(String(msg.id)), msg, x: isMine ? rect.left - 160 : rect.right + 4, y: rect.top });
+                              }}
+                            >
+                              <Icon name="chevronDown" size={12} />
+                            </button>
+                            <button
+                              className="chat-msg-react-btn"
+                              onClick={(e) => openEmojiPicker(e, msg.id)}
+                              title="Reaksiyon ekle"
+                            >
+                              😊
+                            </button>
+                          </>
                         )}
                       </div>
+                      {hasReactions && (
+                        <div className="chat-reactions">
+                          {Object.entries(msgReactions).map(([emoji, users]) => (
+                            <button
+                              key={emoji}
+                              className="chat-reaction-btn"
+                              data-mine={users.includes(me)}
+                              onClick={() => toggleReaction(msgKey, emoji)}
+                              title={users.map(u => allMembers.find(m => m.id === u)?.name || u).join(', ')}
+                            >
+                              {emoji}<span>{users.length}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <div className="chat-msg-time">{fmtMsgTime(msg)}</div>
                     </div>
                   </div>
