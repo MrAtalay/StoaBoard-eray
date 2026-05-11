@@ -66,6 +66,7 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
   const overdue = DATA.isOverdue(task.due, task.col);
   const me = window.CURRENT_USER?.id;
   const isAssignedToMe = me && (task.assignees || []).includes(me);
+  const meMember = isAssignedToMe ? DATA.MEMBERS.find(m => m.id === me) : null;
   const creator = task.created_by ? DATA.MEMBERS.find(m => m.id === task.created_by) : null;
   const titleRef = useBoardRef(null);
   const [editing, setEditing] = useBoardState(false);
@@ -125,6 +126,7 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
       data-dragging={dragging}
       data-done={isDone}
       data-overdue={overdue && !isDone}
+      data-mine={isAssignedToMe && !isDone}
       data-show-progress={tweaks.showProgress}
       data-show-tags={tweaks.showTags}
       style={{ position: 'relative' }}
@@ -137,10 +139,12 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
     >
       {isAssignedToMe && (
         <div style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: 3,
-          background: 'var(--accent)', borderRadius: '8px 8px 0 0',
-          opacity: 0.85,
-        }} />
+          position: 'absolute', top: 7, right: 8,
+          fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
+          padding: '1px 5px', borderRadius: 4,
+          background: 'var(--accent)', color: 'white',
+          lineHeight: 1.6, pointerEvents: 'none',
+        }}>BEN</div>
       )}
       {(task.labels || []).length > 0 && (
         <div className="card-tags">
