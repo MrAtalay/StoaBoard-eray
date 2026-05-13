@@ -667,7 +667,7 @@ function App() {
     );
   }
 
-  const crumb = { board:'Pano', list:'Liste', calendar:'Takvim', dashboard:'Ana Sayfa', settings:'Ayarlar' }[view] || 'Pano';
+  const crumb = { board:'Pano', list:'Liste', calendar:'Takvim', dashboard:'Ana Sayfa', settings:'Ayarlar', chat:'Sohbet' }[view] || 'Pano';
   const noProject = !currentProject && DATA.PROJECTS.length === 0;
 
   // Convert onlineUsers map to Set of online slugs (for backward compat) and expose full map
@@ -771,8 +771,12 @@ function App() {
         currentWsId={currentWsId}
       />
       <ChatPanel
-        open={chatOpen}
-        onClose={() => { setChatOpen(false); setChatDmWith(null); setChatHighlightMsgId(null); window.__CHAT_OPEN__ = false; }}
+        open={chatOpen || view === 'chat'}
+        fullPage={view === 'chat'}
+        onClose={() => {
+          if (view === 'chat') { setView('board'); return; }
+          setChatOpen(false); setChatDmWith(null); setChatHighlightMsgId(null); window.__CHAT_OPEN__ = false;
+        }}
         onlineUsers={onlineSet}
         onlineStatuses={onlineUsers}
         members={members}

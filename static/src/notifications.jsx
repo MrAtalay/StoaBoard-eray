@@ -14,8 +14,9 @@ function _notifIcon(type) {
 }
 
 function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId }) {
-  const [tab, setTab]     = React.useState('all');
-  const [items, setItems] = React.useState(() => DATA.NOTIFICATIONS || []);
+  const [tab, setTab]           = React.useState('all');
+  const [items, setItems]       = React.useState(() => DATA.NOTIFICATIONS || []);
+  const [confirmDel, setConfirmDel] = React.useState(false);
   const panelRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -63,9 +64,8 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
   const deleteAll = async () => {
     const ids = filtered.map(n => n.id);
     setItems(prev => prev.filter(n => !ids.includes(n.id)));
-    for (const id of ids) {
-      try { await API.deleteNotif(id); } catch (_) {}
-    }
+    setConfirmDel(false);
+    try { await Promise.all(ids.map(id => API.deleteNotif(id))); } catch (_) {}
   };
 
   const dismiss = async (e, id) => {
@@ -153,13 +153,23 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
         </div>
 
         <div style={{ padding: '10px 14px', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', fontSize: 12, gap: 8 }}>
-          <button style={{ color: 'var(--ink-muted)' }} onClick={markAllRead}>
-            Tümünü oku
-          </button>
-          {filtered.length > 0 && (
-            <button style={{ color: 'var(--status-rose)' }} onClick={deleteAll}>
-              Tümünü sil
-            </button>
+          {confirmDel ? (
+            <>
+              <span style={{ color: 'var(--ink-muted)' }}>Silinsin mi?</span>
+              <button style={{ color: 'var(--status-rose)', fontWeight: 600 }} onClick={deleteAll}>Evet</button>
+              <button style={{ color: 'var(--ink-muted)' }} onClick={() => setConfirmDel(false)}>Hayır</button>
+            </>
+          ) : (
+            <>
+              <button style={{ color: 'var(--ink-muted)' }} onClick={markAllRead}>
+                Tümünü oku
+              </button>
+              {filtered.length > 0 && (
+                <button style={{ color: 'var(--status-rose)' }} onClick={() => setConfirmDel(true)}>
+                  Tümünü sil
+                </button>
+              )}
+            </>
           )}
           <button style={{ marginLeft: 'auto', color: 'var(--ink-muted)' }} onClick={onClose}>
             Kapat <Icon name="arrowRight" size={11} />

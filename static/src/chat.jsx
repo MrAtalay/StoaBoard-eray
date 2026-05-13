@@ -96,9 +96,12 @@ function RenderMsgText({ text, allMembers, onMentionClick }) {
           key: i,
           onClick: (e) => { e.stopPropagation(); onMentionClick(member); },
           style: {
-            display: 'inline-block', background: 'var(--accent-soft)',
-            color: 'var(--accent)', borderRadius: 4, padding: '0 4px',
-            fontWeight: 600, fontSize: '0.92em', cursor: 'pointer',
+            display: 'inline-block',
+            background: 'var(--accent)',
+            color: 'white',
+            borderRadius: 4, padding: '1px 6px',
+            fontWeight: 600, fontSize: '0.85em', cursor: 'pointer',
+            verticalAlign: 'middle',
           }
         }, `@${member.name}`);
       }
@@ -337,7 +340,7 @@ function MediaGallery({ allMembers, onImageClick }) {
 }
 
 // ── Main Chat Panel ───────────────────────────────────────────────────────
-function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith, unreadCounts, markAsRead, wsId, highlightMsgId }) {
+function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith, unreadCounts, markAsRead, wsId, highlightMsgId, fullPage }) {
   const [tab, setTab]             = useChatS('general');
   const [dmWith, setDmWith]       = useChatS(null);
   const [messages, setMessages]   = useChatS([]);
@@ -788,8 +791,8 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
         </>,
         document.body
       )}
-      <div className="chat-overlay" data-open={open} onClick={onClose} />
-      <div className="chat-panel" data-open={open}>
+      {!fullPage && <div className="chat-overlay" data-open={open} onClick={onClose} />}
+      <div className="chat-panel" data-open={open || fullPage} data-full-page={!!fullPage}>
 
         {/* Header */}
         <div className="chat-head">

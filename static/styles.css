@@ -1071,7 +1071,8 @@ input, textarea, select, [contenteditable="true"] {
   overflow: hidden;
   transition: outline 0.1s;
 }
-.column[data-col-drag-over="true"] {
+.column[data-col-drag-over="true"],
+.column[data-touch-over="true"] {
   outline: 2px dashed var(--accent);
   outline-offset: 2px;
 }
@@ -1831,6 +1832,7 @@ input, textarea, select, [contenteditable="true"] {
 .cal-bar[data-start="true"] { border-radius: 4px 0 0 4px; margin-left: 2px; }
 .cal-bar[data-end="true"]   { border-radius: 0 4px 4px 0; margin-right: 2px; }
 .cal-bar[data-start="true"][data-end="true"] { border-radius: 4px; margin: 1px 2px; }
+.cal-bar[data-mine="true"] { height: 8px; box-shadow: inset 0 2px 0 oklch(100% 0 0 / 0.55); }
 
 /* ── Holiday dot ── */
 .cal-holiday-dot {
@@ -3838,6 +3840,17 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   flex-direction: column;
 }
 .chat-panel[data-open="true"] { transform: translateX(0); }
+.chat-panel[data-full-page="true"] {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100vh;
+  transform: none !important;
+  border-left: none;
+  z-index: 10;
+  box-shadow: none;
+}
 
 .chat-head {
   display: flex;

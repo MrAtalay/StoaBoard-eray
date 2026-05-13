@@ -201,6 +201,7 @@ function CalendarView({ tasks, onOpenTask, onOpenModal, canCreateTasks }) {
               className="cal-bar"
               data-start={isStart}
               data-end={isEnd}
+              data-mine={!!(myId && (b.task.assignees||[]).includes(myId))}
               style={{ background: b.color }}
               title={b.tooltip}
               onMouseEnter={(e) => setBarTooltip({ text: b.tooltip, x: e.clientX, y: e.clientY })}
@@ -378,6 +379,7 @@ function CalendarView({ tasks, onOpenTask, onOpenModal, canCreateTasks }) {
                         className="cal-bar"
                         data-start={isStart}
                         data-end={isEnd}
+                        data-mine={!!(myId && (b.task.assignees||[]).includes(myId))}
                         style={{ background: b.color }}
                         onMouseEnter={(e) => setBarTooltip({ text: b.tooltip, x: e.clientX, y: e.clientY })}
                         onMouseMove={(e)  => setBarTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}

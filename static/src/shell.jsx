@@ -243,6 +243,7 @@ function Sidebar({
         <NavItem icon="layoutBoard" label="Pano"       sub="Board"    onClick={() => onView('board')}     active={view === 'board'} />
         <NavItem icon="list"        label="Liste"      sub="List"     onClick={() => onView('list')}      active={view === 'list'} />
         <NavItem icon="calendar"    label="Takvim"     sub="Calendar" onClick={() => onView('calendar')}  active={view === 'calendar'} />
+        <NavItem icon="msg"         label="Sohbet"     sub="Chat"     onClick={() => onView('chat')}      active={view === 'chat'} />
         <NavItem icon="user"        label="Görevlerim" sub="My Tasks" onClick={() => {
           localStorage.setItem('stoa.filterMyTasks', 'true');
           window.dispatchEvent(new CustomEvent('stoa:activateMyTasks'));

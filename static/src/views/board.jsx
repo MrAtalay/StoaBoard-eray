@@ -276,6 +276,7 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
   return (
     <div
       className="column"
+      data-col-id={col.id}
       data-col-drag-over={isColDragOver}
       onDragOver={e => { e.preventDefault(); onColumnDragOver?.(col.id); }}
       onDrop={e => { e.preventDefault(); onColumnDrop?.(col.id); }}
@@ -555,19 +556,46 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
         touchGhostRef.current.style.top  = `${t.clientY - 22}px`;
       }
       setTrashHover(isOverTrash(t.clientX, t.clientY));
+      // Highlight target column
+      const ghost = touchGhostRef.current;
+      if (ghost) ghost.style.pointerEvents = 'none';
+      const dropEl = document.elementFromPoint(t.clientX, t.clientY);
+      if (ghost) ghost.style.pointerEvents = '';
+      const newColId = dropEl?.closest('[data-col-id]')?.dataset?.colId || null;
+      if (newColId !== (touchGhostRef.current?._overColId)) {
+        document.querySelectorAll('.column[data-touch-over="true"]').forEach(el => el.removeAttribute('data-touch-over'));
+        if (newColId) {
+          const colEl = document.querySelector(`.column[data-col-id="${newColId}"]`);
+          if (colEl) colEl.setAttribute('data-touch-over', 'true');
+        }
+        if (touchGhostRef.current) touchGhostRef.current._overColId = newColId;
+      }
     };
 
     const onEnd = (e) => {
       document.removeEventListener('touchmove', onMove);
       document.removeEventListener('touchend', onEnd);
       document.removeEventListener('touchcancel', onEnd);
-      touchGhostRef.current?.remove();
-      touchGhostRef.current = null;
+      document.querySelectorAll('.column[data-touch-over="true"]').forEach(el => el.removeAttribute('data-touch-over'));
+      const ghost = touchGhostRef.current;
+      if (ghost) ghost.style.display = 'none';
       const t = e.changedTouches[0];
-      const shouldDelete = isOverTrash(t.clientX, t.clientY);
+      const { clientX, clientY } = t;
+      const shouldDelete = isOverTrash(clientX, clientY);
+      const dropEl = document.elementFromPoint(clientX, clientY);
+      if (ghost) { ghost.style.display = ''; ghost.remove(); }
+      touchGhostRef.current = null;
       setDraggingId(null);
       setTrashHover(false);
-      if (shouldDelete) onDeleteTask?.(taskId);
+      if (shouldDelete) {
+        onDeleteTask?.(taskId);
+      } else {
+        const colEl = dropEl?.closest('[data-col-id]');
+        const targetColId = colEl?.dataset?.colId;
+        if (targetColId && targetColId !== task.col) {
+          onMoveTask(taskId, targetColId);
+        }
+      }
     };
 
     document.addEventListener('touchmove', onMove, { passive: false });
