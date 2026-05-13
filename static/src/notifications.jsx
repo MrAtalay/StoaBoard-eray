@@ -60,6 +60,14 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
     try { await API.markAllRead(); } catch (_) {}
   };
 
+  const deleteAll = async () => {
+    const ids = filtered.map(n => n.id);
+    setItems(prev => prev.filter(n => !ids.includes(n.id)));
+    for (const id of ids) {
+      try { await API.deleteNotif(id); } catch (_) {}
+    }
+  };
+
   const dismiss = async (e, id) => {
     e.stopPropagation();
     setItems(prev => prev.filter(n => n.id !== id));
@@ -144,10 +152,15 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
           })}
         </div>
 
-        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', fontSize: 12 }}>
+        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', fontSize: 12, gap: 8 }}>
           <button style={{ color: 'var(--ink-muted)' }} onClick={markAllRead}>
-            Tümünü okundu işaretle
+            Tümünü oku
           </button>
+          {filtered.length > 0 && (
+            <button style={{ color: 'var(--status-rose)' }} onClick={deleteAll}>
+              Tümünü sil
+            </button>
+          )}
           <button style={{ marginLeft: 'auto', color: 'var(--ink-muted)' }} onClick={onClose}>
             Kapat <Icon name="arrowRight" size={11} />
           </button>

@@ -1811,6 +1811,9 @@ input, textarea, select, [contenteditable="true"] {
 .cal-chip[data-tone="orange"]  { border-left-color: var(--status-orange); }
 .cal-chip[data-tone="cyan"]    { border-left-color: var(--status-cyan); }
 .cal-chip[data-tone="pink"]    { border-left-color: var(--status-pink); }
+.cal-chip[data-mine="true"] { background: color-mix(in oklch, var(--accent) 12%, var(--bg-raised)); border-left-color: var(--accent); font-weight: 600; }
+.cal-week-chip[data-mine="true"] { outline: 1.5px solid var(--accent); background: color-mix(in oklch, var(--accent) 10%, var(--bg-raised)); }
+.agenda-item[data-mine="true"] { background: color-mix(in oklch, var(--accent) 6%, var(--bg-raised)); }
 .cal-more { font-size: 10.5px; color: var(--ink-muted); padding-left: 4px; }
 .cal-empty { padding: 48px 0; text-align: center; color: var(--ink-dim); font-size: 14px; }
 

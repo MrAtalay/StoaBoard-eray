@@ -58,6 +58,7 @@ function CalendarView({ tasks, onOpenTask, onOpenModal, canCreateTasks }) {
   const [barTooltip, setBarTooltip] = useCalState(null); // {text, x, y}
 
   const today    = new Date().toISOString().slice(0, 10);
+  const myId     = window.CURRENT_USER?.id;
   const year     = cursor.getFullYear();
   const month    = cursor.getMonth();
   const monthName = CAL_MONTHS[month];
@@ -320,7 +321,7 @@ function CalendarView({ tasks, onOpenTask, onOpenModal, canCreateTasks }) {
                 </div>
                 {c.dateStr && renderBars(c.dateStr)}
                 {visible.map(t => (
-                  <div key={t.id} className="cal-chip" data-tone={chipTone(t)} onClick={(e) => { e.stopPropagation(); onOpenTask(t); }} title={t.title}>
+                  <div key={t.id} className="cal-chip" data-tone={chipTone(t)} data-mine={myId && (t.assignees||[]).includes(myId)} onClick={(e) => { e.stopPropagation(); onOpenTask(t); }} title={t.title}>
                     {t.title}
                   </div>
                 ))}
@@ -390,7 +391,7 @@ function CalendarView({ tasks, onOpenTask, onOpenModal, canCreateTasks }) {
                   {dayTasks.map(t => {
                     const overdueT = DATA.isOverdue(t.due, t.col);
                     return (
-                      <div key={t.id} className="cal-week-chip" data-tone={chipTone(t)} data-overdue={overdueT} onClick={(e) => { e.stopPropagation(); onOpenTask(t); }}>
+                      <div key={t.id} className="cal-week-chip" data-tone={chipTone(t)} data-overdue={overdueT} data-mine={myId && (t.assignees||[]).includes(myId)} onClick={(e) => { e.stopPropagation(); onOpenTask(t); }}>
                         <span className="cal-week-chip-title">{t.title}</span>
                         {t.priority === 'high' && <Icon name="arrowUp" size={10} style={{ color:'var(--status-rose)', flexShrink:0 }} />}
                       </div>
@@ -426,7 +427,7 @@ function CalendarView({ tasks, onOpenTask, onOpenModal, canCreateTasks }) {
                     const colObj     = DATA.COLUMNS.find(c => c.id === t.col);
                     const rowMembers = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
                     return (
-                      <div key={t.id} className="agenda-item" data-tone={chipTone(t)} onClick={() => onOpenTask(t)}>
+                      <div key={t.id} className="agenda-item" data-tone={chipTone(t)} data-mine={myId && (t.assignees||[]).includes(myId)} onClick={() => onOpenTask(t)}>
                         <div className="agenda-item-bar" />
                         <div className="agenda-item-body">
                           <div className="agenda-item-title">{t.title}</div>

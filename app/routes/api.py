@@ -870,8 +870,14 @@ def update_member(slug):
     target = WorkspaceMember.query.filter_by(
         workspace_id=actor.workspace_id, user_id=target_user.id
     ).first_or_404()
-    if target.role == 'owner' and actor.role != 'owner':
-        return jsonify({'error': 'Sahip rolü sadece sahip tarafından değiştirilebilir'}), 403
+
+    # Owner's role can never be changed by anyone
+    if target.role == 'owner':
+        return jsonify({'error': 'Sahip rolü değiştirilemez'}), 403
+
+    # Non-owners cannot change their own role
+    if actor.role != 'owner' and target.user_id == actor.user_id:
+        return jsonify({'error': 'Kendi rolünüzü değiştiremezsiniz'}), 403
 
     data = request.get_json(silent=True) or {}
     if 'role_id' in data:

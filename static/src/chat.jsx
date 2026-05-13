@@ -61,6 +61,51 @@ function fmtMsgTime(msg) {
   }
   return msg.time || '';
 }
+// ── Date key (YYYY-MM-DD) for grouping messages ────────────────────────────
+function msgDateKey(msg) {
+  const raw = msg.ts || msg.created_at;
+  if (raw) {
+    try {
+      const iso = (raw.endsWith('Z') || raw.includes('+')) ? raw : raw + 'Z';
+      return new Date(iso).toISOString().slice(0, 10);
+    } catch(e) {}
+  }
+  return null;
+}
+// ── Date separator label ───────────────────────────────────────────────────
+function fmtDateSep(dateKey) {
+  if (!dateKey) return '';
+  const TR_MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (dateKey === today) return 'Bugün';
+  if (dateKey === yesterday) return 'Dün';
+  const d = new Date(dateKey + 'T00:00:00');
+  return `${d.getDate()} ${TR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+// ── Render message text with @mention chips ────────────────────────────────
+function RenderMsgText({ text, allMembers, onMentionClick }) {
+  if (!text) return null;
+  const parts = text.split(/(@[\w.-]+)/g);
+  return React.createElement('span', null, ...parts.map((part, i) => {
+    if (part.startsWith('@')) {
+      const slug = part.slice(1).replace(/[.\-]+$/, '');
+      const member = allMembers.find(m => m.id === slug);
+      if (member) {
+        return React.createElement('span', {
+          key: i,
+          onClick: (e) => { e.stopPropagation(); onMentionClick(member); },
+          style: {
+            display: 'inline-block', background: 'var(--accent-soft)',
+            color: 'var(--accent)', borderRadius: 4, padding: '0 4px',
+            fontWeight: 600, fontSize: '0.92em', cursor: 'pointer',
+          }
+        }, `@${member.name}`);
+      }
+    }
+    return part;
+  }));
+}
 // ── Full date+time formatter for media/links ──────────────────────────────
 function fmtMsgDateTime(msg) {
   const raw = msg.ts || msg.created_at;
@@ -161,7 +206,7 @@ function MsgContent({ msg, onImageClick }) {
       </div>
     );
   }
-  return <span>{msg.text}</span>;
+  return <span><RenderMsgText text={msg.text} allMembers={window.DATA?.MEMBERS || []} onMentionClick={msg._onMentionClick || (() => {})} /></span>;
 }
 
 // ── Media Gallery Tab ─────────────────────────────────────────────────────
@@ -900,11 +945,22 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
                 const prevMsg = messages[i - 1];
                 const showSender = !isMine && (!prevMsg || prevMsg.from !== msg.from);
                 const canDelete = !msg._temp && !msg.deleted;
+                const dateKey = msgDateKey(msg);
+                const prevDateKey = prevMsg ? msgDateKey(prevMsg) : null;
+                const showDateSep = dateKey && dateKey !== prevDateKey;
                 const msgKey = String(msg.id);
                 const msgReactions = reactions[msgKey] || {};
                 const hasReactions = Object.keys(msgReactions).length > 0;
                 return (
-                  <div key={msg.id || i} className={`chat-msg ${isMine ? 'mine' : 'theirs'}`}
+                  <React.Fragment key={msg.id || i}>
+                  {showDateSep && (
+                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', margin:'4px 0' }}>
+                      <div style={{ flex:1, height:1, background:'var(--line)' }} />
+                      <span style={{ fontSize:11, color:'var(--ink-faint)', fontWeight:500, flexShrink:0 }}>{fmtDateSep(dateKey)}</span>
+                      <div style={{ flex:1, height:1, background:'var(--line)' }} />
+                    </div>
+                  )}
+                  <div className={`chat-msg ${isMine ? 'mine' : 'theirs'}`}
                     data-msgid={msg.id}
                     style={{ position: 'relative', scrollMarginTop: 60 }}
                   >
@@ -921,7 +977,7 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
                         <div className={`chat-bubble ${msg._temp ? 'chat-bubble-sending' : ''} ${msg.deleted ? 'chat-bubble-deleted' : ''}`}>
                           {msg.deleted
                             ? <span style={{ fontStyle: 'italic', color: 'var(--ink-faint)', fontSize: 12 }}>Bu mesaj silindi</span>
-                            : <MsgContent msg={msg} onImageClick={setLightbox} />
+                            : <MsgContent msg={{ ...msg, _onMentionClick: (member) => setDmWith(member.id) }} onImageClick={setLightbox} />
                           }
                           {starredMsgs.has(String(msg.id)) && (
                             <span style={{ position: 'absolute', top: 4, right: 6, fontSize: 10, color: 'var(--status-yellow)', pointerEvents: 'none' }}>★</span>
@@ -967,6 +1023,7 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
                       <div className="chat-msg-time">{fmtMsgTime(msg)}</div>
                     </div>
                   </div>
+                  </React.Fragment>
                 );
               })}
               {typingUser && (

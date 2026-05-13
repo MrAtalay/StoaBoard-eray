@@ -1072,7 +1072,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                       value={m.role_id || null}
                       roles={roles}
                       onChange={roleId => changeMemberRole(m.id, roleId)}
-                      disabled={memberBusy === m.id}
+                      disabled={memberBusy === m.id || (!isOwner && m.id === me.id)}
+                      title={(!isOwner && m.id === me.id) ? 'Kendi rolünüzü değiştiremezsiniz' : undefined}
                     />
                     {confirmRemoveMemberId === m.id ? (
                       <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11 }}>
