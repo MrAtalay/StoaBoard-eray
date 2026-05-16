@@ -50,12 +50,18 @@ function fmtDateRange(s, e) {
   return `${DATA.fmtDate(s)} – ${DATA.fmtDate(e)}`;
 }
 
-function CalendarView({ tasks, onOpenTask, onOpenModal, canCreateTasks }) {
+function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks }) {
   const [cursor, setCursor]     = useCalState(() => new Date());
   const [calView, setCalView]   = useCalState('month');
   const [rangeStart, setRangeStart] = useCalState(null);
   const [hoverDate, setHoverDate]   = useCalState(null);
   const [barTooltip, setBarTooltip] = useCalState(null); // {text, x, y}
+  const [onlyMine, setOnlyMine] = useCalState(() => localStorage.getItem('stoa.calMine') === 'true');
+  React.useEffect(() => { localStorage.setItem('stoa.calMine', onlyMine ? 'true' : 'false'); }, [onlyMine]);
+  const meId = window.CURRENT_USER?.id;
+  const tasks = onlyMine && meId
+    ? rawTasks.filter(t => (t.assignees || []).includes(meId))
+    : rawTasks;
 
   const today    = new Date().toISOString().slice(0, 10);
   const myId     = window.CURRENT_USER?.id;
@@ -231,6 +237,29 @@ function CalendarView({ tasks, onOpenTask, onOpenModal, canCreateTasks }) {
     );
   };
 
+  // ── Mini-calendar (right panel) ──────────────────────────────────────────
+  const miniRef = React.useRef(null);
+  const [miniCursor, setMiniCursor] = useCalState(() => new Date());
+  React.useEffect(() => { setMiniCursor(new Date(year, month, 1)); }, [year, month]);
+  const miniY = miniCursor.getFullYear();
+  const miniM = miniCursor.getMonth();
+  const miniFirstDOW = (new Date(miniY, miniM, 1).getDay() + 6) % 7;
+  const miniDaysIn   = new Date(miniY, miniM + 1, 0).getDate();
+  const miniPrevDays = new Date(miniY, miniM, 0).getDate();
+  const miniCells = [];
+  for (let i = miniFirstDOW - 1; i >= 0; i--) miniCells.push({ day: miniPrevDays - i, other: true, dateStr: null });
+  for (let d = 1; d <= miniDaysIn; d++) {
+    const ds = `${miniY}-${String(miniM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    miniCells.push({ day: d, other: false, dateStr: ds });
+  }
+  while (miniCells.length < 42) miniCells.push({ day: miniCells.length - miniDaysIn - miniFirstDOW + 1, other: true, dateStr: null });
+
+  const todayTasksList = tasks.filter(t => {
+    if (t.due === today) return true;
+    if (t.start && t.start <= today && (t.due || t.start) >= today) return true;
+    return false;
+  });
+
   return (
     <div className="cal-wrap" onClick={() => { if (rangeStart) setRangeStart(null); }}>
 
@@ -263,6 +292,20 @@ function CalendarView({ tasks, onOpenTask, onOpenModal, canCreateTasks }) {
             </div>
           )}
           <button className="btn btn-ghost" onClick={() => setCursor(new Date())}>Bugün</button>
+          <button
+            className="filter-priority-chip"
+            data-active={onlyMine}
+            onClick={() => setOnlyMine(v => !v)}
+            title="Sadece bana atananları göster"
+          >
+            <Icon name="user" size={11} />
+            Bana atananlar
+          </button>
+          {canCreateTasks && (
+            <button className="btn btn-primary" onClick={() => onOpenModal?.('todo')}>
+              <Icon name="plus" size={13} /> Yeni görev
+            </button>
+          )}
         </div>
       </div>
 
@@ -405,6 +448,80 @@ function CalendarView({ tasks, onOpenTask, onOpenModal, canCreateTasks }) {
           })}
         </div>
       )}
+
+      {/* ── Right side panel: mini calendar + today list ── */}
+      <aside className="cal-side">
+        <div className="cal-side-card">
+          <div className="cal-side-head">
+            <button className="cal-side-nav" onClick={() => setMiniCursor(new Date(miniY, miniM - 1, 1))} title="Önceki ay">
+              <Icon name="chevronLeft" size={13} />
+            </button>
+            <div className="cal-side-title">{CAL_MONTHS[miniM]} {miniY}</div>
+            <button className="cal-side-nav" onClick={() => setMiniCursor(new Date(miniY, miniM + 1, 1))} title="Sonraki ay">
+              <Icon name="chevronRight" size={13} />
+            </button>
+          </div>
+          <div className="cal-side-mini">
+            {CAL_DAYS_SHORT.map(d => <div key={d} className="cal-side-dow">{d[0]}</div>)}
+            {miniCells.map((c, i) => {
+              const isCurMonth = !c.other;
+              const isToday = c.dateStr === today;
+              const isSelected = c.dateStr && c.dateStr === dateStr(cursor);
+              const hasTasks = c.dateStr && (tasksFor(c.dateStr).length > 0 || barsFor(c.dateStr).length > 0);
+              return (
+                <button
+                  key={i}
+                  className="cal-side-day"
+                  data-other={!isCurMonth}
+                  data-today={isToday}
+                  data-selected={isSelected}
+                  data-has-tasks={hasTasks}
+                  disabled={!c.dateStr}
+                  onClick={() => { if (c.dateStr) { setCursor(new Date(c.dateStr + 'T00:00:00')); } }}
+                >
+                  {c.day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="cal-side-card">
+          <div className="cal-side-card-head">
+            <Icon name="clock" size={13} />
+            <span>Bugün</span>
+            <span className="cal-side-count">{todayTasksList.length}</span>
+          </div>
+          <div className="cal-side-list">
+            {todayTasksList.length === 0 && (
+              <div className="cal-side-empty">Bugün için görev yok.</div>
+            )}
+            {todayTasksList.map(t => {
+              const col = DATA.COLUMNS.find(c => c.id === t.col);
+              const isMine = meId && (t.assignees || []).includes(meId);
+              const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+              const firstMember = members[0];
+              return (
+                <div key={t.id} className="cal-side-item" data-mine={isMine} onClick={() => onOpenTask(t)}>
+                  <div className="cal-side-item-bar" style={{ background: firstMember?.color || col?.color || 'var(--accent)' }} />
+                  <div className="cal-side-item-body">
+                    <div className="cal-side-item-title">{t.title}</div>
+                    <div className="cal-side-item-meta">
+                      <span>{col?.title_tr || t.col}</span>
+                      {t.start && t.due && t.start !== t.due && (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+                          {DATA.fmtDate(t.start)} – {DATA.fmtDate(t.due)}
+                        </span>
+                      )}
+                      {members.length > 0 && <AvatarStack members={members} size="sm" max={3} />}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </aside>
 
       {/* ── Agenda view ── */}
       {calView === 'agenda' && (

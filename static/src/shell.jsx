@@ -110,6 +110,9 @@ function Sidebar({
   mobileOpen, onMobileClose,
   unreadCounts,
   currentWsId,
+  myTasksOpenCount,
+  notifCount,
+  onOpenNotifs,
 }) {
   const me = window.CURRENT_USER || {};
   const online = onlineUsers || new Set();
@@ -118,6 +121,11 @@ function Sidebar({
   const unreads = unreadCounts || {};
   const generalKey = currentWsId ? `general_${currentWsId}` : 'general';
   const generalUnread = unreads[generalKey] || 0;
+  // Total chat unread = general + all DMs (excludes media tracker)
+  const chatUnreadTotal = Object.entries(unreads).reduce((acc, [k, v]) => {
+    if (k === 'media') return acc;
+    return acc + (v || 0);
+  }, 0);
 
   const myStatus = typeof currentStatus === 'string' ? currentStatus : (currentStatus?.current || 'online');
   const wsSwitcherRef = React.useRef(null);
@@ -239,31 +247,31 @@ function Sidebar({
       </div>
 
       <div className="sidebar-section">
-        <NavItem icon="home"        label="Ana Sayfa"  sub="Home"     onClick={() => onView('dashboard')} active={view === 'dashboard'} />
-        <NavItem icon="layoutBoard" label="Pano"       sub="Board"    onClick={() => onView('board')}     active={view === 'board'} />
-        <NavItem icon="list"        label="Liste"      sub="List"     onClick={() => onView('list')}      active={view === 'list'} />
-        <NavItem icon="calendar"    label="Takvim"     sub="Calendar" onClick={() => onView('calendar')}  active={view === 'calendar'} />
-        <NavItem icon="msg"         label="Sohbet"     sub="Chat"     onClick={() => onView('chat')}      active={view === 'chat'} />
-        <NavItem icon="user"        label="Görevlerim" sub="My Tasks" onClick={() => {
-          localStorage.setItem('stoa.filterMyTasks', 'true');
-          window.dispatchEvent(new CustomEvent('stoa:activateMyTasks'));
-          onView('board');
-        }} active={false} />
-      </div>
-
-      <div className="sidebar-section">
-        <div className="sidebar-section-title"><span>Kanallar</span></div>
-        <div className="project-item" onClick={() => onChatOpen()}>
-          <div style={{ width:18, height:18, borderRadius:5, background:'var(--bg-dim)', display:'grid', placeItems:'center', color:'var(--ink-muted)', flexShrink:0, fontWeight:700, fontSize:13 }}>
-            #
-          </div>
-          <span className="sidebar-label">Genel</span>
-          {generalUnread > 0 && (
-            <span className="nav-badge" data-new="true" style={{ marginLeft: 'auto' }}>
-              {generalUnread > 9 ? '9+' : generalUnread}
-            </span>
-          )}
-        </div>
+        <NavItem icon="home"          label="Ana Sayfa"   sub="Dashboard" onClick={() => onView('dashboard')} active={view === 'dashboard'} />
+        <NavItem icon="circleCheck"   label="Görevlerim"  sub="My Tasks"
+          badge={myTasksOpenCount > 0 ? (myTasksOpenCount > 99 ? '99+' : String(myTasksOpenCount)) : null}
+          badgeUnread
+          onClick={() => {
+            localStorage.setItem('stoa.filterMyTasks', 'true');
+            window.dispatchEvent(new CustomEvent('stoa:activateMyTasks'));
+            onView('board');
+          }}
+          active={false}
+        />
+        <NavItem icon="layoutBoard"   label="Pano"        sub="Kanban"    onClick={() => onView('board')}     active={view === 'board'} />
+        <NavItem icon="calendar"      label="Takvim"      sub="Calendar"  onClick={() => onView('calendar')}  active={view === 'calendar'} />
+        <NavItem icon="msg"           label="Sohbet"      sub="Chat"
+          badge={chatUnreadTotal > 0 ? (chatUnreadTotal > 99 ? '99+' : String(chatUnreadTotal)) : null}
+          badgeUnread
+          onClick={() => onView('chat')}
+          active={view === 'chat'}
+        />
+        <NavItem icon="bell"          label="Bildirimler" sub="Notifications"
+          badge={notifCount > 0 ? (notifCount > 99 ? '99+' : String(notifCount)) : null}
+          badgeUnread
+          onClick={() => onOpenNotifs?.()}
+          active={view === 'notifications'}
+        />
       </div>
 
       <div className="sidebar-section">
@@ -452,11 +460,11 @@ function Topbar({ view, onView, openCmd, openNotifs, openModal, activeCrumb, onC
         <span className="current">{activeCrumb}</span>
       </div>
       <div className="topbar-right">
-        {(view === 'board' || view === 'list' || view === 'calendar') && (
+        {(view === 'board' || view === 'calendar' || view === 'dashboard') && (
           <div className="view-switch">
-            <button data-active={view==='board'}    onClick={() => onView('board')}>   <Icon name="layoutBoard" size={13} /> Pano</button>
-            <button data-active={view==='list'}     onClick={() => onView('list')}>    <Icon name="list" size={13} /> Liste</button>
-            <button data-active={view==='calendar'} onClick={() => onView('calendar')}><Icon name="calendar" size={13} /> Takvim</button>
+            <button data-active={view==='dashboard'} onClick={() => onView('dashboard')}><Icon name="home" size={13} /> Ana Sayfa</button>
+            <button data-active={view==='board'}     onClick={() => onView('board')}>    <Icon name="layoutBoard" size={13} /> Pano</button>
+            <button data-active={view==='calendar'}  onClick={() => onView('calendar')}> <Icon name="calendar" size={13} /> Takvim</button>
           </div>
         )}
         {inviteCode && (
@@ -471,7 +479,15 @@ function Topbar({ view, onView, openCmd, openNotifs, openModal, activeCrumb, onC
           </div>
         )}
         <button className="icon-btn" onClick={openCmd}    title="Komut paleti (⌘K)"><Icon name="search" size={16} /></button>
-        <button className="icon-btn" onClick={onChatOpen} title="Takım Sohbeti"><Icon name="msg" size={16} /></button>
+        <button
+          className="icon-btn"
+          onClick={view === 'chat' ? undefined : onChatOpen}
+          disabled={view === 'chat'}
+          title={view === 'chat' ? 'Sohbet zaten tam ekran açık' : 'Hızlı Sohbet'}
+          style={view === 'chat' ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+        >
+          <Icon name="msg" size={16} />
+        </button>
         <button className="icon-btn" onClick={openNotifs} title="Bildirimler" style={{ position: 'relative' }}>
           <Icon name="bell" size={16} />
           {notifCount > 0

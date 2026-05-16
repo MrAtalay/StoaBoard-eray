@@ -165,10 +165,11 @@ window.API = {
 
 const COMMANDS = [
   { group: 'Navigasyon', items: [
-    { label: 'Board\'a git',          icon: 'layoutBoard', action: 'goto:board',     shortcut: 'G B' },
-    { label: 'Liste görünümü',        icon: 'list',        action: 'goto:list',      shortcut: 'G L' },
+    { label: 'Ana Sayfa',             icon: 'home',        action: 'goto:dashboard', shortcut: 'G D' },
+    { label: 'Pano (Kanban)',         icon: 'layoutBoard', action: 'goto:board',     shortcut: 'G B' },
+    { label: 'Liste görünümü',        icon: 'list',        action: 'goto:board-list', shortcut: 'G L' },
     { label: 'Takvim',                icon: 'calendar',    action: 'goto:calendar',  shortcut: 'G C' },
-    { label: 'Dashboard',             icon: 'chart',       action: 'goto:dashboard', shortcut: 'G D' },
+    { label: 'Sohbet',                icon: 'msg',         action: 'goto:chat',      shortcut: 'G M' },
     { label: 'Ayarlar',               icon: 'settings',    action: 'goto:settings',  shortcut: 'G S' },
   ]},
   { group: 'Aksiyonlar', items: [

@@ -10,11 +10,25 @@ function _notifType(text) {
 }
 
 function _notifIcon(type) {
-  return { message: 'msg', task: 'circleCheck', mention: 'tag', info: 'bell' }[type] || 'bell';
+  return { message: 'msg', task: 'circleCheck', mention: 'at', calendar: 'calendar', info: 'bell' }[type] || 'bell';
 }
 
-function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId }) {
+function _notifCategory(n) {
+  // Returns one of: 'mention' | 'message' | 'task' | 'calendar' | 'other'
+  if (n.type) {
+    if (['mention','message','task','calendar'].includes(n.type)) return n.type;
+  }
+  const t = (n.text || '').toLowerCase();
+  if (/@/.test(t)) return 'mention';
+  if (n.chat_channel || n.sender_slug || /mesaj/.test(t)) return 'message';
+  if (n.task_id || /görev|atandı|atadı/.test(t)) return 'task';
+  if (/takvim|hatırlat|toplantı|etkinlik/.test(t)) return 'calendar';
+  return 'other';
+}
+
+function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId, tweaks, setTweak, fullPage }) {
   const [tab, setTab]           = React.useState('all');
+  const [prefsOpen, setPrefsOpen] = React.useState(fullPage);
   const [items, setItems]       = React.useState(() => DATA.NOTIFICATIONS || []);
   const [confirmDel, setConfirmDel] = React.useState(false);
   const panelRef = React.useRef(null);
@@ -99,19 +113,60 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
   const visibleItems = currentWsId
     ? items.filter(n => !n.workspace_id || n.workspace_id === currentWsId || _notifType(n.text) === 'message')
     : items;
-  const filtered    = tab === 'unread' ? visibleItems.filter(n => n.unread) : visibleItems;
-  const unreadCount = visibleItems.filter(n => n.unread).length;
+  const counts = visibleItems.reduce((acc, n) => {
+    const c = _notifCategory(n);
+    acc[c] = (acc[c] || 0) + 1;
+    acc.all = (acc.all || 0) + 1;
+    if (n.unread) acc.unread = (acc.unread || 0) + 1;
+    return acc;
+  }, {});
+  const filtered = tab === 'all' ? visibleItems
+                 : tab === 'unread' ? visibleItems.filter(n => n.unread)
+                 : visibleItems.filter(n => _notifCategory(n) === tab);
+  const unreadCount = counts.unread || 0;
+
+  const tabs = [
+    { id: 'all',      label: 'Tümü',       count: counts.all || 0 },
+    { id: 'unread',   label: 'Okunmamış',  count: counts.unread || 0 },
+    { id: 'mention',  label: 'Bahsetmeler', count: counts.mention || 0 },
+    { id: 'message',  label: 'Mesajlar',   count: counts.message || 0 },
+    { id: 'task',     label: 'Görevler',   count: counts.task || 0 },
+    { id: 'calendar', label: 'Takvim',     count: counts.calendar || 0 },
+  ];
+
+  // Preferences (reflect tweaks; default ON if undefined)
+  const T = tweaks || {};
+  const v = (k, def = true) => (T[k] === undefined ? def : !!T[k]);
+  const updatePref = (k, val) => setTweak?.(k, val);
 
   return (
     <>
-      <div className="notif-panel" ref={panelRef} data-open={open}>
+      <div
+        className="notif-panel"
+        ref={panelRef}
+        data-open={open || !!fullPage}
+        data-full-page={!!fullPage}
+      >
         <div className="notif-head">
           <div className="notif-title">Bildirimler</div>
           {unreadCount > 0 && <div className="notif-count">{unreadCount}</div>}
-          <div className="notif-tabs">
-            <button data-active={tab === 'all'}    onClick={() => setTab('all')}>Tümü</button>
-            <button data-active={tab === 'unread'} onClick={() => setTab('unread')}>Okunmamış</button>
-          </div>
+          {fullPage && (
+            <button
+              className="btn btn-ghost"
+              style={{ marginLeft: 'auto', fontSize: 11.5 }}
+              onClick={markAllRead}
+            >
+              <Icon name="check" size={12} /> Tümünü oku
+            </button>
+          )}
+        </div>
+        <div className="notif-tabs notif-tabs-scroll">
+          {tabs.map(t => (
+            <button key={t.id} data-active={tab === t.id} onClick={() => setTab(t.id)}>
+              {t.label}
+              {t.count > 0 && <span className="notif-tab-count">{t.count > 99 ? '99+' : t.count}</span>}
+            </button>
+          ))}
         </div>
 
         <div className="notif-list">
@@ -152,6 +207,74 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
           })}
         </div>
 
+        {/* Preferences özet section */}
+        <div className="notif-prefs">
+          <button
+            className="notif-prefs-toggle"
+            onClick={() => setPrefsOpen(o => !o)}
+            aria-expanded={prefsOpen}
+          >
+            <Icon name="settings" size={12} />
+            <span>Tercihler</span>
+            <Icon name={prefsOpen ? 'chevronUp' : 'chevronDown'} size={11} style={{ marginLeft: 'auto' }} />
+          </button>
+          {prefsOpen && (
+            <div className="notif-prefs-body">
+              <NotifPrefRow
+                label="Bildirim sesi"
+                desc="Yeni mesaj/bildirim sesi"
+                checked={v('soundEnabled', true)}
+                onChange={(b) => updatePref('soundEnabled', b)}
+              />
+              <NotifPrefRow
+                label="Rahatsız etme"
+                desc="Sesler ve push'lar susturulur"
+                checked={v('dndEnabled', false)}
+                onChange={(b) => updatePref('dndEnabled', b)}
+              />
+              {v('dndEnabled', false) && (
+                <div className="notif-pref-schedule">
+                  <span>Saat:</span>
+                  <input
+                    type="time"
+                    value={T.dndStart || '19:00'}
+                    onChange={(e) => updatePref('dndStart', e.target.value)}
+                  />
+                  <span>–</span>
+                  <input
+                    type="time"
+                    value={T.dndEnd || '08:00'}
+                    onChange={(e) => updatePref('dndEnd', e.target.value)}
+                  />
+                </div>
+              )}
+              <NotifPrefRow
+                label="Masaüstü bildirimleri"
+                desc="Tarayıcı push"
+                checked={v('desktopPush', true)}
+                onChange={(b) => updatePref('desktopPush', b)}
+              />
+              <NotifPrefRow
+                label="Takımlar arası DM'ler"
+                desc="DM'ler her zaman gelir"
+                checked={v('crossTeamDM', true)}
+                onChange={(b) => updatePref('crossTeamDM', b)}
+              />
+              <NotifPrefRow
+                label="E-posta özeti"
+                desc="Günlük 08:00 özeti"
+                checked={v('emailDigest', false)}
+                onChange={(b) => updatePref('emailDigest', b)}
+              />
+              <div className="notif-prefs-foot">
+                <button onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('stoa:gotoSettings', { detail: { section: 'notifications' } })); }}>
+                  Tüm ayarlar →
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div style={{ padding: '10px 14px', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', fontSize: 12, gap: 8 }}>
           {confirmDel ? (
             <>
@@ -180,4 +303,25 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
   );
 }
 
+function NotifPrefRow({ label, desc, checked, onChange }) {
+  return (
+    <div className="notif-pref-row">
+      <div className="notif-pref-text">
+        <div className="notif-pref-label">{label}</div>
+        {desc && <div className="notif-pref-desc">{desc}</div>}
+      </div>
+      <button
+        type="button"
+        className="toggle-switch"
+        data-on={!!checked}
+        onClick={() => onChange?.(!checked)}
+        aria-pressed={!!checked}
+      >
+        <span className="toggle-knob" />
+      </button>
+    </div>
+  );
+}
+
 window.NotifPanel = NotifPanel;
+window.NotifPrefRow = NotifPrefRow;

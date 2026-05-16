@@ -26,7 +26,15 @@ function App() {
   const [authed, setAuthed]                 = useS(false);
   const [loading, setLoading]               = useS(true);
   const [needsWorkspace, setNeedsWorkspace] = useS(false);
-  const [view, setView]                     = useS(() => localStorage.getItem('stoa.view') || 'board');
+  const [view, setView]                     = useS(() => {
+    const stored = localStorage.getItem('stoa.view') || 'board';
+    // Legacy: 'list' view migrated to 'board' with list sub-view
+    if (stored === 'list') {
+      localStorage.setItem('stoa.boardSubView', 'list');
+      return 'board';
+    }
+    return stored;
+  });
   const [tasks, setTasks]                   = useS([]);
   const [currentProject, setCurrentProject] = useS(null);
   const [drawerTask, setDrawerTask]         = useS(null);
@@ -101,6 +109,23 @@ function App() {
     return () => window.removeEventListener('message', handler);
   }, []);
 
+  // Listen for cross-component "go to settings" event (from NotifPanel preferences shortcut)
+  useEf(() => {
+    const handler = () => setView('settings');
+    window.addEventListener('stoa:gotoSettings', handler);
+    return () => window.removeEventListener('stoa:gotoSettings', handler);
+  }, []);
+
+  // Auto-close slide-out chat popup whenever the active view changes
+  // (especially when user navigates to the full-page chat route)
+  useEf(() => {
+    if (!chatOpen) return;
+    setChatOpen(false);
+    setChatDmWith(null);
+    setChatHighlightMsgId(null);
+    window.__CHAT_OPEN__ = false;
+  }, [view]);
+
   // Keyboard shortcuts
   useEf(() => {
     const isEditing = () => {
@@ -108,7 +133,8 @@ function App() {
       return ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable;
     };
     const clearG = () => { clearTimeout(pendingGTimer.current); pendingGTimer.current = null; };
-    const G_MAP = { b: 'board', l: 'list', c: 'calendar', d: 'dashboard', s: 'settings' };
+    // G+key navigation. 'l' (list) and 'b' (board) both go to board view; list sets sub-view.
+    const G_MAP = { b: 'board', l: 'board', c: 'calendar', d: 'dashboard', s: 'settings', m: 'chat' };
 
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); clearG(); setCmdOpen(true); return; }
@@ -124,8 +150,14 @@ function App() {
       // Second key of a G+key sequence
       if (pendingGTimer.current !== null) {
         clearG();
-        const dest = G_MAP[e.key.toLowerCase()];
-        if (dest) { e.preventDefault(); setView(dest); }
+        const k = e.key.toLowerCase();
+        const dest = G_MAP[k];
+        if (dest) {
+          e.preventDefault();
+          if (k === 'l') localStorage.setItem('stoa.boardSubView', 'list');
+          else if (k === 'b') localStorage.setItem('stoa.boardSubView', 'kanban');
+          setView(dest);
+        }
         return;
       }
 
@@ -569,7 +601,11 @@ function App() {
   };
 
   const handleCmd = (action) => {
-    if (action.startsWith('goto:'))       setView(action.slice(5));
+    if (action === 'goto:board-list') {
+      localStorage.setItem('stoa.boardSubView', 'list');
+      setView('board');
+    }
+    else if (action.startsWith('goto:')) setView(action.slice(5));
     else if (action === 'new:task')       { if (canManageTasks) openModal('todo'); }
     else if (action === 'open:notifs')    setNotifOpen(true);
     else if (action === 'open:chat')      openChat();
@@ -667,7 +703,17 @@ function App() {
     );
   }
 
-  const crumb = { board:'Pano', list:'Liste', calendar:'Takvim', dashboard:'Ana Sayfa', settings:'Ayarlar', chat:'Sohbet' }[view] || 'Pano';
+  const crumb = { board:'Pano', calendar:'Takvim', dashboard:'Ana Sayfa', settings:'Ayarlar', chat:'Sohbet', notifications:'Bildirimler' }[view] || 'Pano';
+
+  // My-tasks open count (assigned to me, not in a done column)
+  const myId = window.CURRENT_USER?.id;
+  const myTasksOpenCount = myId
+    ? tasks.filter(t => {
+        if (!(t.assignees || []).includes(myId)) return false;
+        const c = (DATA.COLUMNS || []).find(c => c.id === t.col);
+        return !c?.is_done;
+      }).length
+    : 0;
   const noProject = !currentProject && DATA.PROJECTS.length === 0;
 
   // Convert onlineUsers map to Set of online slugs (for backward compat) and expose full map
@@ -713,6 +759,9 @@ function App() {
         }}
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
+        myTasksOpenCount={myTasksOpenCount}
+        notifCount={notifCount}
+        onOpenNotifs={() => { setView('notifications'); setNotifCount(0); }}
       />
       <div className="main">
         <Topbar
@@ -741,9 +790,37 @@ function App() {
         ) : (
           <>
             {view === 'board'     && <BoardView key={currentProject?.id || 'default'} tasks={tasks} onOpenTask={openDrawer} onMoveTask={moveTask} onDeleteTask={deleteTask} tweaks={tweaks} onOpenModal={openModal} onTitleChange={updateTitle} canManageTasks={canManageTasks} canManageProjects={canManageProjects} switching={projectSwitching} />}
-            {view === 'list'      && <ListView tasks={tasks} onOpenTask={openDrawer} onMoveTask={moveTask} canManageTasks={canManageTasks} />}
+            {view === 'notifications' && (
+              <NotifPanel
+                fullPage
+                open
+                onClose={() => setView('dashboard')}
+                socket={socket}
+                onOpenTask={(task) => { setView('board'); setDrawerTask(task); }}
+                onOpenChat={(slug, msgId) => { setView('chat'); openChat(slug, msgId); }}
+                currentWsId={currentWsId}
+                tweaks={tweaks}
+                setTweak={setTweak}
+              />
+            )}
             {view === 'calendar'  && <CalendarView tasks={tasks} onOpenTask={openDrawer} onOpenModal={openModal} canCreateTasks={canManageTasks} />}
             {view === 'dashboard' && <DashboardView tasks={tasks} onOpenTask={openDrawer} onView={setView} />}
+            {view === 'chat' && (
+              <ChatPanel
+                open
+                fullPage
+                onClose={() => setView('dashboard')}
+                onlineUsers={onlineSet}
+                onlineStatuses={onlineUsers}
+                members={members}
+                socket={socket}
+                initialDmWith={chatDmWith}
+                unreadCounts={unreadCounts}
+                markAsRead={markAsRead}
+                wsId={currentWsId}
+                highlightMsgId={chatHighlightMsgId}
+              />
+            )}
           </>
         )}
         {view === 'settings' && <SettingsView tweaks={tweaks} setTweak={setTweak} onLogout={handleLogout} onWsLogoChange={handleWsLogoChange} onMembersChange={setMembers} />}
@@ -769,24 +846,34 @@ function App() {
         onOpenTask={(task) => { setNotifOpen(false); setDrawerTask(task); }}
         onOpenChat={(slug, msgId) => { setNotifOpen(false); openChat(slug, msgId); }}
         currentWsId={currentWsId}
+        tweaks={tweaks}
+        setTweak={setTweak}
       />
-      <ChatPanel
-        open={chatOpen || view === 'chat'}
-        fullPage={view === 'chat'}
-        onClose={() => {
-          if (view === 'chat') { setView('board'); return; }
-          setChatOpen(false); setChatDmWith(null); setChatHighlightMsgId(null); window.__CHAT_OPEN__ = false;
-        }}
-        onlineUsers={onlineSet}
-        onlineStatuses={onlineUsers}
-        members={members}
-        socket={socket}
-        initialDmWith={chatDmWith}
-        unreadCounts={unreadCounts}
-        markAsRead={markAsRead}
-        wsId={currentWsId}
-        highlightMsgId={chatHighlightMsgId}
-      />
+      {/* Slide-out popup chat — only when NOT on full-page chat route */}
+      {view !== 'chat' && (
+        <ChatPanel
+          open={chatOpen}
+          fullPage={false}
+          onExpand={() => {
+            setChatOpen(false); setChatDmWith(null); setChatHighlightMsgId(null);
+            window.__CHAT_OPEN__ = false;
+            setView('chat');
+          }}
+          onClose={() => {
+            setChatOpen(false); setChatDmWith(null); setChatHighlightMsgId(null);
+            window.__CHAT_OPEN__ = false;
+          }}
+          onlineUsers={onlineSet}
+          onlineStatuses={onlineUsers}
+          members={members}
+          socket={socket}
+          initialDmWith={chatDmWith}
+          unreadCounts={unreadCounts}
+          markAsRead={markAsRead}
+          wsId={currentWsId}
+          highlightMsgId={chatHighlightMsgId}
+        />
+      )}
       <TweaksPanel tweaks={tweaks} setTweak={setTweak} visible={tweaksAvailable} />
       {projectModal && canManageProjects && <NewProjectModal onClose={() => setProjectModal(false)} onCreate={handleCreateProject} />}
       {wsJoinModalOpen && (

@@ -393,7 +393,305 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
   );
 }
 
-function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpenModal, onTitleChange, canManageTasks, canManageProjects, switching }) {
+// ─── Table View ──────────────────────────────────────────────────────────────
+function TableView({ tasks, onOpenTask, onMoveTask, canManageTasks }) {
+  const [sortKey, setSortKey] = useBoardState('due');
+  const [sortDir, setSortDir] = useBoardState('asc');
+  const me = window.CURRENT_USER?.id;
+
+  const toggleSort = (k) => {
+    if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(k); setSortDir('asc'); }
+  };
+
+  const sorted = [...tasks].sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const va = a[sortKey] || ''; const vb = b[sortKey] || '';
+    if (sortKey === 'due' || sortKey === 'start') {
+      return ((new Date(va || 0)) - (new Date(vb || 0))) * dir;
+    }
+    return String(va).localeCompare(String(vb)) * dir;
+  });
+
+  const daysBetween = (s, e) => {
+    if (!s && !e) return 0;
+    if (!s || !e) return 1;
+    const ms = new Date(e) - new Date(s);
+    return Math.max(1, Math.round(ms / 86400000) + 1);
+  };
+
+  const totals = sorted.reduce((acc, t) => {
+    acc.days += daysBetween(t.start, t.due);
+    acc.attachments += (t.attachments || 0);
+    acc.comments += (t.comments || 0);
+    return acc;
+  }, { days: 0, attachments: 0, comments: 0 });
+
+  const SortHead = ({ k, children, w }) => (
+    <th style={{ width: w, cursor: 'pointer' }} onClick={() => toggleSort(k)}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        {children}
+        {sortKey === k && <Icon name={sortDir === 'asc' ? 'chevronUp' : 'chevronDown'} size={10} />}
+      </span>
+    </th>
+  );
+
+  return (
+    <div className="table-view-wrap">
+      <table className="table-view">
+        <thead>
+          <tr>
+            <th style={{ width: 28 }} />
+            <SortHead k="id" w={70}>ID</SortHead>
+            <SortHead k="title">Başlık</SortHead>
+            <SortHead k="col" w={110}>Durum</SortHead>
+            <th style={{ width: 130 }}>Etiketler</th>
+            <th style={{ width: 110 }}>Atanan</th>
+            <SortHead k="start" w={86}>Başla</SortHead>
+            <SortHead k="due" w={86}>Bitir</SortHead>
+            <th style={{ width: 56 }}>Gün</th>
+            <th style={{ width: 100 }}>İlerleme</th>
+            <SortHead k="priority" w={90}>Öncelik</SortHead>
+            <th style={{ width: 40 }} title="Ekler"><Icon name="paperclip" size={11} /></th>
+            <th style={{ width: 40 }} title="Yorumlar"><Icon name="msg" size={11} /></th>
+            <th style={{ width: 40 }} title="Reaksiyon"><Icon name="smile" size={11} /></th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(t => {
+            const col = DATA.COLUMNS.find(c => c.id === t.col);
+            const isDone = col?.is_done || false;
+            const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+            const overdue = DATA.isOverdue(t.due, t.col);
+            const isMine = me && (t.assignees || []).includes(me);
+            return (
+              <tr key={t.id} data-done={isDone} data-mine={isMine} onClick={() => onOpenTask(t)} style={{ cursor: 'pointer' }}>
+                <td onClick={(e) => {
+                  e.stopPropagation();
+                  if (!canManageTasks) return;
+                  const doneCol = DATA.COLUMNS.find(c => c.is_done);
+                  const firstCol = DATA.COLUMNS[0];
+                  if (isDone) onMoveTask(t.id, firstCol?.id || 'todo');
+                  else if (doneCol) onMoveTask(t.id, doneCol.id);
+                }}>
+                  <div className="list-check" data-checked={isDone}>
+                    {isDone && <Icon name="check" size={10} strokeWidth={2.5} />}
+                  </div>
+                </td>
+                <td className="table-mono">#{String(t.id).padStart(3, '0')}</td>
+                <td className="table-title">{t.title}</td>
+                <td>
+                  <span className="table-status-chip" style={{ '--col-c': col?.color || 'var(--ink-faint)' }}>
+                    <span className="col-dot" style={{ background: col?.color || 'var(--ink-faint)' }} />
+                    {col?.title_tr || '—'}
+                  </span>
+                </td>
+                <td>
+                  <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                    {(t.labels || []).slice(0, 2).map(l => {
+                      const lab = DATA.LABELS[l];
+                      return lab && <span key={l} className="tag" data-tone={lab.tone}>{lab.tr}</span>;
+                    })}
+                  </div>
+                </td>
+                <td><AvatarStack members={members} size="sm" max={3} /></td>
+                <td className="table-mono" data-warn={overdue && !isDone}>{t.start ? DATA.fmtDate(t.start) : '—'}</td>
+                <td className="table-mono" data-warn={overdue && !isDone}>{t.due ? DATA.fmtDate(t.due) : '—'}</td>
+                <td className="table-mono">{daysBetween(t.start, t.due) || '—'}</td>
+                <td>
+                  {t.progress > 0 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <div className="progress-bar" style={{ width: 50 }}>
+                        <div className="progress-fill" style={{ width: `${t.progress}%` }} />
+                      </div>
+                      <span style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{t.progress}%</span>
+                    </div>
+                  ) : <span style={{ color: 'var(--ink-faint)' }}>—</span>}
+                </td>
+                <td>
+                  <span className="priority-pill">
+                    <span className="priority-dot" data-p={t.priority} />
+                    {t.priority === 'high' ? 'Yüksek' : t.priority === 'mid' ? 'Orta' : 'Düşük'}
+                  </span>
+                </td>
+                <td className="table-mono">{t.attachments || 0}</td>
+                <td className="table-mono">{t.comments || 0}</td>
+                <td className="table-mono">{(t.reactions_count || 0)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={2} />
+            <td>{sorted.length} görev</td>
+            <td colSpan={4} />
+            <td className="table-mono table-total">Σ {totals.days}</td>
+            <td colSpan={3} />
+            <td className="table-mono table-total">Σ {totals.attachments}</td>
+            <td className="table-mono table-total">Σ {totals.comments}</td>
+            <td />
+          </tr>
+        </tfoot>
+      </table>
+      {sorted.length === 0 && (
+        <div className="empty-state">
+          <Icon name="list" size={28} strokeWidth={1.2} />
+          <div>Görev bulunamadı.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Timeline (Gantt) View ───────────────────────────────────────────────────
+function TimelineView({ tasks, onOpenTask }) {
+  const [zoom, setZoom] = useBoardState(() => localStorage.getItem('stoa.tlZoom') || 'week');
+  useBoardEf(() => localStorage.setItem('stoa.tlZoom', zoom), [zoom]);
+
+  const dayWidth = { day: 60, week: 36, month: 22, quarter: 12 }[zoom] || 36;
+
+  // Build date range: earliest start → latest end (with padding); fallback to ±30 days from today
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dated = tasks.filter(t => t.start || t.due);
+  let minDate, maxDate;
+  if (dated.length === 0) {
+    minDate = new Date(today); minDate.setDate(today.getDate() - 14);
+    maxDate = new Date(today); maxDate.setDate(today.getDate() + 30);
+  } else {
+    const dates = dated.flatMap(t => [t.start, t.due].filter(Boolean).map(d => new Date(d)));
+    minDate = new Date(Math.min(...dates)); minDate.setDate(minDate.getDate() - 3);
+    maxDate = new Date(Math.max(...dates)); maxDate.setDate(maxDate.getDate() + 3);
+  }
+  minDate.setHours(0,0,0,0); maxDate.setHours(0,0,0,0);
+  const totalDays = Math.max(7, Math.round((maxDate - minDate) / 86400000) + 1);
+  const days = Array.from({ length: totalDays }, (_, i) => {
+    const d = new Date(minDate); d.setDate(minDate.getDate() + i); return d;
+  });
+
+  const dayIndex = (iso) => {
+    if (!iso) return null;
+    const d = new Date(iso); d.setHours(0,0,0,0);
+    return Math.round((d - minDate) / 86400000);
+  };
+
+  const todayIdx = dayIndex(today.toISOString());
+
+  // Group tasks by column (status)
+  const groups = DATA.COLUMNS.map(col => ({
+    col,
+    tasks: tasks.filter(t => t.col === col.id && (t.start || t.due))
+  })).filter(g => g.tasks.length > 0);
+
+  const SIDE = 220;
+  const totalW = totalDays * dayWidth;
+
+  return (
+    <div className="timeline-view">
+      <div className="timeline-toolbar">
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-muted)' }}>
+          {DATA.fmtDate(minDate.toISOString())} – {DATA.fmtDate(maxDate.toISOString())}
+        </div>
+        <div className="tl-zoom">
+          {[['day','Gün'],['week','Hafta'],['month','Ay'],['quarter','Çeyrek']].map(([k,l]) => (
+            <button key={k} data-active={zoom === k} onClick={() => setZoom(k)}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="timeline-grid" style={{ '--tl-side': `${SIDE}px`, '--tl-cw': `${dayWidth}px` }}>
+        <div className="tl-corner">Görev</div>
+        <div className="tl-header" style={{ width: totalW }}>
+          {days.map((d, i) => (
+            <div key={i} className="tl-day" data-today={i === todayIdx} data-weekend={d.getDay() === 0 || d.getDay() === 6}>
+              <div className="tl-day-num">{d.getDate()}</div>
+              <div className="tl-day-mo">{i === 0 || d.getDate() === 1 ? DATA.TR_MONTHS[d.getMonth()] : ''}</div>
+            </div>
+          ))}
+        </div>
+
+        {groups.map(({ col, tasks: gTasks }) => (
+          <React.Fragment key={col.id}>
+            <div className="tl-side tl-group">
+              <span className="col-dot" style={{ background: col.color }} /> {col.title_tr}
+              <span className="col-count" style={{ marginLeft: 'auto' }}>{gTasks.length}</span>
+            </div>
+            <div className="tl-track tl-group-track" style={{ width: totalW }}>
+              {todayIdx >= 0 && todayIdx < totalDays && (
+                <div className="tl-today-line" style={{ left: todayIdx * dayWidth + dayWidth/2 }} />
+              )}
+            </div>
+            {gTasks.map(t => {
+              const startIdx = dayIndex(t.start) ?? dayIndex(t.due);
+              const endIdx = dayIndex(t.due) ?? dayIndex(t.start);
+              const sIdx = Math.max(0, Math.min(startIdx, endIdx));
+              const eIdx = Math.min(totalDays - 1, Math.max(startIdx, endIdx));
+              const span = Math.max(1, eIdx - sIdx + 1);
+              const isDone = col.is_done;
+              const offscreenLeft = startIdx < 0;
+              const offscreenRight = endIdx > totalDays - 1;
+              const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+              return (
+                <React.Fragment key={t.id}>
+                  <div className="tl-side" onClick={() => onOpenTask(t)}>
+                    <div className="tl-side-title" data-done={isDone}>{t.title}</div>
+                    {members.length > 0 && <AvatarStack members={members} size="sm" max={3} />}
+                  </div>
+                  <div className="tl-track" style={{ width: totalW }}>
+                    {todayIdx >= 0 && todayIdx < totalDays && (
+                      <div className="tl-today-line" style={{ left: todayIdx * dayWidth + dayWidth/2 }} />
+                    )}
+                    {/* per-assignee stacked bars (or single fallback) */}
+                    {(members.length > 0 ? members : [null]).map((m, mi) => (
+                      <div
+                        key={mi}
+                        className="tl-bar"
+                        data-done={isDone}
+                        data-off-l={offscreenLeft}
+                        data-off-r={offscreenRight}
+                        onClick={() => onOpenTask(t)}
+                        title={`${m ? m.name + ' · ' : ''}${t.title}${t.start ? ' · ' + DATA.fmtDate(t.start) : ''}${t.due ? ' – ' + DATA.fmtDate(t.due) : ''}`}
+                        style={{
+                          left: sIdx * dayWidth,
+                          width: span * dayWidth - 4,
+                          top: 6 + mi * 22,
+                          background: isDone ? 'var(--bg-sunken)' : (m?.color || col.color),
+                          color: isDone ? 'var(--ink-faint)' : 'var(--ink)',
+                        }}
+                      >
+                        <span className="tl-bar-text">{m ? m.name.split(' ')[0] + ' · ' : ''}{t.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                </React.Fragment>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {groups.length === 0 && (
+        <div className="empty-state">
+          <Icon name="calendar" size={28} strokeWidth={1.2} />
+          <div>Tarihi olan görev yok.</div>
+          <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Görev tarihi eklediğinizde zaman çizelgesinde görünür.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── BoardView (with sub-view switcher) ──────────────────────────────────────
+function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpenModal, onTitleChange, canManageTasks, canManageProjects, switching, initialSubView, onSubViewChange }) {
+  const [subView, setSubView] = useBoardState(() => initialSubView || localStorage.getItem('stoa.boardSubView') || 'kanban');
+  useBoardEf(() => {
+    localStorage.setItem('stoa.boardSubView', subView);
+    onSubViewChange?.(subView);
+  }, [subView]);
+  useBoardEf(() => {
+    if (initialSubView && initialSubView !== subView) setSubView(initialSubView);
+  }, [initialSubView]);
+
   const [draggingId, setDraggingId] = useBoardState(null);
   const [draggingColId, setDraggingColId] = useBoardState(null);
   const [overColId, setOverColId] = useBoardState(null);
@@ -698,9 +996,29 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
     }
   };
 
+  const subViews = [
+    { id: 'list',     icon: 'list',        label: 'Liste'    },
+    { id: 'kanban',   icon: 'layoutBoard', label: 'Kanban'   },
+    { id: 'table',    icon: 'table',       label: 'Tablo'    },
+    { id: 'timeline', icon: 'calendar',    label: 'Zaman'    },
+  ];
+
   return (
     <>
     <div className="board-toolbar">
+      <div className="view-switcher-tabs" role="tablist">
+        {subViews.map(v => (
+          <button
+            key={v.id}
+            role="tab"
+            data-active={subView === v.id}
+            onClick={() => setSubView(v.id)}
+            title={v.label}
+          >
+            <Icon name={v.icon} size={13} /> {v.label}
+          </button>
+        ))}
+      </div>
       <button
         className="filter-toggle-btn"
         data-active={filterOpen || activeFilterCount > 0}
@@ -744,6 +1062,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
         onClear={clearFilters}
       />
     )}
+    {subView === 'kanban' && (
     <div className="board" ref={boardRef} onDragOver={handleBoardDragOver} onDragEnd={stopAutoScroll} onMouseDown={handleBoardMouseDown}>
       {columns.map(col => (
         <Column
@@ -805,6 +1124,121 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
         </button>
       ))}
     </div>
+    )}
+
+    {subView === 'list' && (
+      <div className="list-view">
+        {DATA.COLUMNS.map(col => {
+          const colTasks = visibleTasks.filter(t => t.col === col.id);
+          if (colTasks.length === 0) return null;
+          return (
+            <div className="list-group" key={col.id}>
+              <div className="list-group-header">
+                <div className="col-dot" style={{ background: col.color }} />
+                <span style={{ color: 'var(--ink)' }}>{col.title_tr}</span>
+                <span className="col-count">{colTasks.length}</span>
+              </div>
+              <table className="list-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 36 }} />
+                    <th>Başlık</th>
+                    <th style={{ width: 130 }}>Etiketler</th>
+                    <th style={{ width: 100 }}>Atanan</th>
+                    <th style={{ width: 130 }}>Tarih aralığı</th>
+                    <th style={{ width: 110 }}>İlerleme</th>
+                    <th style={{ width: 100 }}>Aktivite</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {colTasks.map(t => {
+                    const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+                    const isDone = col.is_done;
+                    const overdue = DATA.isOverdue(t.due, t.col);
+                    const subParts = String(t.subtasks || '0/0').split('/');
+                    const sDone = parseInt(subParts[0]) || 0;
+                    const sTotal = parseInt(subParts[1]) || 0;
+                    const pct = sTotal > 0 ? Math.round(sDone / sTotal * 100) : (t.progress || 0);
+                    return (
+                      <tr key={t.id} data-done={isDone} onClick={() => onOpenTask(t)} style={{ cursor: 'pointer' }}>
+                        <td onClick={(e) => {
+                          e.stopPropagation();
+                          if (!canManageTasks) return;
+                          const doneCol = DATA.COLUMNS.find(c => c.is_done);
+                          const firstCol = DATA.COLUMNS[0];
+                          if (isDone) onMoveTask(t.id, firstCol?.id || 'todo');
+                          else if (doneCol) onMoveTask(t.id, doneCol.id);
+                        }}>
+                          <div className="list-check" data-checked={isDone}>
+                            {isDone && <Icon name="check" size={10} strokeWidth={2.5} />}
+                          </div>
+                        </td>
+                        <td className="title" style={{ fontWeight: 500 }}>
+                          {t.title}
+                          <div style={{ fontSize: 10, color: 'var(--ink-faint)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+                            #{String(t.id).padStart(3,'0')}
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {(t.labels || []).slice(0, 2).map(l => {
+                              const lab = DATA.LABELS[l];
+                              return lab && <span key={l} className="tag" data-tone={lab.tone}>{lab.tr}</span>;
+                            })}
+                          </div>
+                        </td>
+                        <td><AvatarStack members={members} size="sm" max={3} /></td>
+                        <td>
+                          {(t.start || t.due) && (
+                            <span className="meta-item" data-warn={overdue && !isDone}>
+                              <Icon name="calendar" size={11} />
+                              {t.start ? `${DATA.fmtDate(t.start)} – ${t.due ? DATA.fmtDate(t.due) : '?'}` : DATA.fmtDate(t.due)}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {(sTotal > 0 || t.progress > 0) ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <div className="progress-bar" style={{ width: 60 }}>
+                                <div className="progress-fill" style={{ width: `${pct}%` }} />
+                              </div>
+                              <span style={{ fontSize: 10, color: 'var(--ink-muted)', whiteSpace: 'nowrap' }}>
+                                {sTotal > 0 ? `${sDone}/${sTotal}` : `${pct}%`}
+                              </span>
+                            </div>
+                          ) : <span style={{ color: 'var(--ink-faint)', fontSize: 12 }}>—</span>}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)' }}>
+                            {t.comments > 0 && <span><Icon name="msg" size={10} /> {t.comments}</span>}
+                            {t.attachments > 0 && <span><Icon name="paperclip" size={10} /> {t.attachments}</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
+        {visibleTasks.length === 0 && (
+          <div className="empty-state">
+            <Icon name="list" size={28} strokeWidth={1.2} />
+            <div>Görev yok.</div>
+          </div>
+        )}
+      </div>
+    )}
+
+    {subView === 'table' && (
+      <TableView tasks={visibleTasks} onOpenTask={onOpenTask} onMoveTask={onMoveTask} canManageTasks={canManageTasks} />
+    )}
+
+    {subView === 'timeline' && (
+      <TimelineView tasks={visibleTasks} onOpenTask={onOpenTask} />
+    )}
+
     {draggingId && canManageTasks && (
       <div
         ref={trashZoneRef}
@@ -827,4 +1261,4 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
   );
 }
 
-Object.assign(window, { Card, Column, BoardView, FilterBar });
+Object.assign(window, { Card, Column, BoardView, FilterBar, TableView, TimelineView });

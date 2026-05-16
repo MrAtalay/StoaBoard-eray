@@ -639,13 +639,98 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  // Inner-nav sections (ids match section [data-nav-id])
+  const navSections = [
+    { id: 'profile',       label: 'Profil',           icon: 'user' },
+    { id: 'appearance',    label: 'Görünüm',          icon: 'palette' },
+    { id: 'workspace',     label: 'Çalışma Alanı',    icon: 'building', ownerOnly: true },
+    { id: 'invite',        label: 'Davet Kodu',       icon: 'key', ownerOnly: true },
+    { id: 'roles',         label: 'Roller',           icon: 'shield', membersOnly: true },
+    { id: 'members',       label: 'Üyeler',           icon: 'users', membersOnly: true },
+    { id: 'labels',        label: 'Etiketler',        icon: 'tag' },
+    { id: 'notifications', label: 'Bildirimler',      icon: 'bell' },
+    { id: 'shortcuts',     label: 'Kısayollar',       icon: 'cmd' },
+    { id: 'privacy',       label: 'Gizlilik',         icon: 'shield' },
+    { id: 'integrations',  label: 'Entegrasyonlar',   icon: 'plug' },
+    { id: 'billing',       label: 'Faturalama',       icon: 'creditCard' },
+    { id: 'language',      label: 'Dil & Bölge',      icon: 'languages' },
+    { id: 'export',        label: 'Veri & Dışa Aktarma', icon: 'download' },
+    { id: 'danger',        label: 'Tehlikeli Bölge',  icon: 'alertTriangle', danger: true },
+  ];
+  const [activeNav, setActiveNav] = React.useState('profile');
+  const scrollRef = React.useRef(null);
+
+  const scrollToSection = (id) => {
+    setActiveNav(id);
+    const root = scrollRef.current;
+    if (!root) return;
+    const el = root.querySelector(`[data-nav-id="${id}"]`);
+    if (el) {
+      const offset = el.offsetTop - 16;
+      root.scrollTo({ top: offset, behavior: 'smooth' });
+    }
+  };
+
+  // Scroll-spy
+  React.useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const onScroll = () => {
+      const sections = root.querySelectorAll('[data-nav-id]');
+      const scrollTop = root.scrollTop + 50;
+      let current = sections[0]?.dataset.navId;
+      sections.forEach(s => {
+        if (s.offsetTop <= scrollTop) current = s.dataset.navId;
+      });
+      if (current) setActiveNav(prev => prev === current ? prev : current);
+    };
+    root.addEventListener('scroll', onScroll, { passive: true });
+    return () => root.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Listen for external navigation requests (e.g., from NotifPanel "Tüm ayarlar →")
+  React.useEffect(() => {
+    const handler = (e) => {
+      const section = e.detail?.section;
+      if (section) setTimeout(() => scrollToSection(section), 80);
+    };
+    window.addEventListener('stoa:gotoSettings', handler);
+    return () => window.removeEventListener('stoa:gotoSettings', handler);
+  }, []);
+
   return (
-    <div className="settings-wrap">
-      <h1>Ayarlar<em>.</em></h1>
-      <p className="settings-sub">Hesabınızı, çalışma alanınızı ve görünümü yönetin.</p>
+    <div className="settings-shell">
+      {/* ─── Inner nav (sticky left rail) ─── */}
+      <aside className="settings-nav">
+        <div className="settings-nav-head">
+          <h1 className="settings-nav-title">Ayarlar</h1>
+          <p className="settings-nav-sub">Hesap & çalışma alanı</p>
+        </div>
+        <nav className="settings-nav-list">
+          {navSections.map(s => {
+            if (s.ownerOnly && !isOwner) return null;
+            if (s.membersOnly && !canManageMembers) return null;
+            return (
+              <button
+                key={s.id}
+                className="settings-nav-item"
+                data-active={activeNav === s.id}
+                data-danger={s.danger}
+                onClick={() => scrollToSection(s.id)}
+              >
+                <Icon name={s.icon} size={14} />
+                <span>{s.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
+
+    <div className="settings-wrap" ref={scrollRef}>
+      <h1 style={{ display: 'none' }}>Ayarlar<em>.</em></h1>
 
       {/* ── Profile ── */}
-      <div className="settings-section">
+      <div className="settings-section" data-nav-id="profile">
         <div>
           <h3>Profil</h3>
           <p className="desc">Takım üyelerinin sizi nasıl göreceği.</p>
@@ -699,7 +784,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       </div>
 
       {/* ── Appearance ── */}
-      <div className="settings-section">
+      <div className="settings-section" data-nav-id="appearance">
         <div>
           <h3>Görünüm</h3>
           <p className="desc">Tema, renk ve tipografi tercihlerin.</p>
@@ -739,7 +824,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
       {/* ── Workspace logo ── (owner only) */}
       {isOwner && (
-        <div className="settings-section">
+        <div className="settings-section" data-nav-id="workspace">
           <div>
             <h3>Çalışma Alanı</h3>
             <p className="desc">Takımınızın logo veya fotoğrafını yükleyin.</p>
@@ -806,7 +891,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
       {/* ── Workspace / Invite code ── (owner only) */}
       {isOwner && (
-        <div className="settings-section">
+        <div className="settings-section" data-nav-id="invite">
           <div>
             <h3>Davet Kodu</h3>
             <p className="desc">Bu kodu paylaşarak takıma üye ekleyin.</p>
@@ -885,7 +970,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
       {/* ── Roles ── (owner only) */}
       {isOwner && (
-        <div className="settings-section">
+        <div className="settings-section" data-nav-id="roles">
           <div>
             <h3>Roller</h3>
             <p className="desc">Özel roller ve izinler tanımlayın.</p>
@@ -1041,11 +1126,11 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       )}
 
       {/* ── Labels ── */}
-      <LabelsSection canManage={canManageProjects} />
+      <div data-nav-id="labels"><LabelsSection canManage={canManageProjects} /></div>
 
       {/* ── Members ── */}
       {ws.name && (
-        <div className="settings-section">
+        <div className="settings-section" data-nav-id="members">
           <div>
             <h3>Takım Üyeleri</h3>
             <p className="desc">{members.length} üye · {ws.name}</p>
@@ -1099,7 +1184,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       )}
 
       {/* ── Notifications ── */}
-      <div className="settings-section">
+      <div className="settings-section" data-nav-id="notifications">
         <div>
           <h3>Bildirimler</h3>
           <p className="desc">Hangi bildirimleri, nasıl alacağınızı özelleştirin.</p>
@@ -1192,11 +1277,382 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
             <Icon name="info" size={12} />
             <span>"Rahatsız Etme" modunda tüm mesaj bildirimleri sessize alınır.</span>
           </div>
+
+          {/* Per-event channel matrix */}
+          <div className="notif-pref-group">
+            <div className="notif-pref-title">Olay türüne göre kanallar</div>
+            <table className="notif-matrix">
+              <thead>
+                <tr>
+                  <th>Olay</th>
+                  <th>Uygulama</th>
+                  <th>Push</th>
+                  <th>E-posta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { k: 'mention',  label: '@Bahsetme' },
+                  { k: 'taskAssign', label: 'Görev atama' },
+                  { k: 'dm',       label: 'Direkt mesaj' },
+                  { k: 'channel',  label: 'Kanal mesajı' },
+                  { k: 'reaction', label: 'Mesajına reaksiyon' },
+                  { k: 'calendar', label: 'Takvim hatırlatma' },
+                ].map(row => {
+                  const get = (ch, def) => {
+                    const key = `notifMatrix_${row.k}_${ch}`;
+                    return tweaks[key] === undefined ? def : !!tweaks[key];
+                  };
+                  const setCh = (ch, val) => setTweak(`notifMatrix_${row.k}_${ch}`, val);
+                  return (
+                    <tr key={row.k}>
+                      <td>{row.label}</td>
+                      {[
+                        ['inapp', true],
+                        ['push', row.k === 'mention' || row.k === 'dm' || row.k === 'taskAssign' || row.k === 'calendar'],
+                        ['email', row.k === 'taskAssign'],
+                      ].map(([ch, def]) => (
+                        <td key={ch} style={{ textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            className="toggle-switch"
+                            data-on={get(ch, def)}
+                            onClick={() => setCh(ch, !get(ch, def))}
+                          >
+                            <span className="toggle-knob" />
+                          </button>
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* DND schedule */}
+          <div className="notif-pref-group">
+            <div className="notif-pref-title">Rahatsız etme zamanlaması</div>
+            <div className="tweak-toggle" onClick={() => setTweak('dndEnabled', !tweaks.dndEnabled)}>
+              <div className="tweak-toggle-info">
+                <span>Otomatik DND penceresi</span>
+                <span className="tweak-toggle-desc">Her gün belirli saat aralığında bildirimleri sustur</span>
+              </div>
+              <div className="toggle" data-on={!!tweaks.dndEnabled} />
+            </div>
+            {tweaks.dndEnabled && (
+              <div className="notif-pref-schedule" style={{ paddingLeft: 0 }}>
+                <span>Başlangıç</span>
+                <input type="time" value={tweaks.dndStart || '19:00'} onChange={e => setTweak('dndStart', e.target.value)} />
+                <span>–</span>
+                <span>Bitiş</span>
+                <input type="time" value={tweaks.dndEnd || '08:00'} onChange={e => setTweak('dndEnd', e.target.value)} />
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+
+      {/* ── Keyboard shortcuts ── */}
+      <div className="settings-section" data-nav-id="shortcuts">
+        <div>
+          <h3>Klavye Kısayolları</h3>
+          <p className="desc">Hızlı navigasyon ve aksiyonlar.</p>
+        </div>
+        <div className="settings-card settings-panel">
+          <div className="keymap-list">
+            {[
+              ['Komut paleti aç', ['⌘','K']],
+              ['Yeni görev', ['N']],
+              ['Ana sayfa', ['G','D']],
+              ['Pano (Kanban)', ['G','B']],
+              ['Liste görünümü', ['G','L']],
+              ['Takvim', ['G','C']],
+              ['Sohbet', ['G','M']],
+              ['Ayarlar', ['G','S']],
+              ['Arama odakla', ['/']],
+              ['Mesaj gönder', ['↵']],
+              ['Yeni satır (mesajda)', ['⇧','↵']],
+              ['Tüm panelleri kapat', ['Esc']],
+            ].map(([label, keys]) => (
+              <div key={label} className="keymap-row">
+                <span className="keymap-label">{label}</span>
+                <span className="keymap-keys">
+                  {keys.map((k, i) => <kbd key={i}>{k}</kbd>)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="keymap-foot">
+            <button className="btn btn-ghost" onClick={() => window.showToast?.('Varsayılanlar geri yüklendi.', 'success')}>
+              Varsayılana sıfırla
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Privacy & Sessions ── */}
+      <div className="settings-section" data-nav-id="privacy">
+        <div>
+          <h3>Gizlilik &amp; Oturumlar</h3>
+          <p className="desc">Görünürlük, okundu bilgisi ve aktif cihazlar.</p>
+        </div>
+        <div className="settings-card settings-panel">
+          <div className="notif-pref-group">
+            <div className="notif-pref-title">Görünürlük</div>
+            <div className="tweak-toggle" onClick={() => setTweak('readReceipts', !(tweaks.readReceipts !== false))}>
+              <div className="tweak-toggle-info">
+                <span>Okundu bilgisi</span>
+                <span className="tweak-toggle-desc">Mesajları okuduğunda diğerleri görür</span>
+              </div>
+              <div className="toggle" data-on={tweaks.readReceipts !== false} />
+            </div>
+            <div className="tweak-toggle" onClick={() => setTweak('typingIndicator', !(tweaks.typingIndicator !== false))}>
+              <div className="tweak-toggle-info">
+                <span>Yazıyor göstergesi</span>
+                <span className="tweak-toggle-desc">Yazarken karşı taraf "yazıyor…" görür</span>
+              </div>
+              <div className="toggle" data-on={tweaks.typingIndicator !== false} />
+            </div>
+          </div>
+          <div className="tweak-group" style={{ marginTop: 12 }}>
+            <div className="tweak-label">Çevrimiçi durumu</div>
+            <div className="tweak-options">
+              {[
+                ['visible', 'Herkese görünür'],
+                ['team', 'Sadece takım'],
+                ['hidden', 'Gizli'],
+              ].map(([k, l]) => (
+                <button key={k} className="tweak-opt" data-active={(tweaks.presenceVisibility || 'visible') === k} onClick={() => setTweak('presenceVisibility', k)}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="notif-pref-group">
+            <div className="notif-pref-title">Aktif oturumlar</div>
+            <div className="session-list">
+              {[
+                { icon: 'monitor', label: 'Bu tarayıcı', meta: 'Şu an aktif', current: true },
+                { icon: 'smartphone', label: 'Mobil cihaz', meta: 'Henüz oturum yok' },
+              ].map((s, i) => (
+                <div key={i} className="session-row">
+                  <div className="session-ic"><Icon name={s.icon} size={14} /></div>
+                  <div className="session-body">
+                    <div className="session-label">{s.label} {s.current && <span className="session-badge">Bu cihaz</span>}</div>
+                    <div className="session-meta">{s.meta}</div>
+                  </div>
+                  {!s.current && <button className="btn btn-ghost" disabled>Çıkış</button>}
+                </div>
+              ))}
+            </div>
+            <button className="btn btn-ghost" style={{ marginTop: 8, color: 'var(--status-rose)' }} onClick={onLogout}>
+              <Icon name="logOut" size={13} /> Tüm cihazlarda çıkış yap
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Integrations ── */}
+      <div className="settings-section" data-nav-id="integrations">
+        <div>
+          <h3>Entegrasyonlar</h3>
+          <p className="desc">Dış servisleri Stoaboard'a bağlayın.</p>
+        </div>
+        <div className="settings-card settings-panel">
+          <div className="integration-list">
+            {[
+              { id: 'gcal',   name: 'Google Calendar', desc: 'İki yönlü takvim senkronu' },
+              { id: 'figma',  name: 'Figma',           desc: 'Mesaj ve görevlerde frame önizleme' },
+              { id: 'linear', name: 'Linear',          desc: 'Linear konularını kanban kartlarına bağla' },
+              { id: 'zapier', name: 'Zapier',          desc: 'Otomasyonlar ve zaplar' },
+              { id: 'github', name: 'GitHub',          desc: 'PR önizleme ve commit linkleri' },
+              { id: 'drive',  name: 'Google Drive',    desc: "Drive'dan dosya ekle" },
+            ].map(it => {
+              const key = `integration_${it.id}`;
+              const enabled = !!tweaks[key];
+              return (
+                <div key={it.id} className="integration-row">
+                  <div className="integration-logo">{it.name[0]}</div>
+                  <div className="integration-body">
+                    <div className="integration-name">{it.name}</div>
+                    <div className="integration-desc">{it.desc}</div>
+                  </div>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12 }}
+                    onClick={() => setTweak(key, !enabled)}
+                  >
+                    {enabled ? '✓ Bağlı' : 'Bağla'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="webhook-block">
+            <div className="webhook-head">
+              <strong>API anahtarı</strong>
+              <span className="webhook-desc">Geliştirici erişimi · 1 token</span>
+            </div>
+            <div className="webhook-row">
+              <code className="webhook-token">sk_live_••••••••••••••••</code>
+              <button
+                className="btn btn-ghost"
+                onClick={() => navigator.clipboard?.writeText('sk_live_demo_token').then(() => window.showToast?.('Kopyalandı', 'success'))}
+              >
+                <Icon name="copy" size={12} /> Kopyala
+              </button>
+              <button className="btn btn-ghost" onClick={() => window.showToast?.('Anahtar yenilendi (mock).', 'success')}>
+                <Icon name="refresh" size={12} /> Yenile
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Billing & Plan ── */}
+      <div className="settings-section" data-nav-id="billing">
+        <div>
+          <h3>Faturalama &amp; Plan</h3>
+          <p className="desc">Plan, kullanım ve ödeme bilgileri.</p>
+        </div>
+        <div className="settings-card settings-panel">
+          <div className="billing-plan-row">
+            <div>
+              <div className="billing-plan-name">Takım planı</div>
+              <div className="billing-plan-sub">Kullanıcı başı $12 / ay · 14 Haz 2026 yenilenir</div>
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="btn btn-primary" disabled>Yükselt</button>
+              <button className="btn btn-ghost" disabled>Plan değiştir</button>
+            </div>
+          </div>
+          <div className="usage-grid">
+            {[
+              ['Depolama',  '4.2 / 25 GB',  17],
+              ['AI çalıştırmaları', '124 / 500', 25],
+              ['Koltuk',    '5 / 10',       50],
+            ].map(([label, val, pct]) => (
+              <div key={label} className="usage-row">
+                <div className="usage-head">
+                  <span>{label}</span>
+                  <span className="usage-val">{val}</span>
+                </div>
+                <div className="progress-bar">
+                  <div className="progress-fill" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="billing-info">
+            <div className="billing-info-row">
+              <span><strong>Ödeme yöntemi</strong></span>
+              <span className="billing-info-val">Visa ···· 4231 · 09/27</span>
+              <button className="btn btn-ghost" disabled>Değiştir</button>
+            </div>
+            <div className="billing-info-row">
+              <span><strong>Fatura e-postası</strong></span>
+              <span className="billing-info-val">{me.email || 'eposta@ornek.com'}</span>
+              <button className="btn btn-ghost" disabled>Düzenle</button>
+            </div>
+            <div className="billing-info-row">
+              <span><strong>Faturalar</strong></span>
+              <span className="billing-info-val">12 fatura · son 14 May</span>
+              <button className="btn btn-ghost" disabled><Icon name="download" size={12} /> Tümünü indir</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Language & Region ── */}
+      <div className="settings-section" data-nav-id="language">
+        <div>
+          <h3>Dil &amp; Bölge</h3>
+          <p className="desc">Yerel ayarlar.</p>
+        </div>
+        <div className="settings-card settings-panel">
+          <div className="tweak-group">
+            <div className="tweak-label">Arayüz dili</div>
+            <div className="tweak-options">
+              {[['tr', 'Türkçe'], ['en', 'English'], ['de', 'Deutsch']].map(([k, l]) => (
+                <button key={k} className="tweak-opt" data-active={(tweaks.locale || 'tr') === k} onClick={() => setTweak('locale', k)}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="tweak-group">
+            <div className="tweak-label">Tarih formatı</div>
+            <div className="tweak-options">
+              {[
+                ['dmY', '24 May 2026'],
+                ['Ymd', '2026-05-24'],
+                ['mdY', '05/24/2026'],
+              ].map(([k, l]) => (
+                <button key={k} className="tweak-opt" data-active={(tweaks.dateFormat || 'dmY') === k} onClick={() => setTweak('dateFormat', k)}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="tweak-group">
+            <div className="tweak-label">Haftanın ilk günü</div>
+            <div className="tweak-options">
+              {[['mon', 'Pazartesi'], ['sun', 'Pazar'], ['sat', 'Cumartesi']].map(([k, l]) => (
+                <button key={k} className="tweak-opt" data-active={(tweaks.weekStart || 'mon') === k} onClick={() => setTweak('weekStart', k)}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="tweak-group">
+            <div className="tweak-label">Saat dilimi</div>
+            <div className="field">
+              <input
+                value={tweaks.timezone || 'Europe/Istanbul (UTC+03:00)'}
+                onChange={(e) => setTweak('timezone', e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Data & Export ── */}
+      <div className="settings-section" data-nav-id="export">
+        <div>
+          <h3>Veri &amp; Dışa Aktarma</h3>
+          <p className="desc">Çalışma alanı ve kişisel verilerinizin yedeklerini alın.</p>
+        </div>
+        <div className="settings-card settings-panel">
+          <div className="export-row">
+            <div className="export-body">
+              <div className="export-title">Çalışma alanı dışa aktarma</div>
+              <div className="export-desc">Görevler, mesajlar ve dosyalar (.zip)</div>
+            </div>
+            <div className="tweak-options" style={{ marginRight: 8 }}>
+              {['JSON', 'CSV', 'Markdown'].map(f => (
+                <button key={f} className="tweak-opt" data-active={(tweaks.exportFormat || 'JSON') === f} onClick={() => setTweak('exportFormat', f)}>
+                  {f}
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-primary" disabled>Dışa aktar</button>
+          </div>
+          <div className="export-row">
+            <div className="export-body">
+              <div className="export-title">Kişisel veri indirme</div>
+              <div className="export-desc">GDPR uyumlu — mesajlar, profil, dosyalar</div>
+            </div>
+            <button className="btn btn-ghost" disabled><Icon name="download" size={12} /> Verilerimi indir</button>
+          </div>
         </div>
       </div>
 
       {/* ── Danger zone ── */}
-      <div className="settings-section">
+      <div className="settings-section" data-nav-id="danger">
         <div>
           <h3 style={{ color:'var(--status-rose)' }}>Tehlikeli bölge</h3>
           <p className="desc">Geri alınamayan işlemler.</p>
@@ -1206,6 +1662,24 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
             <button className="btn btn-ghost" style={{ justifyContent:'flex-start' }} onClick={onLogout}>
               <Icon name="logOut" size={14} /> Çıkış yap
             </button>
+          )}
+          {isOwner && (
+            <>
+              <button
+                className="btn btn-ghost"
+                style={{ justifyContent:'flex-start', color:'var(--status-rose)', borderColor:'oklch(58% 0.13 10 / 0.3)' }}
+                onClick={() => window.showToast?.('Arşivleme yakında — mock.', 'info')}
+              >
+                <Icon name="archive" size={14} /> Çalışma alanını arşivle
+              </button>
+              <button
+                className="btn btn-ghost"
+                style={{ justifyContent:'flex-start', color:'var(--status-rose)', borderColor:'oklch(58% 0.13 10 / 0.3)' }}
+                onClick={() => window.showToast?.('Sahiplik aktarımı yakında — mock.', 'info')}
+              >
+                <Icon name="userPlus" size={14} /> Sahipliği aktar
+              </button>
+            </>
           )}
           {!deleteOpen ? (
             <button
@@ -1241,6 +1715,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }

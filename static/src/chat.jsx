@@ -83,7 +83,29 @@ function fmtDateSep(dateKey) {
   const d = new Date(dateKey + 'T00:00:00');
   return `${d.getDate()} ${TR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
-// ── Render message text with @mention chips ────────────────────────────────
+// ── Render message text with @mention chips + markdown (**bold**, *italic*, `code`) ─
+function _renderInline(text, keyBase = '') {
+  if (!text) return [];
+  // Tokenize: ` code `  **bold**  *italic*  (greedy, non-nested for inline scope)
+  const out = [];
+  const re = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g;
+  let last = 0; let m; let idx = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const tok = m[0];
+    if (tok.startsWith('**')) {
+      out.push(React.createElement('strong', { key: `${keyBase}b${idx++}` }, tok.slice(2, -2)));
+    } else if (tok.startsWith('`')) {
+      out.push(React.createElement('code', { key: `${keyBase}c${idx++}`, className: 'md-code-inline' }, tok.slice(1, -1)));
+    } else if (tok.startsWith('*')) {
+      out.push(React.createElement('em', { key: `${keyBase}i${idx++}` }, tok.slice(1, -1)));
+    }
+    last = m.index + tok.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 function RenderMsgText({ text, allMembers, onMentionClick }) {
   if (!text) return null;
   const parts = text.split(/(@[\w.-]+)/g);
@@ -106,7 +128,7 @@ function RenderMsgText({ text, allMembers, onMentionClick }) {
         }, `@${member.name}`);
       }
     }
-    return part;
+    return React.createElement(React.Fragment, { key: i }, ..._renderInline(part, `p${i}`));
   }));
 }
 // ── Full date+time formatter for media/links ──────────────────────────────
@@ -340,7 +362,7 @@ function MediaGallery({ allMembers, onImageClick }) {
 }
 
 // ── Main Chat Panel ───────────────────────────────────────────────────────
-function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith, unreadCounts, markAsRead, wsId, highlightMsgId, fullPage }) {
+function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith, unreadCounts, markAsRead, wsId, highlightMsgId, fullPage }) {
   const [tab, setTab]             = useChatS('general');
   const [dmWith, setDmWith]       = useChatS(null);
   const [messages, setMessages]   = useChatS([]);
@@ -367,6 +389,82 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
     catch { return {}; }
   });
   const [emojiPicker, setEmojiPicker] = useChatS(null); // { msgId, x, y }
+
+  // Pinned messages (per channel) — localStorage
+  const [pinnedMsgs, setPinnedMsgs] = useChatS(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('stoa.pinned') || '[]').map(m => String(m.id || m))); }
+    catch { return new Set(); }
+  });
+  const [pinnedData, setPinnedData] = useChatS(() => {
+    try { return JSON.parse(localStorage.getItem('stoa.pinnedData') || '[]'); }
+    catch { return []; }
+  });
+
+  // Full-page only state — left list filter, right detail panel tab, mobile right-panel toggle
+  const [leftListTab, setLeftListTab] = useChatS('channels'); // channels | dms
+  const [rightTab, setRightTab]       = useChatS('members');  // members | media | starred | pinned
+  const [leftSearch, setLeftSearch]   = useChatS('');
+  const [rightPanelOpen, setRightPanelOpen] = useChatS(true);
+  const [headerSearchOpen, setHeaderSearchOpen] = useChatS(false);
+  const [headerSearch, setHeaderSearch] = useChatS('');
+
+  // Channels: localStorage-tracked (UI mock, backend sadece "general"u biliyor)
+  // Default kanal her zaman var; kullanıcı ek kanal oluşturur.
+  const [channels, setChannels] = useChatS(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('stoa.channels') || '[]');
+      if (Array.isArray(stored) && stored.length > 0) {
+        if (!stored.find(c => c.id === 'general')) stored.unshift({ id: 'general', name: 'genel', isDefault: true });
+        return stored;
+      }
+    } catch {}
+    return [{ id: 'general', name: 'genel', isDefault: true }];
+  });
+  const [activeChannel, setActiveChannel] = useChatS('general');
+  const [addChannelOpen, setAddChannelOpen] = useChatS(false);
+  const [newChannelName, setNewChannelName] = useChatS('');
+
+  const addChannel = () => {
+    const raw = newChannelName.trim().toLowerCase().replace(/[^a-z0-9-_çğıöşü]+/g, '-').replace(/^-+|-+$/g, '');
+    if (!raw) return;
+    if (channels.find(c => c.id === raw)) {
+      window.showToast?.('Bu isimde bir kanal zaten var.', 'error');
+      return;
+    }
+    const next = [...channels, { id: raw, name: raw }];
+    setChannels(next);
+    localStorage.setItem('stoa.channels', JSON.stringify(next));
+    setNewChannelName('');
+    setAddChannelOpen(false);
+    setActiveChannel(raw);
+    window.showToast?.(`#${raw} kanalı oluşturuldu`, 'success');
+  };
+
+  const removeChannel = (id) => {
+    if (id === 'general') return;
+    const next = channels.filter(c => c.id !== id);
+    setChannels(next);
+    localStorage.setItem('stoa.channels', JSON.stringify(next));
+    if (activeChannel === id) setActiveChannel('general');
+  };
+
+  // Format helper — wrap selected text in textarea with markdown markers
+  const wrapSelection = (prefix, suffix = prefix, placeholder = '') => {
+    const el = inputRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? text.length;
+    const end   = el.selectionEnd   ?? text.length;
+    const selected = text.slice(start, end);
+    const insert = selected || placeholder;
+    const newText = text.slice(0, start) + prefix + insert + suffix + text.slice(end);
+    setText(newText);
+    setTimeout(() => {
+      el.focus();
+      const selStart = start + prefix.length;
+      const selEnd   = selStart + insert.length;
+      el.setSelectionRange(selStart, selEnd);
+    }, 0);
+  };
 
   const bottomRef   = useChatRef(null);
   const typingTimer = useChatRef(null);
@@ -604,6 +702,13 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
       if (e.key === 'Enter')     { e.preventDefault(); insertMention(mentionMembers.current[mentionIdx]); return; }
       if (e.key === 'Escape')    { setMentionOpen(false); return; }
     }
+    // Markdown shortcuts
+    if (e.ctrlKey || e.metaKey) {
+      const k = e.key.toLowerCase();
+      if (k === 'b') { e.preventDefault(); wrapSelection('**', '**', 'kalın'); return; }
+      if (k === 'i') { e.preventDefault(); wrapSelection('*', '*', 'italik');  return; }
+      if (k === 'e') { e.preventDefault(); wrapSelection('`', '`', 'kod');     return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
@@ -637,6 +742,13 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
 
   const toggleReaction = (msgId, emoji) => {
     const key = String(msgId);
+    // Composer-level emoji insert (not a reaction)
+    if (key === '__composer__') {
+      setText(t => t + emoji);
+      setEmojiPicker(null);
+      setTimeout(() => inputRef.current?.focus(), 10);
+      return;
+    }
     setReactions(prev => {
       const msgR = { ...(prev[key] || {}) };
       // Check if user already had this exact emoji (for toggle-off)
@@ -698,6 +810,44 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
     setDeleteMenu(null);
   };
 
+  const togglePin = (msg) => {
+    const id = String(msg.id);
+    setPinnedMsgs(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        const nextData = pinnedData.filter(m => String(m.id) !== id);
+        setPinnedData(nextData);
+        localStorage.setItem('stoa.pinnedData', JSON.stringify(nextData));
+      } else {
+        next.add(id);
+        const nextData = [...pinnedData.filter(m => String(m.id) !== id), { ...msg }];
+        setPinnedData(nextData);
+        localStorage.setItem('stoa.pinnedData', JSON.stringify(nextData));
+      }
+      localStorage.setItem('stoa.pinned', JSON.stringify([...next]));
+      return next;
+    });
+    setDeleteMenu(null);
+  };
+
+  const replyToMessage = (msg) => {
+    setDeleteMenu(null);
+    const sender = allMembers.find(m => m.id === msg.from);
+    if (!sender) return;
+    // For DM: just focus input
+    // For channel: prepend @mention
+    if (!dmWith && sender.id !== me) {
+      const prefix = `@${sender.id} `;
+      if (!text.startsWith(prefix)) setText(prefix + text);
+    }
+    setTimeout(() => {
+      inputRef.current?.focus();
+      const len = inputRef.current?.value.length || 0;
+      inputRef.current?.setSelectionRange(len, len);
+    }, 50);
+  };
+
   const handleDeleteMessage = async (msgId, scope) => {
     setDeleteMenu(null);
     if (scope === 'self') {
@@ -741,9 +891,19 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
             borderRadius: 10, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', minWidth: 180,
           }}>
             <button className="chat-menu-item"
+              onClick={() => replyToMessage(deleteMenu.msg)}>
+              <Icon name="arrowUpRight" size={13} style={{ transform: 'scaleX(-1)', color: 'var(--ink-muted)' }} />
+              Cevapla
+            </button>
+            <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
               onClick={() => toggleStar(deleteMenu.msg)}>
               <Icon name="star" size={13} style={{ color: deleteMenu.starred ? 'var(--status-yellow)' : 'var(--ink-muted)' }} />
               {deleteMenu.starred ? 'Yıldızı kaldır' : 'Yıldızla'}
+            </button>
+            <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
+              onClick={() => togglePin(deleteMenu.msg)}>
+              <Icon name="pin" size={13} style={{ color: deleteMenu.pinned ? 'var(--accent)' : 'var(--ink-muted)' }} />
+              {deleteMenu.pinned ? 'Sabitlemeyi kaldır' : 'Kanala sabitle'}
             </button>
             <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-subtle)'}
@@ -794,6 +954,570 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
       {!fullPage && <div className="chat-overlay" data-open={open} onClick={onClose} />}
       <div className="chat-panel" data-open={open || fullPage} data-full-page={!!fullPage}>
 
+      {/* ═════════════════ FULL-PAGE 3-COLUMN LAYOUT ═════════════════ */}
+      {fullPage && (() => {
+        const visibleMembers = leftSearch
+          ? members.filter(m => m.name.toLowerCase().includes(leftSearch.toLowerCase()))
+          : members;
+        const showHeaderSearchHits = headerSearchOpen && headerSearch.trim();
+        const headerHits = showHeaderSearchHits
+          ? messages.filter(m => (m.text || m.file_name || '').toLowerCase().includes(headerSearch.toLowerCase()))
+          : [];
+        const filteredMessages = messages; // header search dropdown, not filter
+        // participant avatars (recent senders, max 4)
+        const recentParticipants = [];
+        const seenIds = new Set();
+        for (let i = messages.length - 1; i >= 0 && recentParticipants.length < 4; i--) {
+          const fromId = messages[i].from;
+          if (!seenIds.has(fromId)) {
+            const m = allMembers.find(x => x.id === fromId);
+            if (m) { recentParticipants.push(m); seenIds.add(fromId); }
+          }
+        }
+        return (
+        <div className="chat-fp-grid">
+          {/* ─── LEFT COLUMN ─── */}
+          <aside className="chat-fp-left">
+            <div className="chat-fp-left-pad">
+              <div className="chat-fp-search">
+                <Icon name="search" size={13} />
+                <input
+                  placeholder="Sohbet ara..."
+                  value={leftSearch}
+                  onChange={e => setLeftSearch(e.target.value)}
+                />
+                {leftSearch && (
+                  <button onClick={() => setLeftSearch('')} className="icon-btn" style={{ padding: 2 }}>
+                    <Icon name="x" size={11} />
+                  </button>
+                )}
+              </div>
+              <div className="chat-fp-list-tabs">
+                <button data-active={leftListTab === 'channels'} onClick={() => setLeftListTab('channels')}>
+                  <Icon name="hash" size={11} /> Takım kanalları
+                </button>
+                <button data-active={leftListTab === 'dms'} onClick={() => setLeftListTab('dms')}>
+                  <Icon name="msg" size={11} /> Direkt mesajlar
+                </button>
+              </div>
+              <div className="chat-fp-list-sub" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>
+                  {leftListTab === 'channels'
+                    ? `${DATA.WORKSPACE?.name || 'Atlas'} · ${channels.length} kanal`
+                    : 'Cross-workspace'}
+                </span>
+                {leftListTab === 'channels' && (
+                  <button
+                    className="icon-btn"
+                    title="Yeni kanal"
+                    onClick={() => setAddChannelOpen(o => !o)}
+                    style={{ padding: 2, color: 'var(--ink-muted)' }}
+                  >
+                    <Icon name="plus" size={12} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="chat-fp-list">
+              {leftListTab === 'channels' ? (
+                <>
+                  {addChannelOpen && (
+                    <div className="chat-fp-add-channel">
+                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--ink-muted)', fontSize: 13 }}>#</span>
+                      <input
+                        autoFocus
+                        placeholder="yeni-kanal-adi"
+                        value={newChannelName}
+                        onChange={(e) => setNewChannelName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') addChannel();
+                          if (e.key === 'Escape') { setAddChannelOpen(false); setNewChannelName(''); }
+                        }}
+                        maxLength={32}
+                      />
+                      <button
+                        className="icon-btn"
+                        onClick={addChannel}
+                        disabled={!newChannelName.trim()}
+                        title="Oluştur"
+                        style={{ color: 'var(--accent)', padding: 3 }}
+                      >
+                        <Icon name="check" size={12} />
+                      </button>
+                      <button
+                        className="icon-btn"
+                        onClick={() => { setAddChannelOpen(false); setNewChannelName(''); }}
+                        title="İptal"
+                        style={{ padding: 3 }}
+                      >
+                        <Icon name="x" size={12} />
+                      </button>
+                    </div>
+                  )}
+                  {channels.map(ch => (
+                    <div
+                      key={ch.id}
+                      className="chat-fp-row"
+                      data-active={!dmWith && activeChannel === ch.id}
+                      onClick={() => { setDmWith(null); setTab('general'); setActiveChannel(ch.id); }}
+                    >
+                      <div className="chat-fp-row-ic chat-fp-row-ic-channel">#</div>
+                      <div className="chat-fp-row-body">
+                        <div className="chat-fp-row-name">{ch.name}</div>
+                        <div className="chat-fp-row-preview">
+                          {ch.id === 'general' && messages.length > 0
+                            ? (() => {
+                                const last = messages[messages.length - 1];
+                                const sender = allMembers.find(m => m.id === last.from);
+                                const preview = last.text || last.file_name || 'Dosya';
+                                return `${(sender?.name || last.from || '').split(' ')[0]}: ${preview}`;
+                              })()
+                            : (ch.isDefault ? 'Henüz mesaj yok' : 'Mesaj henüz yok')}
+                        </div>
+                      </div>
+                      <div className="chat-fp-row-right">
+                        {ch.id === 'general' && messages.length > 0 && (
+                          <div className="chat-fp-row-time">{fmtMsgTime(messages[messages.length - 1])}</div>
+                        )}
+                        {(() => {
+                          if (ch.id !== 'general') return null;
+                          const u = (unreadCounts || {})[wsId ? `general_${wsId}` : 'general'] || 0;
+                          return u > 0 && <div className="chat-fp-row-unread">+{u > 99 ? 99 : u}</div>;
+                        })()}
+                        {!ch.isDefault && (
+                          <button
+                            className="chat-fp-row-del"
+                            title="Kanalı sil"
+                            onClick={(e) => { e.stopPropagation(); removeChannel(ch.id); }}
+                          >
+                            <Icon name="x" size={10} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                visibleMembers.map(m => {
+                  const mStatus = statuses.get(m.id) || (online.has(m.id) ? 'online' : 'offline');
+                  const dmUnread = (unreadCounts || {})[`dm_${m.id}`] || 0;
+                  return (
+                    <div
+                      key={m.id}
+                      className="chat-fp-row"
+                      data-active={dmWith === m.id}
+                      onClick={() => openDm(m.id)}
+                    >
+                      <div style={{ position: 'relative', flexShrink: 0, display: 'flex' }}>
+                        <Avatar member={m} size="sm" />
+                        <span style={{ position: 'absolute', bottom: -1, right: -1 }}>
+                          <StatusDot status={mStatus} />
+                        </span>
+                      </div>
+                      <div className="chat-fp-row-body">
+                        <div className="chat-fp-row-name">{m.name}</div>
+                        <div className="chat-fp-row-preview">
+                          {typingUser === m.id ? <em>yazıyor…</em> : _statusLabel(mStatus)}
+                        </div>
+                      </div>
+                      <div className="chat-fp-row-right">
+                        {dmUnread > 0 && <div className="chat-fp-row-unread">+{dmUnread > 99 ? 99 : dmUnread}</div>}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              {leftListTab === 'dms' && visibleMembers.length === 0 && (
+                <div className="chat-empty" style={{ padding: 24 }}>
+                  {leftSearch ? 'Sonuç yok.' : 'Henüz başka üye yok.'}
+                </div>
+              )}
+            </div>
+          </aside>
+
+          {/* ─── CENTER COLUMN ─── */}
+          <section className="chat-fp-center">
+            <div className="chat-fp-conv-head">
+              {dmWith ? (
+                <>
+                  <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+                    <Avatar member={dmUser} size="sm" />
+                    <span style={{ position: 'absolute', bottom: -1, right: -1 }}>
+                      <StatusDot status={statuses.get(dmWith) || (online.has(dmWith) ? 'online' : 'offline')} />
+                    </span>
+                  </div>
+                  <div className="chat-fp-conv-title-wrap">
+                    <div className="chat-fp-conv-title">{dmUser?.name || dmWith}</div>
+                    <div className="chat-fp-conv-sub">{_statusLabel(statuses.get(dmWith) || (online.has(dmWith) ? 'online' : 'offline'))}</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="chat-fp-channel-icon">#</div>
+                  <div className="chat-fp-conv-title-wrap">
+                    <div className="chat-fp-conv-title">genel</div>
+                    <div className="chat-fp-conv-sub">{DATA.WORKSPACE?.name || 'Atlas'} · {allMembers.length} üye</div>
+                  </div>
+                </>
+              )}
+              <div style={{ flex: 1 }} />
+              {!dmWith && recentParticipants.length > 0 && (
+                <AvatarStack members={recentParticipants} size="sm" max={4} />
+              )}
+              <div style={{ position: 'relative' }}>
+                <button
+                  className="icon-btn"
+                  title="Mesajlarda ara"
+                  onClick={() => setHeaderSearchOpen(o => !o)}
+                  style={{ color: headerSearchOpen ? 'var(--accent)' : 'var(--ink-muted)' }}
+                >
+                  <Icon name="search" size={14} />
+                </button>
+                {headerSearchOpen && (
+                  <div className="chat-fp-header-search">
+                    <input
+                      autoFocus
+                      placeholder="Mesajlarda ara..."
+                      value={headerSearch}
+                      onChange={e => setHeaderSearch(e.target.value)}
+                    />
+                    {headerSearch && (
+                      <div className="chat-fp-header-search-hits">
+                        {headerHits.length === 0
+                          ? <div style={{ padding: 12, fontSize: 12, color: 'var(--ink-faint)' }}>Sonuç yok.</div>
+                          : headerHits.slice(0, 8).map(m => {
+                              const sender = allMembers.find(u => u.id === m.from);
+                              return (
+                                <div key={m.id} className="chat-fp-hit"
+                                  onClick={() => {
+                                    const el = document.querySelector(`[data-msgid="${m.id}"]`);
+                                    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    setHeaderSearchOpen(false);
+                                    setHeaderSearch('');
+                                  }}
+                                >
+                                  <div className="chat-fp-hit-meta">
+                                    <strong>{sender?.name || m.from}</strong>
+                                    <span>{fmtMsgTime(m)}</span>
+                                  </div>
+                                  <div className="chat-fp-hit-text">{(m.text || m.file_name || 'Dosya').slice(0, 80)}</div>
+                                </div>
+                              );
+                            })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <button
+                className="icon-btn"
+                title={rightPanelOpen ? 'Detayları gizle' : 'Detayları göster'}
+                onClick={() => setRightPanelOpen(o => !o)}
+              >
+                <Icon name={rightPanelOpen ? 'sidebarOut' : 'sidebarIn'} size={14} />
+              </button>
+            </div>
+
+            {/* Messages re-uses existing rendering by re-render via existing branch below.
+                In fullPage we keep messages rendered as DM/general messages always (never starred/media/dm-list in center). */}
+            <div className="chat-messages chat-fp-messages">
+              {messages.length === 0 && (
+                <div className="chat-empty">
+                  {dmWith ? `${dmUser?.name || dmWith} ile sohbet başlat.` : 'Genel kanala ilk mesajı gönder.'}
+                </div>
+              )}
+              {messages.map((msg, i) => {
+                const isMine = dmWith ? msg.to === dmWith : msg.from === me;
+                const sender = allMembers.find(m => m.id === msg.from);
+                const prevMsg = messages[i - 1];
+                const showSender = !isMine && (!prevMsg || prevMsg.from !== msg.from);
+                const canDelete = !msg._temp && !msg.deleted;
+                const dateKey = msgDateKey(msg);
+                const prevDateKey = prevMsg ? msgDateKey(prevMsg) : null;
+                const showDateSep = dateKey && dateKey !== prevDateKey;
+                const msgKey = String(msg.id);
+                const msgReactions = reactions[msgKey] || {};
+                const hasReactions = Object.keys(msgReactions).length > 0;
+                return (
+                  <React.Fragment key={msg.id || i}>
+                  {showDateSep && (
+                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', margin:'4px 0' }}>
+                      <div style={{ flex:1, height:1, background:'var(--line)' }} />
+                      <span style={{ fontSize:11, color:'var(--ink-faint)', fontWeight:500, flexShrink:0 }}>{fmtDateSep(dateKey)}</span>
+                      <div style={{ flex:1, height:1, background:'var(--line)' }} />
+                    </div>
+                  )}
+                  <div className={`chat-msg ${isMine ? 'mine' : 'theirs'}`} data-msgid={msg.id} style={{ position: 'relative', scrollMarginTop: 60 }}>
+                    {!isMine && (
+                      <div className="chat-msg-avatar" style={{ visibility: showSender ? 'visible' : 'hidden' }}>
+                        <Avatar member={sender} size="sm" />
+                      </div>
+                    )}
+                    <div className="chat-bubble-wrap">
+                      {showSender && !isMine && (
+                        <div className="chat-sender-name">{sender?.name || msg.from} <span style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 400, marginLeft: 6 }}>{fmtMsgTime(msg)}</span></div>
+                      )}
+                      <div className="chat-bubble-anchor" style={{ display: 'inline-flex', alignSelf: isMine ? 'flex-end' : 'flex-start' }}>
+                        <div className={`chat-bubble ${msg._temp ? 'chat-bubble-sending' : ''} ${msg.deleted ? 'chat-bubble-deleted' : ''}`}>
+                          {msg.deleted
+                            ? <span style={{ fontStyle: 'italic', color: 'var(--ink-faint)', fontSize: 12 }}>Bu mesaj silindi</span>
+                            : <MsgContent msg={{ ...msg, _onMentionClick: (member) => setDmWith(member.id) }} onImageClick={setLightbox} />
+                          }
+                          {starredMsgs.has(String(msg.id)) && (
+                            <span style={{ position: 'absolute', top: 4, right: 6, fontSize: 10, color: 'var(--status-yellow)', pointerEvents: 'none' }}>★</span>
+                          )}
+                          {pinnedMsgs.has(String(msg.id)) && (
+                            <span style={{ position: 'absolute', top: 4, left: 6, fontSize: 10, color: 'var(--accent)', pointerEvents: 'none' }}>📌</span>
+                          )}
+                        </div>
+                        {canDelete && (
+                          <div className="chat-fp-hover-actions" data-mine={isMine}>
+                            <button
+                              title="Reaksiyon"
+                              onClick={(e) => openEmojiPicker(e, msg.id)}
+                            ><Icon name="smile" size={13} /></button>
+                            <button
+                              title="Cevapla"
+                              onClick={() => replyToMessage(msg)}
+                            ><Icon name="arrowUpRight" size={13} style={{ transform: 'scaleX(-1)' }} /></button>
+                            <button
+                              title="Daha fazla"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setDeleteMenu({ msgId: msg.id, isMine, starred: starredMsgs.has(String(msg.id)), pinned: pinnedMsgs.has(String(msg.id)), msg, x: isMine ? rect.left - 160 : rect.right + 4, y: rect.top });
+                              }}
+                            ><Icon name="moreH" size={13} /></button>
+                          </div>
+                        )}
+                      </div>
+                      {hasReactions && (
+                        <div className="chat-reactions">
+                          {Object.entries(msgReactions).map(([emoji, users]) => (
+                            <button key={emoji} className="chat-reaction-btn" data-mine={users.includes(me)}
+                              onClick={() => toggleReaction(msgKey, emoji)}
+                              title={users.map(u => allMembers.find(m => m.id === u)?.name || u).join(', ')}>
+                              {emoji}<span>{users.length}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {!showSender && <div className="chat-msg-time">{fmtMsgTime(msg)}</div>}
+                    </div>
+                  </div>
+                  </React.Fragment>
+                );
+              })}
+              {typingUser && (
+                <div className="chat-typing-indicator">
+                  <span>{allMembers.find(m => m.id === typingUser)?.name || typingUser} yazıyor</span>
+                  <span className="typing-dots"><span /><span /><span /></span>
+                </div>
+              )}
+              <div ref={bottomRef} />
+            </div>
+
+            {/* pending file preview (reuses styling) */}
+            {pendingFile && (
+              <div className="chat-pending-file">
+                {pendingFile.type === 'image' && <img src={pendingFile.url} alt="" style={{ height: 64, borderRadius: 6, objectFit: 'cover' }} />}
+                {pendingFile.type !== 'image' && (
+                  <div style={{ fontSize: 12, color: 'var(--ink-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name={pendingFile.type === 'video' ? 'video' : 'paperclip'} size={14} /> {pendingFile.name}
+                  </div>
+                )}
+                <button className="icon-btn" onClick={() => setPendingFile(null)} style={{ marginLeft: 'auto', color: 'var(--status-rose)' }}>
+                  <Icon name="x" size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* @mention dropdown */}
+            {mentionOpen && mentionMembers.current.length > 0 && (
+              <div className="chat-fp-mention-pop">
+                <div className="chat-fp-mention-head">Bahset</div>
+                {mentionMembers.current.slice(0, 6).map((m, i) => (
+                  <div key={m.id}
+                    className="chat-fp-mention-row"
+                    data-active={i === mentionIdx}
+                    onMouseDown={ev => { ev.preventDefault(); insertMention(m); }}
+                    onMouseEnter={() => setMentionIdx(i)}
+                  >
+                    <Avatar member={m} size="sm" />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 500 }}>{m.name}</div>
+                      <div style={{ fontSize: 10, color: 'var(--ink-faint)' }}>@{m.id}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* composer */}
+            <div className="chat-fp-composer">
+              <input type="file" ref={fileRef} style={{ display: 'none' }} onChange={handleFileChange}
+                accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" />
+              <textarea
+                ref={inputRef}
+                className="chat-fp-input"
+                placeholder={pendingFile ? 'Açıklama ekle (isteğe bağlı)…' : (dmWith ? `${dmUser?.name || dmWith}'e mesaj yaz...` : '#genel kanala yaz...')}
+                value={text}
+                onChange={handleTextChange}
+                onKeyDown={handleKeyDown}
+                rows={1}
+              />
+              <div className="chat-fp-composer-row">
+                <button title="Kalın (Ctrl+B)" onClick={() => wrapSelection('**', '**', 'kalın')} style={{ fontWeight: 700 }}>B</button>
+                <button title="İtalik (Ctrl+I)" onClick={() => wrapSelection('*', '*', 'italik')} style={{ fontStyle: 'italic' }}>I</button>
+                <button title="Kod (Ctrl+E)" onClick={() => wrapSelection('`', '`', 'kod')}><Icon name="code" size={12} /></button>
+                <span className="chat-fp-composer-sep" />
+                <button title="Dosya ekle" disabled={uploading} onClick={() => fileRef.current?.click()}>
+                  {uploading ? <span style={{ fontSize: 11 }}>⏳</span> : <Icon name="paperclip" size={14} />}
+                </button>
+                <button title="Emoji" onClick={(e) => {
+                  // open emoji picker at composer level - reuse existing picker logic via a fake msgId
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setEmojiPicker({ msgId: '__composer__', x: rect.left + rect.width / 2, y: rect.top });
+                }}>
+                  <Icon name="smile" size={14} />
+                </button>
+                <button title="Bahset (@)" onClick={() => {
+                  setText(text + '@');
+                  setMentionOpen(true);
+                  setMentionQuery('');
+                  setMentionIdx(0);
+                  setTimeout(() => inputRef.current?.focus(), 10);
+                }}>
+                  <Icon name="at" size={14} />
+                </button>
+                <div style={{ flex: 1 }} />
+                <button className="btn btn-primary chat-fp-send" onClick={sendMessage} disabled={!text.trim() && !pendingFile}>
+                  <Icon name="send" size={13} /> Gönder
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* ─── RIGHT COLUMN (collapsible) ─── */}
+          {rightPanelOpen && (
+            <aside className="chat-fp-right">
+              <div className="chat-fp-right-head">
+                <div className="chat-fp-right-title">Kanal detayları</div>
+                <div className="chat-fp-right-tabs">
+                  {[
+                    ['members', 'Üyeler',    'users'],
+                    ['media',   'Medya',     'paperclip'],
+                    ['starred', 'Yıldızlı',  'star'],
+                    ['pinned',  'Sabitli',   'pin'],
+                  ].map(([id, lbl, ic]) => (
+                    <button key={id} data-active={rightTab === id} onClick={() => setRightTab(id)}>
+                      <Icon name={ic} size={11} /> {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="chat-fp-right-body">
+                {rightTab === 'members' && (
+                  <div className="chat-fp-members">
+                    <div className="chat-fp-section-title">
+                      Üyeler <span>{allMembers.length}</span>
+                    </div>
+                    {allMembers.map(m => {
+                      const mStatus = m.id === me ? 'online' : (statuses.get(m.id) || (online.has(m.id) ? 'online' : 'offline'));
+                      return (
+                        <div key={m.id} className="chat-fp-member-row"
+                          onClick={() => m.id !== me && openDm(m.id)}
+                          style={{ cursor: m.id !== me ? 'pointer' : 'default' }}
+                        >
+                          <div style={{ position: 'relative', flexShrink: 0, display: 'flex' }}>
+                            <Avatar member={m} size="sm" />
+                            <span style={{ position: 'absolute', bottom: -1, right: -1 }}>
+                              <StatusDot status={mStatus} />
+                            </span>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)' }}>{m.name}{m.id === me && <span style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 400, marginLeft: 4 }}>(siz)</span>}</div>
+                            <div style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{m.role || _statusLabel(mStatus)}</div>
+                          </div>
+                          {m.id !== me && <Icon name="msg" size={11} style={{ color: 'var(--ink-faint)' }} />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {rightTab === 'media' && (
+                  <MediaGallery allMembers={allMembers} onImageClick={setLightbox} />
+                )}
+                {rightTab === 'starred' && (
+                  <div className="chat-fp-pinned">
+                    <div className="chat-fp-section-title">Yıldızlanmış <span>{starredData.length}</span></div>
+                    {starredData.length === 0 ? (
+                      <div className="chat-empty" style={{ padding: 16 }}>Henüz yıldızlanmış mesaj yok.</div>
+                    ) : (
+                      [...starredData].reverse().map(msg => {
+                        const sender = allMembers.find(m => m.id === msg.from);
+                        return (
+                          <div key={msg.id} className="chat-fp-pinned-item">
+                            <div className="chat-fp-pinned-head">
+                              <Icon name="star" size={11} style={{ color: 'var(--status-yellow)' }} />
+                              <strong>{sender?.name || msg.from}</strong>
+                              <span className="chat-fp-pinned-time">{fmtMsgDateTime(msg)}</span>
+                              <button onClick={() => toggleStar(msg)} className="icon-btn" style={{ padding: 2, marginLeft: 'auto' }} title="Kaldır">
+                                <Icon name="x" size={11} />
+                              </button>
+                            </div>
+                            <div className="chat-fp-pinned-body">
+                              {msg.deleted
+                                ? <em style={{ color: 'var(--ink-faint)' }}>Bu mesaj silindi</em>
+                                : msg.file_url ? <span>📎 {msg.file_name || 'Dosya'}</span> : msg.text}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+                {rightTab === 'pinned' && (
+                  <div className="chat-fp-pinned">
+                    <div className="chat-fp-section-title">Kanala sabitli <span>{pinnedData.length}</span></div>
+                    {pinnedData.length === 0 ? (
+                      <div className="chat-empty" style={{ padding: 16 }}>Henüz sabitlenmiş mesaj yok.<br /><span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Bir mesajda ⋯ menüsünden "Kanala sabitle" seçeneğini kullanın.</span></div>
+                    ) : (
+                      [...pinnedData].reverse().map(msg => {
+                        const sender = allMembers.find(m => m.id === msg.from);
+                        return (
+                          <div key={msg.id} className="chat-fp-pinned-item">
+                            <div className="chat-fp-pinned-head">
+                              <Icon name="pin" size={11} style={{ color: 'var(--accent)' }} />
+                              <strong>{sender?.name || msg.from}</strong>
+                              <span className="chat-fp-pinned-time">{fmtMsgDateTime(msg)}</span>
+                              <button onClick={() => togglePin(msg)} className="icon-btn" style={{ padding: 2, marginLeft: 'auto' }} title="Kaldır">
+                                <Icon name="x" size={11} />
+                              </button>
+                            </div>
+                            <div className="chat-fp-pinned-body">
+                              {msg.deleted
+                                ? <em style={{ color: 'var(--ink-faint)' }}>Bu mesaj silindi</em>
+                                : msg.file_url ? <span>📎 {msg.file_name || 'Dosya'}</span> : msg.text}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            </aside>
+          )}
+        </div>
+        );
+      })()}
+
+      {/* ═════════════════ SLIDE-OUT (original) ═════════════════ */}
+      {!fullPage && (
+      <>
+
         {/* Header */}
         <div className="chat-head">
           {dmWith ? (
@@ -821,9 +1545,19 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
               </button>
             </>
           ) : (
-            <span className="chat-head-title" style={{ flex: 1 }}>Takım Sohbeti</span>
+            <span className="chat-head-title" style={{ flex: 1 }}>Sohbetler</span>
           )}
-          <button className="icon-btn" style={{ flexShrink: 0 }} onClick={onClose}>
+          {onExpand && (
+            <button
+              className="icon-btn"
+              style={{ flexShrink: 0 }}
+              title="Tam ekranda aç"
+              onClick={onExpand}
+            >
+              <Icon name="expand" size={13} />
+            </button>
+          )}
+          <button className="icon-btn" style={{ flexShrink: 0 }} onClick={onClose} title="Kapat">
             <Icon name="x" size={14} />
           </button>
         </div>
@@ -993,7 +1727,7 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const rect = e.currentTarget.getBoundingClientRect();
-                                setDeleteMenu({ msgId: msg.id, isMine, starred: starredMsgs.has(String(msg.id)), msg, x: isMine ? rect.left - 160 : rect.right + 4, y: rect.top });
+                                setDeleteMenu({ msgId: msg.id, isMine, starred: starredMsgs.has(String(msg.id)), pinned: pinnedMsgs.has(String(msg.id)), msg, x: isMine ? rect.left - 160 : rect.right + 4, y: rect.top });
                               }}
                             >
                               <Icon name="chevronDown" size={12} />
@@ -1124,6 +1858,8 @@ function ChatPanel({ open, onClose, onlineUsers, onlineStatuses, members: member
             </div>
           </>
         )}
+      </>
+      )}
       </div>
     </>
   );
