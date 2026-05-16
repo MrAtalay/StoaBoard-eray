@@ -3828,6 +3828,7 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   top: 0;
   right: 0;
   height: 100vh;
+  height: 100dvh;
   width: 380px;
   max-width: 96vw;
   background: var(--bg-raised);
@@ -3846,6 +3847,7 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   width: 100vw;
   max-width: 100vw;
   height: 100vh;
+  height: 100dvh;
   transform: none !important;
   border-left: none;
   z-index: 10;
@@ -4310,6 +4312,11 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   .topbar-crumbs .current { font-size: 14px; }
   .topbar-right { gap: 4px; }
   .view-switch { display: none; }
+  /* Davet kodu mobilde yer kaplıyor — gizle */
+  .topbar-invite { display: none !important; }
+  /* "Yeni görev" → sadece + ikonu */
+  .topbar .btn-primary .btn-label { display: none; }
+  .topbar .btn-primary { padding: 7px 9px; }
 
   /* ── Modal ── */
   .modal-overlay {
@@ -4353,6 +4360,12 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   .cal-header-actions { margin-left: 0; flex-wrap: wrap; }
   .cal-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .cal-month { font-size: 20px; }
+  /* Ay görünümü: dar ekranda hücreler orantısız büyük */
+  .cal-day { min-height: 60px; max-height: 90px; padding: 3px 3px 2px; }
+  .cal-chip { font-size: 9.5px; padding: 1px 3px; }
+  /* Hafta görünümü: 7 sütun dar ekrana sığmıyor → yatay scroll */
+  .cal-week-grid { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .cal-week-col { min-width: 88px; min-height: 200px; }
 
   /* ── Liste görünümü ── */
   .list-view { padding: 8px 12px 16px; }
@@ -4374,6 +4387,11 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
     width: 100vw !important;
     max-width: 100vw !important;
   }
+  /* Chat input: gesture bar altına kaymasın, iOS zoom'u önle */
+  .chat-input-wrap {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .chat-input { font-size: 16px; }
 
   /* ── Ayarlar ── */
   .settings-wrap { padding: 16px; overflow-x: hidden; }
@@ -4435,6 +4453,10 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   /* Topbar'da sadece mevcut sayfayı göster */
   .topbar-crumbs > span:not(.current),
   .topbar-crumbs .sep { display: none; }
+  /* Takvim: çok dar ekranda hücreler daha da küçük, chip metni gizle */
+  .cal-day { min-height: 44px; max-height: 64px; padding: 2px 2px 1px; }
+  .cal-chip { display: none; }
+  .cal-more { font-size: 9px; }
 
   /* ── Trash zone: daha büyük dokunma hedefi ── */
   .board-trash-zone {

@@ -402,7 +402,7 @@ function Topbar({ view, onView, openCmd, openNotifs, openModal, activeCrumb, onC
             : <span className="pip" />
           }
         </button>
-        {canManageTasks && <button className="btn btn-primary" onClick={openModal}><Icon name="plus" size={14} /> Yeni görev</button>}
+        {canManageTasks && <button className="btn btn-primary" onClick={openModal}><Icon name="plus" size={14} /><span className="btn-label"> Yeni görev</span></button>}
       </div>
     </div>
   );
