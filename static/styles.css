@@ -3839,6 +3839,7 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   transition: transform 0.3s var(--ease);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .chat-panel[data-open="true"] { transform: translateX(0); }
 .chat-panel[data-full-page="true"] {
@@ -3914,6 +3915,7 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
 .chat-messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
