@@ -7,6 +7,8 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
   const [newComment, setNewComment]     = useDrawerState('');
   const [submitting, setSubmitting]     = useDrawerState(false);
   const [loadingDetail, setLoadingDetail] = useDrawerState(false);
+  const [linkedNotes, setLinkedNotes]   = useDrawerState([]);
+  const [loadingLinkedNotes, setLoadingLinkedNotes] = useDrawerState(false);
   const [statusOpen, setStatusOpen]     = useDrawerState(false);
   const [priorityOpen, setPriorityOpen] = useDrawerState(false);
   const [labelOpen, setLabelOpen]       = useDrawerState(false);
@@ -37,6 +39,38 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
     API.getTaskDetail(task.id)
       .then(d => { setDetail(d); setLoadingDetail(false); })
       .catch(() => { setDetail(null); setLoadingDetail(false); });
+  }, [open, task?.id]);
+
+  // Fetch linked notes for this task
+  useDrawerEffect(() => {
+    if (!open || !task) { setLinkedNotes([]); return; }
+    setLoadingLinkedNotes(true);
+    API.taskLinkedNotes(task.id)
+      .then(rows => { setLinkedNotes(rows || []); setLoadingLinkedNotes(false); })
+      .catch(() => { setLinkedNotes([]); setLoadingLinkedNotes(false); });
+  }, [open, task?.id]);
+
+  // Live updates: react to note_updated / note_deleted to keep panel fresh
+  useDrawerEffect(() => {
+    const sock = window.SOCKET;
+    if (!sock || !open || !task) return;
+    const onUpd = (note) => {
+      if (!note) return;
+      setLinkedNotes(prev => {
+        const isLinkedNow = (note.linked_tasks || []).map(String).includes(String(task.id));
+        const had = prev.some(n => n.id === note.id);
+        if (isLinkedNow && !had) return [note, ...prev];
+        if (!isLinkedNow && had) return prev.filter(n => n.id !== note.id);
+        return prev.map(n => n.id === note.id ? { ...n, ...note } : n);
+      });
+    };
+    const onDel = ({ id }) => setLinkedNotes(prev => prev.filter(n => n.id !== id));
+    sock.on('note_updated', onUpd);
+    sock.on('note_deleted', onDel);
+    return () => {
+      sock.off('note_updated', onUpd);
+      sock.off('note_deleted', onDel);
+    };
   }, [open, task?.id]);
 
   useDrawerEffect(() => {
@@ -403,6 +437,40 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
               ))}
             </div>
           )}
+
+          {/* Linked notes (two-way with Notes module) */}
+          <div className="comments-section" style={{ marginBottom: 18 }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', marginBottom: 6 }}>
+              Bağlı Notlar <span style={{ color: 'var(--ink-muted)', fontSize: 13, fontFamily: 'var(--font-ui)' }}>· {linkedNotes.length}</span>
+            </h3>
+            {loadingLinkedNotes ? (
+              <div style={{ fontSize: 12, color: 'var(--ink-faint)', padding: '8px 0' }}>Yükleniyor…</div>
+            ) : linkedNotes.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: 'var(--ink-faint)', padding: '8px 0' }}>
+                Bu göreve henüz not bağlanmadı. Notlar modülünden "Görev bağla" ile ekleyebilirsin.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {linkedNotes.map(n => {
+                  const author = DATA.MEMBERS.find(m => m.id === n.author);
+                  return (
+                    <div key={n.id} className="note-linked-item"
+                      onClick={() => {
+                        onClose && onClose();
+                        if (window.__SWITCH_VIEW__) window.__SWITCH_VIEW__('notes');
+                        setTimeout(() => { window.__NOTES_OPEN__ && window.__NOTES_OPEN__(n.id); }, 30);
+                      }}
+                    >
+                      <Icon name="note" size={12} />
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title || 'Başlıksız Not'}</span>
+                      {author && <span style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{author.name?.split(' ')[0]}</span>}
+                      <span style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{n.updated_ago}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Comments */}
           <div className="comments-section">

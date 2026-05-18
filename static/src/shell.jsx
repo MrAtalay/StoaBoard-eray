@@ -113,6 +113,7 @@ function Sidebar({
   myTasksOpenCount,
   notifCount,
   onOpenNotifs,
+  notesCount,
 }) {
   const me = window.CURRENT_USER || {};
   const online = onlineUsers || new Set();
@@ -265,6 +266,11 @@ function Sidebar({
           badgeUnread
           onClick={() => onView('chat')}
           active={view === 'chat'}
+        />
+        <NavItem icon="note"          label="Notlar"      sub="Notes"
+          badge={notesCount > 0 ? (notesCount > 99 ? '99+' : String(notesCount)) : null}
+          onClick={() => onView('notes')}
+          active={view === 'notes'}
         />
         <NavItem icon="bell"          label="Bildirimler" sub="Notifications"
           badge={notifCount > 0 ? (notifCount > 99 ? '99+' : String(notifCount)) : null}

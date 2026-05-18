@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
@@ -465,6 +466,102 @@ class ChannelMember(db.Model):
             'role': self.role or 'member',
             'joined_at': self.joined_at.isoformat() if self.joined_at else '',
         }
+
+
+_NOTE_STRIP_RE = re.compile(r'[`>#*_~\[\]]')
+
+def _markdown_to_plain(text):
+    if not text:
+        return ''
+    s = text or ''
+    # links: [label](url) → label
+    s = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', s)
+    # code fences and inline code markers
+    s = re.sub(r'```[\w-]*', '', s)
+    s = _NOTE_STRIP_RE.sub('', s)
+    # bullet/todo prefixes
+    s = re.sub(r'^\s*[-*+]\s+(\[[\sxX]\]\s+)?', '', s, flags=re.MULTILINE)
+    s = re.sub(r'^\s*\d+\.\s+', '', s, flags=re.MULTILINE)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+
+class Note(db.Model):
+    __tablename__ = 'notes'
+    __table_args__ = (
+        db.Index('ix_note_workspace_id', 'workspace_id'),
+        db.Index('ix_note_author_id', 'author_id'),
+        db.Index('ix_note_updated_at', 'updated_at'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'), nullable=False)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    title = db.Column(db.String(255), nullable=False, default='Başlıksız Not')
+    body = db.Column(db.Text, default='')                       # markdown
+    labels = db.Column(db.JSON, default=list)                   # [{name, tone}, ...]
+    visibility = db.Column(db.String(20), default='private')    # 'private' | 'workspace'
+    status = db.Column(db.String(20), default='draft')          # 'draft' | 'published'
+    pinned = db.Column(db.Boolean, default=False)
+    archived = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=_now)
+    updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
+
+    author = db.relationship('User', foreign_keys=[author_id])
+    collaborators = db.relationship('NoteCollaborator', backref='note', lazy='select',
+                                    cascade='all, delete-orphan')
+    linked_tasks = db.relationship('NoteLinkedTask', backref='note', lazy='select',
+                                   cascade='all, delete-orphan')
+
+    def collaborator_ids(self):
+        return [c.user_id for c in self.collaborators]
+
+    def linked_task_ids(self):
+        return [lt.task_id for lt in self.linked_tasks]
+
+    def to_dict(self, include_body=True):
+        author_slug = self.author.slug if self.author else None
+        collab_slugs = []
+        if self.collaborators:
+            uids = [c.user_id for c in self.collaborators]
+            users = User.query.filter(User.id.in_(uids)).all() if uids else []
+            collab_slugs = [u.slug for u in users]
+        d = {
+            'id': self.id,
+            'title': self.title or 'Başlıksız Not',
+            'labels': self.labels or [],
+            'visibility': self.visibility or 'private',
+            'status': self.status or 'draft',
+            'pinned': bool(self.pinned),
+            'archived': bool(self.archived),
+            'author': author_slug,
+            'collaborators': collab_slugs,
+            'linked_tasks': [str(tid) for tid in self.linked_task_ids()],
+            'workspace_id': self.workspace_id,
+            'created_at': self.created_at.isoformat() if self.created_at else '',
+            'updated_at': self.updated_at.isoformat() if self.updated_at else '',
+            'updated_ago': _time_ago(self.updated_at),
+        }
+        if include_body:
+            d['body'] = self.body or ''
+        plain = _markdown_to_plain(self.body or '')
+        d['preview'] = plain[:240]
+        return d
+
+
+class NoteCollaborator(db.Model):
+    __tablename__ = 'note_collaborators'
+    note_id = db.Column(db.Integer, db.ForeignKey('notes.id', ondelete='CASCADE'), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+
+
+class NoteLinkedTask(db.Model):
+    __tablename__ = 'note_linked_tasks'
+    __table_args__ = (
+        db.Index('ix_note_linked_task_task_id', 'task_id'),
+        db.Index('ix_note_linked_task_note_id', 'note_id'),
+    )
+    note_id = db.Column(db.Integer, db.ForeignKey('notes.id', ondelete='CASCADE'), primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('tasks.id', ondelete='CASCADE'), primary_key=True)
 
 
 class ChatMessage(db.Model):

@@ -14,9 +14,27 @@ function CommandPalette({ open, onClose, onAction }) {
   const flat = useM(() => {
     const all = [];
     DATA.COMMANDS.forEach(g => g.items.forEach(it => all.push({ ...it, group: g.group })));
-    if (!q) return all;
-    const ql = q.toLowerCase();
-    return all.filter(it => it.label.toLowerCase().includes(ql));
+    let base = all;
+    if (q) {
+      const ql = q.toLowerCase();
+      base = all.filter(it => it.label.toLowerCase().includes(ql));
+    }
+    if (q && (DATA.NOTES || []).length) {
+      const ql = q.toLowerCase();
+      const noteHits = (DATA.NOTES || [])
+        .filter(n => !n.archived)
+        .filter(n => (n.title || '').toLowerCase().includes(ql) || (n.preview || '').toLowerCase().includes(ql))
+        .slice(0, 6)
+        .map(n => ({
+          label: n.title || 'Başlıksız Not',
+          icon: 'note',
+          action: 'open:note:' + n.id,
+          group: 'Notlar',
+          sub: n.preview ? n.preview.slice(0, 60) : null,
+        }));
+      base = [...base, ...noteHits];
+    }
+    return base;
   }, [q]);
 
   const grouped = useM(() => {
@@ -60,14 +78,17 @@ function CommandPalette({ open, onClose, onAction }) {
                 const myIdx = counter++;
                 return (
                   <div
-                    key={it.label}
+                    key={`${it.group}-${it.label}-${myIdx}`}
                     className="palette-item"
                     data-active={myIdx === idx}
                     onMouseEnter={() => setIdx(myIdx)}
                     onClick={() => { onAction(it.action); onClose(); }}
                   >
                     <Icon name={it.icon} size={14} />
-                    <span>{it.label}</span>
+                    <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</span>
+                      {it.sub && <span style={{ fontSize: 10.5, color: 'var(--ink-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.sub}</span>}
+                    </span>
                     {it.shortcut && <kbd>{it.shortcut}</kbd>}
                   </div>
                 );

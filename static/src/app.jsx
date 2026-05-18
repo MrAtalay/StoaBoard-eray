@@ -68,6 +68,7 @@ function App() {
   const pendingGTimer  = useRef(null);
   const [myStatusState, setMyStatusState] = useS('online');
   const [notifCount, setNotifCount]       = useS(0);
+  const [notesCount, setNotesCount]       = useS(0);
   const [currentWsId, setCurrentWsId]   = useS(() => window.DATA?.WORKSPACE?.id || null);
 
   const [unreadCounts, setUnreadCounts] = useS(() => {
@@ -134,7 +135,7 @@ function App() {
     };
     const clearG = () => { clearTimeout(pendingGTimer.current); pendingGTimer.current = null; };
     // G+key navigation. 'l' (list) and 'b' (board) both go to board view; list sets sub-view.
-    const G_MAP = { b: 'board', l: 'board', c: 'calendar', d: 'dashboard', s: 'settings', m: 'chat' };
+    const G_MAP = { b: 'board', l: 'board', c: 'calendar', d: 'dashboard', s: 'settings', m: 'chat', n: 'notes' };
 
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); clearG(); setCmdOpen(true); return; }
@@ -250,6 +251,18 @@ function App() {
         window.DATA.MEMBERS = next;
         return next;
       });
+    });
+
+    // Notes count maintenance (NotesView keeps its own list; we mirror count here)
+    sock.on('note_created', (note) => {
+      if (!note) return;
+      if (note.actor === window.CURRENT_USER?.slug) return;
+      setNotesCount(c => c + 1);
+    });
+    sock.on('note_deleted', (payload) => {
+      if (!payload) return;
+      if (payload.actor === window.CURRENT_USER?.slug) return;
+      setNotesCount(c => Math.max(0, c - 1));
     });
 
     // Real-time notifications (from DM / @mention / task assignment)
@@ -477,6 +490,14 @@ function App() {
 
     const unread = (data.notifications || []).filter(n => n.unread).length;
     setNotifCount(unread);
+    if (typeof data.notes_count === 'number') setNotesCount(data.notes_count);
+
+    // Background-prefetch notes so palette + sidebar badge stay in sync without opening the page
+    if ((data.notes_count || 0) > 0 || (window.DATA.NOTES || []).length === 0) {
+      API.listNotes().then((rows) => {
+        window.DATA.NOTES = rows || [];
+      }).catch(() => {});
+    }
 
     const nextStatus = ['away', 'dnd'].includes(data.user?.status) ? data.user.status : 'online';
     setOwnStatus(nextStatus, { manual: nextStatus === 'away', persist: false });
@@ -596,6 +617,7 @@ function App() {
   };
   window.__OPEN_CHAT__ = openChat;
   window.__APP_TASKS__ = tasks;
+  window.__SWITCH_VIEW__ = setView;
   window.__OPEN_TASK_BY_ID__ = (taskId) => {
     const t = tasks.find(x => String(x.id) === String(taskId));
     if (t) { setDrawerTask(t); setNotifOpen(false); }
@@ -607,7 +629,22 @@ function App() {
       setView('board');
     }
     else if (action.startsWith('goto:')) setView(action.slice(5));
+    else if (action.startsWith('open:note:')) {
+      const noteId = parseInt(action.slice('open:note:'.length), 10);
+      if (Number.isFinite(noteId)) {
+        setView('notes');
+        // NotesView may need a tick to mount before __NOTES_OPEN__ exists
+        setTimeout(() => {
+          if (window.__NOTES_OPEN__) window.__NOTES_OPEN__(noteId);
+          else window.location.hash = `note=${noteId}`;
+        }, 30);
+      }
+    }
     else if (action === 'new:task')       { if (canManageTasks) openModal('todo'); }
+    else if (action === 'new:note')       {
+      setView('notes');
+      setTimeout(() => { window.__NOTES_CREATE__?.(); }, 30);
+    }
     else if (action === 'open:notifs')    setNotifOpen(true);
     else if (action === 'open:chat')      openChat();
     else if (action === 'new:project')    { if (canManageProjects) setProjectModal(true); }
@@ -704,7 +741,7 @@ function App() {
     );
   }
 
-  const crumb = { board:'Pano', calendar:'Takvim', dashboard:'Ana Sayfa', settings:'Ayarlar', chat:'Sohbet', notifications:'Bildirimler' }[view] || 'Pano';
+  const crumb = { board:'Pano', calendar:'Takvim', dashboard:'Ana Sayfa', settings:'Ayarlar', chat:'Sohbet', notifications:'Bildirimler', notes:'Notlar' }[view] || 'Pano';
 
   // My-tasks open count (assigned to me, not in a done column)
   const myId = window.CURRENT_USER?.id;
@@ -762,6 +799,7 @@ function App() {
         onMobileClose={() => setMobileSidebarOpen(false)}
         myTasksOpenCount={myTasksOpenCount}
         notifCount={notifCount}
+        notesCount={notesCount}
         onOpenNotifs={() => { setView('notifications'); setNotifCount(0); }}
       />
       <div className="main">
@@ -806,6 +844,16 @@ function App() {
             )}
             {view === 'calendar'  && <CalendarView tasks={tasks} onOpenTask={openDrawer} onOpenModal={openModal} canCreateTasks={canManageTasks} />}
             {view === 'dashboard' && <DashboardView tasks={tasks} onOpenTask={openDrawer} onView={setView} />}
+            {view === 'notes'     && <NotesView
+              socket={socket}
+              tasks={tasks}
+              members={members}
+              currentUserId={window.CURRENT_USER?.slug}
+              isOwner={isOwner}
+              canManageProjects={canManageProjects}
+              onOpenTask={(t) => { setView('board'); setDrawerTask(t); }}
+              onCountChange={setNotesCount}
+            />}
             {view === 'chat' && (
               <ChatPanel
                 open

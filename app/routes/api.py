@@ -13,6 +13,7 @@ from app.models import (
     Task, Label, TaskLabel, TaskAssignee, Subtask, Comment,
     Notification, ActivityLog, ChatMessage, WorkspaceJoinRequest, UploadedFile,
     Channel, ChannelMember,
+    Note, NoteCollaborator, NoteLinkedTask,
     _now,
 )
 from app import online_state
@@ -268,6 +269,12 @@ def bootstrap():
     can_create_channel = _user_can_create_channel(user, ws.id)
     ws_dict['can_create_channel'] = can_create_channel
 
+    # Notes count visible to this user (workspace + private + collaborator)
+    try:
+        notes_visible_count = _visible_notes_query(user, ws.id).count()
+    except Exception:
+        notes_visible_count = 0
+
     base_payload = {
         'user': _user_private_dict(user, member),
         'workspace': ws_dict,
@@ -275,6 +282,7 @@ def bootstrap():
         'members': members,
         'online_users': online_users,
         'channels': channels_payload,
+        'notes_count': notes_visible_count,
     }
 
     if not projects:
@@ -2706,6 +2714,339 @@ def get_chat_media():
             .all()
         )
     return jsonify([m.to_dict() for m in messages])
+
+
+# ── Notes ──────────────────────────────────────────────────────────────────
+
+def _visible_notes_query(user, workspace_id, include_archived=False):
+    """Notes the user is allowed to see in workspace_id."""
+    base = Note.query.filter(Note.workspace_id == workspace_id)
+    if not include_archived:
+        base = base.filter(Note.archived == False)
+    # workspace-wide notes are visible to all members
+    visible_workspace = Note.visibility == 'workspace'
+    # private: author OR collaborator
+    collab_note_ids = db.session.query(NoteCollaborator.note_id).filter_by(user_id=user.id).subquery()
+    visible_private = db.and_(
+        Note.visibility == 'private',
+        db.or_(
+            Note.author_id == user.id,
+            Note.id.in_(collab_note_ids),
+        ),
+    )
+    return base.filter(db.or_(visible_workspace, visible_private))
+
+
+def _can_view_note(user, note, member=None):
+    if note.workspace_id != _resolve_workspace_id(user):
+        # Cross-workspace access: only allow if user is an owner of that ws
+        ws = Workspace.query.get(note.workspace_id)
+        return bool(ws and ws.owner_id == user.id)
+    if note.visibility == 'workspace':
+        return True
+    if note.author_id == user.id:
+        return True
+    if user.id in note.collaborator_ids():
+        return True
+    return False
+
+
+def _can_edit_note(user, note, member=None):
+    if note.author_id == user.id:
+        return True
+    if user.id in note.collaborator_ids():
+        return True
+    # Workspace owner can always edit
+    ws = Workspace.query.get(note.workspace_id)
+    if ws and ws.owner_id == user.id:
+        return True
+    if member and 'manage_projects' in _member_permissions(member):
+        return True
+    return False
+
+
+def _emit_note_event(event, payload, note, actor_slug=None):
+    """Broadcast note event to recipients who can see it."""
+    from app import socketio as _sio
+    payload = dict(payload)
+    if actor_slug:
+        payload['actor'] = actor_slug
+    try:
+        if note.visibility == 'workspace':
+            _sio.emit(event, payload, to=f'ws_{note.workspace_id}')
+        else:
+            recipient_ids = set(note.collaborator_ids())
+            recipient_ids.add(note.author_id)
+            ws = Workspace.query.get(note.workspace_id)
+            if ws and ws.owner_id:
+                recipient_ids.add(ws.owner_id)
+            for uid in recipient_ids:
+                _sio.emit(event, payload, to=f'user_{uid}')
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning('note emit failed: %s', e)
+
+
+def _resolve_user_ids_from_slugs(slugs):
+    if not slugs:
+        return []
+    users = User.query.filter(User.slug.in_(slugs)).all()
+    return [u.id for u in users]
+
+
+@api_bp.route('/notes', methods=['GET'])
+@_login_required
+def list_notes():
+    user = _current_user()
+    ws_id = _resolve_workspace_id(user)
+    if not ws_id:
+        return jsonify([])
+    include_archived = request.args.get('archived', '').lower() in ('1', 'true', 'yes')
+    q = _visible_notes_query(user, ws_id, include_archived=include_archived)
+    q = q.options(
+        joinedload(Note.author),
+        subqueryload(Note.collaborators),
+        subqueryload(Note.linked_tasks),
+    )
+    q = q.order_by(Note.pinned.desc(), Note.updated_at.desc())
+    notes = q.all()
+    return jsonify([n.to_dict(include_body=False) for n in notes])
+
+
+@api_bp.route('/notes/count', methods=['GET'])
+@_login_required
+def notes_count():
+    user = _current_user()
+    ws_id = _resolve_workspace_id(user)
+    if not ws_id:
+        return jsonify({'count': 0})
+    count = _visible_notes_query(user, ws_id).count()
+    return jsonify({'count': count})
+
+
+@api_bp.route('/notes', methods=['POST'])
+@_login_required
+def create_note():
+    user = _current_user()
+    ws_id = _resolve_workspace_id(user)
+    if not ws_id:
+        return jsonify({'error': 'Aktif çalışma alanı yok'}), 400
+    data = request.get_json(silent=True) or {}
+    title = (data.get('title') or 'Başlıksız Not').strip()[:255]
+    body = data.get('body') or ''
+    visibility = data.get('visibility') or 'private'
+    if visibility not in ('private', 'workspace'):
+        visibility = 'private'
+    note = Note(
+        workspace_id=ws_id,
+        author_id=user.id,
+        title=title,
+        body=body,
+        visibility=visibility,
+        status=data.get('status') or 'draft',
+        labels=data.get('labels') or [],
+    )
+    db.session.add(note)
+    db.session.flush()
+
+    collab_ids = _resolve_user_ids_from_slugs(data.get('collaborators') or [])
+    for uid in collab_ids:
+        if uid == user.id:
+            continue
+        db.session.add(NoteCollaborator(note_id=note.id, user_id=uid))
+
+    db.session.commit()
+    payload = note.to_dict()
+    _emit_note_event('note_created', payload, note, actor_slug=user.slug)
+    return jsonify(payload), 201
+
+
+@api_bp.route('/notes/<int:note_id>', methods=['GET'])
+@_login_required
+def get_note(note_id):
+    user = _current_user()
+    note = Note.query.get_or_404(note_id)
+    if not _can_view_note(user, note):
+        return jsonify({'error': 'Bu nota erişiminiz yok'}), 403
+    return jsonify(note.to_dict())
+
+
+@api_bp.route('/notes/<int:note_id>', methods=['PATCH'])
+@_login_required
+def update_note(note_id):
+    user = _current_user()
+    note = Note.query.get_or_404(note_id)
+    member = _member_for_workspace(user, note.workspace_id)
+    if not _can_edit_note(user, note, member):
+        return jsonify({'error': 'Bu notu düzenleme yetkiniz yok'}), 403
+    data = request.get_json(silent=True) or {}
+    if 'title' in data:
+        t = (data.get('title') or '').strip()[:255]
+        note.title = t or 'Başlıksız Not'
+    if 'body' in data:
+        note.body = data.get('body') or ''
+    if 'labels' in data:
+        labels = data.get('labels') or []
+        # Sanity-check shape: list of {name, tone}
+        clean = []
+        for l in labels:
+            if isinstance(l, dict) and l.get('name'):
+                clean.append({'name': str(l.get('name'))[:60], 'tone': str(l.get('tone') or 'blue')[:40]})
+            elif isinstance(l, str):
+                clean.append({'name': l[:60], 'tone': 'blue'})
+        note.labels = clean
+    if 'visibility' in data:
+        v = data.get('visibility')
+        if v in ('private', 'workspace'):
+            note.visibility = v
+    if 'status' in data:
+        s = data.get('status')
+        if s in ('draft', 'published'):
+            note.status = s
+    if 'pinned' in data:
+        note.pinned = bool(data.get('pinned'))
+    if 'archived' in data:
+        note.archived = bool(data.get('archived'))
+    if 'collaborators' in data:
+        wanted_ids = set(_resolve_user_ids_from_slugs(data.get('collaborators') or []))
+        wanted_ids.discard(user.id)
+        # delete removed, add new
+        NoteCollaborator.query.filter_by(note_id=note.id).delete()
+        for uid in wanted_ids:
+            db.session.add(NoteCollaborator(note_id=note.id, user_id=uid))
+
+    db.session.commit()
+    payload = note.to_dict()
+    _emit_note_event('note_updated', payload, note, actor_slug=user.slug)
+    return jsonify(payload)
+
+
+@api_bp.route('/notes/<int:note_id>', methods=['DELETE'])
+@_login_required
+def delete_note(note_id):
+    user = _current_user()
+    note = Note.query.get_or_404(note_id)
+    member = _member_for_workspace(user, note.workspace_id)
+    if not _can_edit_note(user, note, member):
+        return jsonify({'error': 'Bu notu silme yetkiniz yok'}), 403
+    note_payload = {'id': note.id, 'workspace_id': note.workspace_id, 'visibility': note.visibility}
+    # capture recipients before delete (collaborators relationship goes away)
+    recipient_ids = set(note.collaborator_ids())
+    recipient_ids.add(note.author_id)
+    ws = Workspace.query.get(note.workspace_id)
+    if ws and ws.owner_id:
+        recipient_ids.add(ws.owner_id)
+    is_workspace = note.visibility == 'workspace'
+    db.session.delete(note)
+    db.session.commit()
+
+    from app import socketio as _sio
+    try:
+        evt_payload = {**note_payload, 'actor': user.slug}
+        if is_workspace:
+            _sio.emit('note_deleted', evt_payload, to=f'ws_{note_payload["workspace_id"]}')
+        else:
+            for uid in recipient_ids:
+                _sio.emit('note_deleted', evt_payload, to=f'user_{uid}')
+    except Exception:
+        pass
+    return jsonify({'ok': True})
+
+
+@api_bp.route('/notes/<int:note_id>/link-task', methods=['POST'])
+@_login_required
+def link_note_to_task(note_id):
+    user = _current_user()
+    note = Note.query.get_or_404(note_id)
+    member = _member_for_workspace(user, note.workspace_id)
+    if not _can_edit_note(user, note, member):
+        return jsonify({'error': 'Bu notu düzenleme yetkiniz yok'}), 403
+    data = request.get_json(silent=True) or {}
+    task_id = data.get('task_id')
+    if not task_id:
+        return jsonify({'error': 'task_id gerekli'}), 400
+    try:
+        task_id = int(task_id)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Geçersiz task_id'}), 400
+    task = Task.query.get(task_id)
+    if not task:
+        return jsonify({'error': 'Görev bulunamadı'}), 404
+    # Task must be in same workspace as note
+    project = Project.query.get(task.project_id)
+    if not project or project.workspace_id != note.workspace_id:
+        return jsonify({'error': 'Bu görev bu çalışma alanına ait değil'}), 400
+    existing = NoteLinkedTask.query.filter_by(note_id=note.id, task_id=task.id).first()
+    if not existing:
+        db.session.add(NoteLinkedTask(note_id=note.id, task_id=task.id))
+        db.session.commit()
+    payload = note.to_dict()
+    _emit_note_event('note_updated', payload, note, actor_slug=user.slug)
+    return jsonify(payload)
+
+
+@api_bp.route('/notes/<int:note_id>/link-task/<int:task_id>', methods=['DELETE'])
+@_login_required
+def unlink_note_from_task(note_id, task_id):
+    user = _current_user()
+    note = Note.query.get_or_404(note_id)
+    member = _member_for_workspace(user, note.workspace_id)
+    if not _can_edit_note(user, note, member):
+        return jsonify({'error': 'Bu notu düzenleme yetkiniz yok'}), 403
+    NoteLinkedTask.query.filter_by(note_id=note.id, task_id=task_id).delete()
+    db.session.commit()
+    payload = note.to_dict()
+    _emit_note_event('note_updated', payload, note, actor_slug=user.slug)
+    return jsonify(payload)
+
+
+@api_bp.route('/workspaces/me/tasks', methods=['GET'])
+@_login_required
+def workspace_all_tasks():
+    """Lightweight list of every task in the current workspace — used by Notes link-task picker."""
+    user = _current_user()
+    ws_id = _resolve_workspace_id(user)
+    if not ws_id:
+        return jsonify([])
+    rows = (
+        db.session.query(Task.id, Task.title, Task.project_id, Project.name, BoardColumn.slug, BoardColumn.title_tr)
+        .join(Project, Task.project_id == Project.id)
+        .outerjoin(BoardColumn, Task.column_id == BoardColumn.id)
+        .filter(Project.workspace_id == ws_id)
+        .order_by(Task.created_at.desc())
+        .limit(500)
+        .all()
+    )
+    return jsonify([
+        {
+            'id': str(r[0]),
+            'title': r[1],
+            'project_id': r[2],
+            'project_name': r[3],
+            'col': r[4],
+            'col_title': r[5] or r[4],
+        }
+        for r in rows
+    ])
+
+
+@api_bp.route('/tasks/<int:task_id>/linked-notes', methods=['GET'])
+@_login_required
+def get_task_linked_notes(task_id):
+    user = _current_user()
+    task = Task.query.get_or_404(task_id)
+    project = Project.query.get_or_404(task.project_id)
+    _, denied = _require_project_access(user, project)
+    if denied:
+        return denied
+    rows = NoteLinkedTask.query.filter_by(task_id=task_id).all()
+    if not rows:
+        return jsonify([])
+    note_ids = [r.note_id for r in rows]
+    notes = Note.query.filter(Note.id.in_(note_ids)).all()
+    visible = [n for n in notes if _can_view_note(user, n)]
+    visible.sort(key=lambda n: n.updated_at or _now(), reverse=True)
+    return jsonify([n.to_dict(include_body=False) for n in visible])
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────

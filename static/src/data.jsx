@@ -138,6 +138,18 @@ window.API = {
   removeChannelMember:     (channelId, userSlug)       => apiFetch(`/api/channels/${channelId}/members/${userSlug}`, { method: 'DELETE' }),
   updateChannelMemberRole: (channelId, userSlug, role) => apiFetch(`/api/channels/${channelId}/members/${userSlug}`, { method: 'PATCH', body: { role } }),
 
+  // Notes
+  listNotes:     (opts)      => apiFetch('/api/notes' + ((opts && opts.archived) ? '?archived=1' : '')),
+  notesCount:    ()          => apiFetch('/api/notes/count'),
+  getNote:       (id)        => apiFetch(`/api/notes/${id}`),
+  createNote:    (data)      => apiFetch('/api/notes',         { method: 'POST',   body: data }),
+  updateNote:    (id, data)  => apiFetch(`/api/notes/${id}`,   { method: 'PATCH',  body: data }),
+  deleteNote:    (id)        => apiFetch(`/api/notes/${id}`,   { method: 'DELETE' }),
+  linkNoteTask:   (noteId, taskId) => apiFetch(`/api/notes/${noteId}/link-task`, { method: 'POST', body: { task_id: taskId } }),
+  unlinkNoteTask: (noteId, taskId) => apiFetch(`/api/notes/${noteId}/link-task/${taskId}`, { method: 'DELETE' }),
+  taskLinkedNotes: (taskId)        => apiFetch(`/api/tasks/${taskId}/linked-notes`),
+  workspaceTasks:  ()              => apiFetch('/api/workspaces/me/tasks'),
+
   // Workspace setup & switching
   createWorkspace:   (data)  => apiFetch('/api/workspaces',              { method: 'POST', body: data }),
   joinWorkspace:     (code)  => apiFetch('/api/workspaces/join',          { method: 'POST', body: { code } }),
@@ -190,10 +202,12 @@ const COMMANDS = [
     { label: 'Liste görünümü',        icon: 'list',        action: 'goto:board-list', shortcut: 'G L' },
     { label: 'Takvim',                icon: 'calendar',    action: 'goto:calendar',  shortcut: 'G C' },
     { label: 'Sohbet',                icon: 'msg',         action: 'goto:chat',      shortcut: 'G M' },
+    { label: 'Notlar',                icon: 'note',        action: 'goto:notes',     shortcut: 'G N' },
     { label: 'Ayarlar',               icon: 'settings',    action: 'goto:settings',  shortcut: 'G S' },
   ]},
   { group: 'Aksiyonlar', items: [
     { label: 'Yeni görev',            icon: 'plus',        action: 'new:task',       shortcut: 'N' },
+    { label: 'Yeni not',              icon: 'plus',        action: 'new:note' },
     { label: 'Bildirimleri aç',       icon: 'bell',        action: 'open:notifs' },
     { label: 'Sohbeti aç',            icon: 'msg',         action: 'open:chat' },
     { label: 'Yeni proje',            icon: 'plus',        action: 'new:project' },
@@ -214,6 +228,7 @@ window.DATA = {
   LABELS: {},
   COLUMNS: [],
   TASKS: [],
+  NOTES: [],
   NOTIFICATIONS: [],
   ACTIVITY: [],
   THROUGHPUT: [],
