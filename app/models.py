@@ -406,6 +406,67 @@ class WorkspaceJoinRequest(db.Model):
         }
 
 
+class Channel(db.Model):
+    __tablename__ = 'channels'
+    id = db.Column(db.Integer, primary_key=True)
+    workspace_id = db.Column(db.Integer, db.ForeignKey('workspaces.id'), nullable=False, index=True)
+    slug = db.Column(db.String(80), nullable=False, index=True)  # per-workspace lower-case slug; matches ChatMessage.channel
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    type = db.Column(db.String(10), default='public')  # 'public' | 'private'
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=_now)
+    updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
+    is_default = db.Column(db.Boolean, default=False)  # 'general' channel — undeletable
+
+    members = db.relationship('ChannelMember', backref='channel', lazy='select',
+                              cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.UniqueConstraint('workspace_id', 'slug', name='uq_channel_workspace_slug'),
+    )
+
+    def to_dict(self, include_members=False, current_user_id=None):
+        data = {
+            'id': self.slug,           # frontend uses slug as id
+            'channel_id': self.id,     # numeric id for backend ops
+            'slug': self.slug,
+            'name': self.name,
+            'description': self.description or '',
+            'type': self.type or 'public',
+            'is_default': bool(self.is_default),
+            'created_by': self.created_by,
+            'member_count': len(self.members),
+        }
+        if current_user_id is not None:
+            me = next((m for m in self.members if m.user_id == current_user_id), None)
+            data['my_role'] = me.role if me else None
+            data['is_member'] = me is not None
+        if include_members:
+            data['members'] = [m.to_dict() for m in self.members]
+        return data
+
+
+class ChannelMember(db.Model):
+    __tablename__ = 'channel_members'
+    channel_id = db.Column(db.Integer, db.ForeignKey('channels.id', ondelete='CASCADE'), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    role = db.Column(db.String(20), default='member')  # 'owner' | 'admin' | 'member'
+    joined_at = db.Column(db.DateTime, default=_now)
+
+    user = db.relationship('User')
+
+    def to_dict(self):
+        u = self.user
+        return {
+            'user_id': u.slug if u else None,
+            'user_db_id': self.user_id,
+            'name': u.name if u else '',
+            'role': self.role or 'member',
+            'joined_at': self.joined_at.isoformat() if self.joined_at else '',
+        }
+
+
 class ChatMessage(db.Model):
     __tablename__ = 'chat_messages'
     id = db.Column(db.Integer, primary_key=True)
@@ -419,6 +480,8 @@ class ChatMessage(db.Model):
     created_at = db.Column(db.DateTime, default=_now)
     is_deleted = db.Column(db.Boolean, default=False)
     hidden_for = db.Column(db.JSON, default=list)  # list of user IDs who deleted "for self"
+    channel = db.Column(db.String(80), default='general')  # 'general' = legacy default; team channel id
+    pinned = db.Column(db.Boolean, default=False)
 
     sender = db.relationship('User', foreign_keys=[sender_id])
     receiver = db.relationship('User', foreign_keys=[receiver_id])
@@ -430,6 +493,8 @@ class ChatMessage(db.Model):
             'to': self.receiver.slug if self.receiver else None,
             'time': self.created_at.strftime('%H:%M') if self.created_at else '',
             'ts': self.created_at.isoformat() if self.created_at else '',
+            'channel': self.channel or 'general',
+            'pinned': bool(self.pinned),
         }
         if self.is_deleted:
             base['deleted'] = True

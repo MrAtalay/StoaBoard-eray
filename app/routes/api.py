@@ -11,7 +11,9 @@ from app.models import (
     User, Workspace, WorkspaceMember, WorkspaceRole,
     Project, BoardColumn,
     Task, Label, TaskLabel, TaskAssignee, Subtask, Comment,
-    Notification, ActivityLog, ChatMessage, WorkspaceJoinRequest, UploadedFile, _now
+    Notification, ActivityLog, ChatMessage, WorkspaceJoinRequest, UploadedFile,
+    Channel, ChannelMember,
+    _now,
 )
 from app import online_state
 
@@ -260,12 +262,19 @@ def bootstrap():
 
     sidebar_projects = [_project_to_dict_fast(p) for p in projects]
 
+    # Accessible channels for current workspace
+    accessible_channels = _list_accessible_channels(user)
+    channels_payload = [c.to_dict(current_user_id=user.id) for c in accessible_channels]
+    can_create_channel = _user_can_create_channel(user, ws.id)
+    ws_dict['can_create_channel'] = can_create_channel
+
     base_payload = {
         'user': _user_private_dict(user, member),
         'workspace': ws_dict,
         'workspaces': workspaces_list,
         'members': members,
         'online_users': online_users,
+        'channels': channels_payload,
     }
 
     if not projects:
@@ -1596,11 +1605,46 @@ def update_me():
 
 @api_bp.route('/media/<int:file_id>')
 def serve_media(file_id):
-    from flask import make_response
+    """Serve uploaded file bytes with HTTP Range support so <video> seek works."""
+    from flask import make_response, Response
     uf = UploadedFile.query.get_or_404(file_id)
-    resp = make_response(uf.data)
-    resp.headers['Content-Type'] = uf.content_type
-    resp.headers['Content-Disposition'] = f'inline; filename="{uf.filename}"'
+    data = uf.data or b''
+    total = len(data)
+    content_type = uf.content_type or 'application/octet-stream'
+    filename = (uf.filename or 'file').replace('"', '')
+
+    range_header = request.headers.get('Range', None)
+    if range_header and range_header.startswith('bytes='):
+        # Parse 'bytes=START-END' (END may be empty)
+        try:
+            byte_range = range_header.split('=', 1)[1].strip()
+            start_str, end_str = byte_range.split('-', 1)
+            start = int(start_str) if start_str else 0
+            end = int(end_str) if end_str else total - 1
+        except (ValueError, IndexError):
+            start, end = 0, total - 1
+        start = max(0, start)
+        end = min(end, total - 1)
+        if start > end:
+            resp = Response(status=416)
+            resp.headers['Content-Range'] = f'bytes */{total}'
+            return resp
+        chunk = data[start:end + 1]
+        resp = make_response(chunk, 206)
+        resp.headers['Content-Type'] = content_type
+        resp.headers['Content-Disposition'] = f'inline; filename="{filename}"'
+        resp.headers['Content-Range'] = f'bytes {start}-{end}/{total}'
+        resp.headers['Content-Length'] = str(len(chunk))
+        resp.headers['Accept-Ranges'] = 'bytes'
+        resp.headers['Cache-Control'] = 'public, max-age=2592000'
+        return resp
+
+    # No Range header: return whole file but still advertise range support
+    resp = make_response(data)
+    resp.headers['Content-Type'] = content_type
+    resp.headers['Content-Disposition'] = f'inline; filename="{filename}"'
+    resp.headers['Content-Length'] = str(total)
+    resp.headers['Accept-Ranges'] = 'bytes'
     resp.headers['Cache-Control'] = 'public, max-age=2592000'
     return resp
 
@@ -1897,6 +1941,428 @@ def upload_chat_file():
     })
 
 
+# ── Channels (membership-aware) ────────────────────────────────────────────
+
+_CHANNEL_SLUG_RE = re.compile(r'[^a-z0-9\-_çğıöşü]+')
+
+
+def _slugify_channel(name):
+    raw = (name or '').strip().lower()
+    raw = _CHANNEL_SLUG_RE.sub('-', raw).strip('-')
+    return raw[:80]
+
+
+def _resolve_workspace_id(user):
+    ws_id = user.current_workspace_id
+    if not ws_id:
+        m = _current_member(user)
+        ws_id = m.workspace_id if m else None
+    return ws_id
+
+
+def _user_can_create_channel(user, workspace_id):
+    """Only workspace owner (or explicitly permitted roles) can create channels.
+
+    Permission keys checked on WorkspaceRole.permissions: 'channel:create'.
+    Owner is always allowed regardless of role permissions.
+    """
+    if not workspace_id:
+        return False
+    ws = Workspace.query.get(workspace_id)
+    if ws and ws.owner_id == user.id:
+        return True
+    m = WorkspaceMember.query.filter_by(workspace_id=workspace_id, user_id=user.id).first()
+    if not m:
+        return False
+    if m.role == 'owner':
+        return True
+    if m.workspace_role and isinstance(m.workspace_role.permissions, list):
+        if 'channel:create' in m.workspace_role.permissions:
+            return True
+    return False
+
+
+def _get_channel_or_404(workspace_id, slug):
+    if not workspace_id:
+        return None
+    return Channel.query.filter_by(workspace_id=workspace_id, slug=slug).first()
+
+
+def _user_channel_role(channel, user_id):
+    """Return 'owner' | 'admin' | 'member' if the user belongs to channel, else None.
+
+    Public channel membership is implicit — workspace members are treated as
+    'member' even if no ChannelMember row exists yet."""
+    if not channel:
+        return None
+    cm = next((m for m in channel.members if m.user_id == user_id), None)
+    if cm:
+        return cm.role
+    if channel.type == 'public':
+        # Implicit member of public channels for any workspace member
+        wm = WorkspaceMember.query.filter_by(
+            workspace_id=channel.workspace_id, user_id=user_id
+        ).first()
+        if wm or (channel.workspace_id and Workspace.query.get(channel.workspace_id) and Workspace.query.get(channel.workspace_id).owner_id == user_id):
+            return 'member'
+    return None
+
+
+def _can_manage_channel(role):
+    return role in ('owner', 'admin')
+
+
+def _emit_channel_event(event, payload, member_user_ids):
+    """Emit `event` with `payload` to each member's user_{id} socket room."""
+    from app import socketio as _sio
+    try:
+        for uid in member_user_ids:
+            _sio.emit(event, payload, to=f'user_{uid}')
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning('socket emit failed: %s', e)
+
+
+def _list_accessible_channels(user):
+    """Return Channel rows the user can see: all public in workspace + private ones they're a member of."""
+    ws_id = _resolve_workspace_id(user)
+    if not ws_id:
+        return []
+    # Public channels
+    pub = Channel.query.filter_by(workspace_id=ws_id, type='public').all()
+    # Private channels where user is a member
+    priv_ids = db.session.query(ChannelMember.channel_id).filter_by(user_id=user.id).subquery()
+    priv = (Channel.query
+            .filter(Channel.workspace_id == ws_id,
+                    Channel.type == 'private',
+                    Channel.id.in_(priv_ids))
+            .all())
+    # Default first, then by created_at asc
+    combined = sorted(
+        list({c.id: c for c in (pub + priv)}.values()),
+        key=lambda c: (not c.is_default, c.created_at or _now())
+    )
+    return combined
+
+
+@api_bp.route('/channels', methods=['GET'])
+@_login_required
+def list_channels():
+    user = _current_user()
+    channels = _list_accessible_channels(user)
+    return jsonify([c.to_dict(current_user_id=user.id) for c in channels])
+
+
+@api_bp.route('/channels', methods=['POST'])
+@_login_required
+def create_channel():
+    user = _current_user()
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Kanal adı boş olamaz'}), 400
+    slug = _slugify_channel(name)
+    if not slug:
+        return jsonify({'error': 'Geçerli bir kanal adı girin'}), 400
+    ws_id = _resolve_workspace_id(user)
+    if not ws_id:
+        return jsonify({'error': 'Aktif çalışma alanı bulunamadı'}), 400
+    if not _user_can_create_channel(user, ws_id):
+        return jsonify({'error': 'Kanal oluşturma yetkin yok. Workspace sahibiyle iletişime geç.'}), 403
+    if Channel.query.filter_by(workspace_id=ws_id, slug=slug).first():
+        return jsonify({'error': 'Bu isimde bir kanal zaten var'}), 409
+    ch_type = data.get('type') or 'public'
+    if ch_type not in ('public', 'private'):
+        ch_type = 'public'
+    description = (data.get('description') or '').strip() or None
+    member_slugs = data.get('member_slugs') or []
+    if not isinstance(member_slugs, list):
+        member_slugs = []
+
+    channel = Channel(
+        workspace_id=ws_id,
+        slug=slug,
+        name=name[:120],
+        description=description,
+        type=ch_type,
+        created_by=user.id,
+        is_default=False,
+    )
+    db.session.add(channel)
+    db.session.flush()
+
+    # Creator always becomes owner
+    db.session.add(ChannelMember(channel_id=channel.id, user_id=user.id, role='owner'))
+    added_user_ids = {user.id}
+
+    if ch_type == 'private':
+        # Resolve provided member slugs against workspace members
+        if member_slugs:
+            invited = User.query.filter(User.slug.in_(member_slugs)).all()
+            for u in invited:
+                if u.id == user.id:
+                    continue
+                # Must be in same workspace
+                wm = WorkspaceMember.query.filter_by(workspace_id=ws_id, user_id=u.id).first()
+                if not wm:
+                    continue
+                if u.id in added_user_ids:
+                    continue
+                db.session.add(ChannelMember(channel_id=channel.id, user_id=u.id, role='member'))
+                added_user_ids.add(u.id)
+    else:
+        # Public: every existing workspace member auto-joins as 'member'
+        ws_members = WorkspaceMember.query.filter_by(workspace_id=ws_id).all()
+        for wm in ws_members:
+            if wm.user_id in added_user_ids:
+                continue
+            db.session.add(ChannelMember(channel_id=channel.id, user_id=wm.user_id, role='member'))
+            added_user_ids.add(wm.user_id)
+
+    db.session.commit()
+
+    payload = channel.to_dict(include_members=True)
+    _emit_channel_event('channel_created', payload, added_user_ids)
+
+    # Notification for invited users (private only — public is too noisy)
+    if ch_type == 'private':
+        for uid in added_user_ids:
+            if uid == user.id:
+                continue
+            notif = Notification(
+                user_id=uid,
+                text=f'<strong>{user.name}</strong> seni <strong>#{channel.name}</strong> kanalına ekledi',
+                sender_slug=user.slug,
+                workspace_id=ws_id,
+                chat_channel=channel.slug,
+            )
+            db.session.add(notif)
+        db.session.commit()
+
+    return jsonify(channel.to_dict(include_members=True, current_user_id=user.id)), 201
+
+
+@api_bp.route('/channels/<int:channel_id>', methods=['GET'])
+@_login_required
+def get_channel(channel_id):
+    user = _current_user()
+    channel = Channel.query.get(channel_id)
+    if not channel:
+        return jsonify({'error': 'Kanal bulunamadı'}), 404
+    role = _user_channel_role(channel, user.id)
+    if not role:
+        return jsonify({'error': 'Bu kanala erişim yetkiniz yok'}), 403
+    return jsonify(channel.to_dict(include_members=True, current_user_id=user.id))
+
+
+@api_bp.route('/channels/<int:channel_id>', methods=['PATCH'])
+@_login_required
+def update_channel(channel_id):
+    user = _current_user()
+    channel = Channel.query.get(channel_id)
+    if not channel:
+        return jsonify({'error': 'Kanal bulunamadı'}), 404
+    role = _user_channel_role(channel, user.id)
+    if not _can_manage_channel(role):
+        return jsonify({'error': 'Bu işlem için yetkiniz yok'}), 403
+    if channel.is_default and 'type' in (request.get_json(silent=True) or {}):
+        return jsonify({'error': 'Varsayılan kanalın tipi değiştirilemez'}), 400
+
+    data = request.get_json(silent=True) or {}
+    if 'name' in data:
+        new_name = (data['name'] or '').strip()
+        if not new_name:
+            return jsonify({'error': 'Kanal adı boş olamaz'}), 400
+        # Allow renaming (display name); slug stays stable so messages remain linked
+        channel.name = new_name[:120]
+    if 'description' in data:
+        channel.description = (data['description'] or '').strip() or None
+    if 'type' in data and not channel.is_default:
+        new_type = data['type']
+        if new_type not in ('public', 'private'):
+            return jsonify({'error': 'Geçersiz kanal tipi'}), 400
+        # Only owner can flip type
+        if role != 'owner':
+            return jsonify({'error': 'Kanal tipini sadece sahip değiştirebilir'}), 403
+        prev_type = channel.type
+        channel.type = new_type
+        # Public → Private: keep existing members. No action needed.
+        # Private → Public: auto-add every workspace member as 'member'.
+        if prev_type == 'private' and new_type == 'public':
+            existing_ids = {m.user_id for m in channel.members}
+            ws_members = WorkspaceMember.query.filter_by(workspace_id=channel.workspace_id).all()
+            for wm in ws_members:
+                if wm.user_id in existing_ids:
+                    continue
+                db.session.add(ChannelMember(channel_id=channel.id, user_id=wm.user_id, role='member'))
+    channel.updated_at = _now()
+    db.session.commit()
+
+    payload = channel.to_dict(include_members=True)
+    _emit_channel_event('channel_updated', payload, [m.user_id for m in channel.members])
+    return jsonify(channel.to_dict(include_members=True, current_user_id=user.id))
+
+
+@api_bp.route('/channels/<int:channel_id>', methods=['DELETE'])
+@_login_required
+def delete_channel(channel_id):
+    user = _current_user()
+    channel = Channel.query.get(channel_id)
+    if not channel:
+        return jsonify({'error': 'Kanal bulunamadı'}), 404
+    if channel.is_default:
+        return jsonify({'error': 'Varsayılan kanal silinemez'}), 400
+    role = _user_channel_role(channel, user.id)
+    if role != 'owner':
+        return jsonify({'error': 'Kanalı sadece sahip silebilir'}), 403
+    member_ids = [m.user_id for m in channel.members]
+    ws_id = channel.workspace_id
+    slug = channel.slug
+    db.session.delete(channel)
+    db.session.commit()
+    _emit_channel_event('channel_deleted', {'channel_id': channel_id, 'slug': slug, 'workspace_id': ws_id}, member_ids)
+    return jsonify({'ok': True})
+
+
+@api_bp.route('/channels/<int:channel_id>/members', methods=['POST'])
+@_login_required
+def add_channel_members(channel_id):
+    user = _current_user()
+    channel = Channel.query.get(channel_id)
+    if not channel:
+        return jsonify({'error': 'Kanal bulunamadı'}), 404
+    role = _user_channel_role(channel, user.id)
+    if not _can_manage_channel(role):
+        return jsonify({'error': 'Üye ekleme yetkiniz yok'}), 403
+    data = request.get_json(silent=True) or {}
+    slugs = data.get('member_slugs') or data.get('user_slugs') or []
+    if not isinstance(slugs, list) or not slugs:
+        return jsonify({'error': 'En az bir üye seçmelisiniz'}), 400
+
+    users = User.query.filter(User.slug.in_(slugs)).all()
+    existing_ids = {m.user_id for m in channel.members}
+    added = []
+    for u in users:
+        if u.id in existing_ids:
+            continue
+        wm = WorkspaceMember.query.filter_by(workspace_id=channel.workspace_id, user_id=u.id).first()
+        if not wm:
+            continue
+        db.session.add(ChannelMember(channel_id=channel.id, user_id=u.id, role='member'))
+        existing_ids.add(u.id)
+        added.append(u)
+    db.session.commit()
+
+    if added:
+        for u in added:
+            notif = Notification(
+                user_id=u.id,
+                text=f'<strong>{user.name}</strong> seni <strong>#{channel.name}</strong> kanalına ekledi',
+                sender_slug=user.slug,
+                workspace_id=channel.workspace_id,
+                chat_channel=channel.slug,
+            )
+            db.session.add(notif)
+        db.session.commit()
+
+    payload = channel.to_dict(include_members=True)
+    _emit_channel_event('channel_member_added', payload, [m.user_id for m in channel.members])
+
+    return jsonify({
+        'channel': channel.to_dict(include_members=True, current_user_id=user.id),
+        'added': [u.slug for u in added],
+    })
+
+
+@api_bp.route('/channels/<int:channel_id>/members/<user_slug>', methods=['DELETE'])
+@_login_required
+def remove_channel_member(channel_id, user_slug):
+    user = _current_user()
+    channel = Channel.query.get(channel_id)
+    if not channel:
+        return jsonify({'error': 'Kanal bulunamadı'}), 404
+    target = User.query.filter_by(slug=user_slug).first()
+    if not target:
+        return jsonify({'error': 'Kullanıcı bulunamadı'}), 404
+
+    role = _user_channel_role(channel, user.id)
+    is_self = (target.id == user.id)
+
+    if is_self:
+        if channel.is_default:
+            return jsonify({'error': 'Varsayılan kanaldan ayrılamazsınız'}), 400
+        # Self-leave: owner can leave only if there is another owner or channel will be deleted
+        if role == 'owner':
+            other_owners = [m for m in channel.members if m.role == 'owner' and m.user_id != user.id]
+            if not other_owners:
+                # Promote oldest admin to owner, else any member, else delete the channel
+                admins = [m for m in channel.members if m.role == 'admin']
+                others = [m for m in channel.members if m.user_id != user.id]
+                if admins:
+                    admins[0].role = 'owner'
+                elif others:
+                    others[0].role = 'owner'
+                else:
+                    member_ids = [m.user_id for m in channel.members]
+                    db.session.delete(channel)
+                    db.session.commit()
+                    _emit_channel_event('channel_deleted', {'channel_id': channel_id, 'slug': channel.slug, 'workspace_id': channel.workspace_id}, member_ids)
+                    return jsonify({'ok': True, 'deleted': True})
+    else:
+        if not _can_manage_channel(role):
+            return jsonify({'error': 'Üye çıkarma yetkiniz yok'}), 403
+        target_member = next((m for m in channel.members if m.user_id == target.id), None)
+        if target_member and target_member.role == 'owner':
+            return jsonify({'error': 'Kanal sahibini çıkaramazsınız'}), 400
+        if channel.is_default:
+            return jsonify({'error': 'Varsayılan kanaldan üye çıkarılamaz'}), 400
+
+    cm = ChannelMember.query.filter_by(channel_id=channel.id, user_id=target.id).first()
+    if not cm:
+        return jsonify({'error': 'Bu kullanıcı kanal üyesi değil'}), 404
+    db.session.delete(cm)
+    db.session.commit()
+
+    payload = channel.to_dict(include_members=True)
+    affected = [m.user_id for m in channel.members] + [target.id]
+    _emit_channel_event('channel_member_removed',
+                        {**payload, 'removed_user_slug': target.slug},
+                        affected)
+    return jsonify({'ok': True})
+
+
+@api_bp.route('/channels/<int:channel_id>/members/<user_slug>', methods=['PATCH'])
+@_login_required
+def update_channel_member_role(channel_id, user_slug):
+    user = _current_user()
+    channel = Channel.query.get(channel_id)
+    if not channel:
+        return jsonify({'error': 'Kanal bulunamadı'}), 404
+    role = _user_channel_role(channel, user.id)
+    if role != 'owner':
+        return jsonify({'error': 'Rol atamayı sadece kanal sahibi yapabilir'}), 403
+    target = User.query.filter_by(slug=user_slug).first()
+    if not target:
+        return jsonify({'error': 'Kullanıcı bulunamadı'}), 404
+    data = request.get_json(silent=True) or {}
+    new_role = data.get('role')
+    if new_role not in ('owner', 'admin', 'member'):
+        return jsonify({'error': 'Geçersiz rol'}), 400
+    cm = ChannelMember.query.filter_by(channel_id=channel.id, user_id=target.id).first()
+    if not cm:
+        return jsonify({'error': 'Bu kullanıcı kanal üyesi değil'}), 404
+    if new_role == 'owner':
+        # Demote current owner to admin (single-owner model)
+        my_cm = ChannelMember.query.filter_by(channel_id=channel.id, user_id=user.id).first()
+        if my_cm:
+            my_cm.role = 'admin'
+    cm.role = new_role
+    db.session.commit()
+    payload = channel.to_dict(include_members=True)
+    _emit_channel_event('channel_updated', payload, [m.user_id for m in channel.members])
+    return jsonify(channel.to_dict(include_members=True, current_user_id=user.id))
+
+
 # ── Chat messages ──────────────────────────────────────────────────────────
 
 @api_bp.route('/chat/messages', methods=['POST'])
@@ -1910,6 +2376,7 @@ def create_chat_message():
     file_url  = data.get('file_url') or None
     file_type = data.get('file_type') or None
     file_name = data.get('file_name') or None
+    channel  = (data.get('channel') or 'general').strip().lower()[:80] or 'general'
 
     if not text and not file_url:
         return jsonify({'error': 'Mesaj boş olamaz'}), 400
@@ -1925,9 +2392,16 @@ def create_chat_message():
         if not workspace_id:
             m = _current_member(user)
             workspace_id = m.workspace_id if m else None
+        channel = 'dm'
     else:
         m = _current_member(user)
         workspace_id = m.workspace_id if m else None
+        # Channel access control — must be member of private channels
+        if workspace_id and channel != 'general':
+            ch_row = _get_channel_or_404(workspace_id, channel)
+            if ch_row:
+                if not _user_channel_role(ch_row, user.id):
+                    return jsonify({'error': 'Bu kanala mesaj gönderme yetkiniz yok'}), 403
 
     msg = ChatMessage(
         workspace_id=workspace_id,
@@ -1937,6 +2411,7 @@ def create_chat_message():
         file_url=file_url,
         file_type=file_type,
         file_name=file_name,
+        channel=channel,
     )
     db.session.add(msg)
     db.session.flush()
@@ -1991,7 +2466,13 @@ def create_chat_message():
             _sio.emit('chat_message', msg_data, to=f'user_{user.id}')
             _sio.emit('chat_message', msg_data, to=f'user_{receiver.id}')
         elif workspace_id:
-            _sio.emit('chat_message', msg_data, to=f'ws_{workspace_id}')
+            # If the channel is private, only emit to its members; otherwise broadcast workspace-wide
+            ch_row = _get_channel_or_404(workspace_id, channel)
+            if ch_row and ch_row.type == 'private':
+                for cm in ch_row.members:
+                    _sio.emit('chat_message', msg_data, to=f'user_{cm.user_id}')
+            else:
+                _sio.emit('chat_message', msg_data, to=f'ws_{workspace_id}')
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning('socket emit failed: %s', e)
@@ -2004,6 +2485,7 @@ def create_chat_message():
 def get_chat_messages():
     user = _current_user()
     with_slug = request.args.get('with')
+    channel = (request.args.get('channel') or 'general').strip().lower()[:80] or 'general'
     limit = request.args.get('limit', 100, type=int)
 
     if with_slug:
@@ -2031,13 +2513,18 @@ def get_chat_messages():
             ws_id = member.workspace_id if member else None
         if not ws_id:
             return jsonify([])
-        messages = (
-            ChatMessage.query
-            .filter_by(workspace_id=ws_id, receiver_id=None)
-            .order_by(ChatMessage.created_at.asc())
-            .limit(limit)
-            .all()
-        )
+        # Channel access control
+        if channel != 'general':
+            ch_row = _get_channel_or_404(ws_id, channel)
+            if ch_row and not _user_channel_role(ch_row, user.id):
+                return jsonify({'error': 'Bu kanala erişim yetkiniz yok'}), 403
+        q = ChatMessage.query.filter_by(workspace_id=ws_id, receiver_id=None)
+        if channel == 'general':
+            # Backwards compat: legacy rows have channel NULL — treat them as 'general'
+            q = q.filter(db.or_(ChatMessage.channel == 'general', ChatMessage.channel.is_(None)))
+        else:
+            q = q.filter(ChatMessage.channel == channel)
+        messages = q.order_by(ChatMessage.created_at.asc()).limit(limit).all()
 
     uid = user.id
     result = []
@@ -2090,6 +2577,91 @@ def delete_chat_message(msg_id):
             db.session.commit()
 
     return jsonify({'ok': True})
+
+
+@api_bp.route('/chat/messages/<int:msg_id>/pin', methods=['POST'])
+@_login_required
+def toggle_pin_message(msg_id):
+    """Pin / unpin a chat message inside its channel/DM."""
+    user = _current_user()
+    msg = db.session.get(ChatMessage, msg_id)
+    if not msg:
+        return jsonify({'error': 'Mesaj bulunamadı'}), 404
+
+    # Auth: must be participant
+    if msg.receiver_id is not None:
+        if user.id not in (msg.sender_id, msg.receiver_id):
+            return jsonify({'error': 'Yetkiniz yok'}), 403
+    else:
+        m = WorkspaceMember.query.filter_by(user_id=user.id, workspace_id=msg.workspace_id).first()
+        if not m:
+            return jsonify({'error': 'Yetkiniz yok'}), 403
+
+    msg.pinned = not bool(msg.pinned)
+    db.session.commit()
+
+    payload = {
+        'id': msg.id,
+        'pinned': bool(msg.pinned),
+        'channel': msg.channel or 'general',
+        'workspace_id': msg.workspace_id,
+        'from': msg.sender.slug if msg.sender else None,
+        'to': msg.receiver.slug if msg.receiver else None,
+    }
+    from app import socketio as _sio
+    try:
+        if msg.receiver_id:
+            _sio.emit('message_pinned', payload, to=f'user_{msg.sender_id}')
+            _sio.emit('message_pinned', payload, to=f'user_{msg.receiver_id}')
+        elif msg.workspace_id:
+            _sio.emit('message_pinned', payload, to=f'ws_{msg.workspace_id}')
+    except Exception:
+        pass
+    return jsonify({'ok': True, 'pinned': bool(msg.pinned)})
+
+
+@api_bp.route('/chat/pinned', methods=['GET'])
+@_login_required
+def get_pinned_messages():
+    """Return pinned messages for a channel or DM."""
+    user = _current_user()
+    with_slug = request.args.get('with')
+    scope = (request.args.get('scope') or '').strip().lower()
+    channel = (request.args.get('channel') or 'general').strip().lower()[:80] or 'general'
+
+    if with_slug:
+        other = User.query.filter_by(slug=with_slug).first()
+        if not other:
+            return jsonify([])
+        q = ChatMessage.query.filter(
+            ChatMessage.pinned.is_(True),
+            db.or_(
+                db.and_(ChatMessage.sender_id == user.id, ChatMessage.receiver_id == other.id),
+                db.and_(ChatMessage.sender_id == other.id, ChatMessage.receiver_id == user.id),
+            ),
+        )
+    else:
+        ws_id = user.current_workspace_id
+        if not ws_id:
+            member = _current_member(user)
+            ws_id = member.workspace_id if member else None
+        if not ws_id:
+            return jsonify([])
+        q = ChatMessage.query.filter(
+            ChatMessage.pinned.is_(True),
+            ChatMessage.workspace_id == ws_id,
+            ChatMessage.receiver_id.is_(None),
+        )
+        if scope == 'all':
+            # No channel filter — pinned across every channel in the workspace
+            pass
+        elif channel == 'general':
+            q = q.filter(db.or_(ChatMessage.channel == 'general', ChatMessage.channel.is_(None)))
+        else:
+            q = q.filter(ChatMessage.channel == channel)
+    limit = 100 if scope == 'all' else 20
+    msgs = q.order_by(ChatMessage.created_at.desc()).limit(limit).all()
+    return jsonify([m.to_dict() for m in msgs])
 
 
 @api_bp.route('/chat/media', methods=['GET'])

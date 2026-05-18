@@ -44,6 +44,11 @@ def _migrate_db():
             "ALTER TABLE tasks ADD COLUMN assignee_dates TEXT DEFAULT '{}'"),
         ('notifications', 'chat_channel', "ALTER TABLE notifications ADD COLUMN chat_channel VARCHAR(20)"),
         ('notifications', 'message_id', "ALTER TABLE notifications ADD COLUMN message_id INTEGER"),
+        ('chat_messages', 'channel', "ALTER TABLE chat_messages ADD COLUMN channel VARCHAR(80) DEFAULT 'general'"),
+        ('chat_messages', 'pinned',
+            "ALTER TABLE chat_messages ADD COLUMN pinned BOOLEAN DEFAULT FALSE"
+            if is_pg else
+            "ALTER TABLE chat_messages ADD COLUMN pinned INTEGER DEFAULT 0"),
     ]
     index_migrations = [
         "CREATE INDEX IF NOT EXISTS ix_task_project_id  ON tasks(project_id)",
@@ -76,6 +81,44 @@ def _migrate_db():
                 pass
 
 
+def _seed_default_channels():
+    """Ensure every workspace has a 'general' channel and every member is in it.
+
+    Idempotent — safe to run on every startup. Triggered after db.create_all().
+    """
+    from app.models import Workspace, WorkspaceMember, Channel, ChannelMember
+    try:
+        workspaces = Workspace.query.all()
+    except Exception:
+        return
+    for ws in workspaces:
+        gen = Channel.query.filter_by(workspace_id=ws.id, slug='general').first()
+        if not gen:
+            gen = Channel(
+                workspace_id=ws.id,
+                slug='general',
+                name='genel',
+                description='Tüm proje üyeleri için varsayılan kanal',
+                type='public',
+                created_by=ws.owner_id,
+                is_default=True,
+            )
+            db.session.add(gen)
+            db.session.flush()
+        # Ensure every workspace member is also a channel member of 'general'
+        existing_ids = {cm.user_id for cm in gen.members}
+        ws_members = WorkspaceMember.query.filter_by(workspace_id=ws.id).all()
+        for wm in ws_members:
+            if wm.user_id in existing_ids:
+                continue
+            role = 'owner' if (ws.owner_id and wm.user_id == ws.owner_id) else 'member'
+            db.session.add(ChannelMember(channel_id=gen.id, user_id=wm.user_id, role=role))
+        # Workspace owner edge-case (in case owner not in workspace_members table)
+        if ws.owner_id and ws.owner_id not in existing_ids and not any(wm.user_id == ws.owner_id for wm in ws_members):
+            db.session.add(ChannelMember(channel_id=gen.id, user_id=ws.owner_id, role='owner'))
+    db.session.commit()
+
+
 def create_app():
     flask_app = Flask(
         __name__,
@@ -103,6 +146,7 @@ def create_app():
     with flask_app.app_context():
         db.create_all()
         _migrate_db()
+        _seed_default_channels()
 
     @flask_app.route('/')
     def index():

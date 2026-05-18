@@ -2,25 +2,55 @@
 
 const { useState: useChatS, useEffect: useChatE, useRef: useChatRef, useCallback: useChatCb } = React;
 
-// ── Lightbox ──────────────────────────────────────────────────────────────
-function Lightbox({ src, onClose }) {
+// ── Lightbox (image OR video) ─────────────────────────────────────────────
+function Lightbox({ src, kind = 'image', onClose }) {
   useChatE(() => {
+    // Lightbox-level ESC handler. Video keyboard shortcuts live on the player itself.
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
   }, []);
   return (
-    <div onClick={onClose} style={{
+    <div className="stoa-lightbox-overlay" onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 9999,
-      background: 'oklch(0% 0 0 / 0.88)',
+      background: 'rgba(0, 0, 0, 0.85)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 24,
       cursor: 'zoom-out',
+      animation: 'stoa-lightbox-fade 0.2s var(--ease, ease-out)',
     }}>
-      <img src={src} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain' }} onClick={e => e.stopPropagation()} />
-      <button onClick={onClose} style={{
-        position: 'absolute', top: 18, right: 22, background: 'oklch(20% 0 0 / 0.6)',
-        color: 'white', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 18,
-      }}>✕</button>
+      <div onClick={e => e.stopPropagation()} style={{
+        maxWidth: 'calc(100vw - 48px)',
+        maxHeight: 'calc(100vh - 48px)',
+        cursor: 'default',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        {kind === 'video'
+          ? <CustomVideoPlayer src={src} autoPlay lightbox />
+          : <img src={src} alt="" style={{
+              maxWidth: 'calc(100vw - 48px)',
+              maxHeight: 'calc(100vh - 48px)',
+              borderRadius: 8,
+              objectFit: 'contain',
+              display: 'block',
+            }} />
+        }
+      </div>
+      <button onClick={onClose} title="Kapat (ESC)" style={{
+        position: 'absolute', top: 18, right: 22, background: 'rgba(0, 0, 0, 0.55)',
+        color: 'white', border: '1px solid rgba(255, 255, 255, 0.15)',
+        width: 36, height: 36, borderRadius: 18, padding: 0, cursor: 'pointer',
+        display: 'grid', placeItems: 'center',
+      }}>
+        <Icon name="x" size={16} />
+      </button>
     </div>
   );
 }
@@ -178,13 +208,18 @@ function chatToastPayload(msg, sender) {
 }
 
 function MsgContent({ msg, onImageClick }) {
+  const openMedia = (kind, src) => {
+    const handler = onImageClick;
+    if (!handler) return;
+    handler(kind === 'image' ? src : { src, kind });
+  };
   if (msg.file_type === 'image') {
     return (
       <div className="chat-media-wrap">
         <img
           src={msg.file_url} alt={msg.file_name || 'Resim'}
           className="chat-media-img"
-          onClick={() => onImageClick(msg.file_url)}
+          onClick={() => openMedia('image', msg.file_url)}
           loading="lazy"
           onError={(e) => {
             e.currentTarget.style.display = 'none';
@@ -202,18 +237,8 @@ function MsgContent({ msg, onImageClick }) {
   }
   if (msg.file_type === 'video') {
     return (
-      <div className="chat-media-wrap">
-        <video src={msg.file_url} controls className="chat-media-video"
-          onError={(e) => {
-            e.currentTarget.style.display = 'none';
-            const el = e.currentTarget.nextSibling;
-            if (el) el.style.display = 'flex';
-          }}
-        />
-        <div style={{ display: 'none', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 8, background: 'var(--bg-dim)', color: 'var(--ink-muted)', fontSize: 12 }}>
-          <Icon name="paperclip" size={14} />
-          <span>{msg.file_name || 'Video bulunamadı'}</span>
-        </div>
+      <div className="chat-media-wrap" onDoubleClick={() => openMedia('video', msg.file_url)}>
+        <CustomVideoPlayer src={msg.file_url} />
         {msg.text && <div className="chat-bubble-text">{msg.text}</div>}
         <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 3 }}>{fmtMsgDateTime(msg)}</div>
       </div>
@@ -232,6 +257,1017 @@ function MsgContent({ msg, onImageClick }) {
     );
   }
   return <span><RenderMsgText text={msg.text} allMembers={window.DATA?.MEMBERS || []} onMentionClick={msg._onMentionClick || (() => {})} /></span>;
+}
+
+// ── Create-channel modal (public/private + member picker) ─────────────────
+function CreateChannelModal({ open, onClose, onCreated, allMembers, me }) {
+  const [name, setName] = useChatS('');
+  const [description, setDescription] = useChatS('');
+  const [type, setType] = useChatS('public');
+  const [selected, setSelected] = useChatS(new Set()); // user slugs
+  const [search, setSearch] = useChatS('');
+  const [submitting, setSubmitting] = useChatS(false);
+
+  useChatE(() => {
+    if (open) {
+      setName(''); setDescription(''); setType('public');
+      setSelected(new Set()); setSearch(''); setSubmitting(false);
+    }
+  }, [open]);
+
+  useChatE(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [open]);
+
+  if (!open) return null;
+
+  const others = (allMembers || []).filter(m => m.id !== me);
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? others.filter(m => (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q))
+    : others;
+
+  const toggleMember = (slug) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug); else next.add(slug);
+      return next;
+    });
+  };
+  const selectAll = () => setSelected(new Set(filtered.map(m => m.id)));
+  const clearAll  = () => setSelected(new Set());
+
+  const canSubmit = name.trim().length > 0 && (type === 'public' || selected.size > 0) && !submitting;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      const payload = {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        type,
+        member_slugs: type === 'private' ? Array.from(selected) : [],
+      };
+      const ch = await window.API.createChannel(payload);
+      onCreated(ch);
+      onClose();
+    } catch (e) {
+      window.showToast?.('Kanal oluşturulamadı: ' + e.message, 'error');
+      setSubmitting(false);
+    }
+  };
+
+  return ReactDOM.createPortal(
+    <div className="stoa-channel-modal-backdrop" onClick={onClose}>
+      <div className="stoa-channel-modal" onClick={e => e.stopPropagation()}>
+        <div className="stoa-channel-modal-head">
+          <div style={{ fontSize: 15, fontWeight: 600 }}>Yeni Kanal</div>
+          <button className="icon-btn" onClick={onClose} title="Kapat" style={{ padding: 4 }}>
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+
+        <div className="stoa-channel-modal-body">
+          <label className="stoa-field">
+            <span className="stoa-field-label">Kanal adı</span>
+            <div className="stoa-input-prefix">
+              <span style={{ color: 'var(--ink-faint)' }}>#</span>
+              <input
+                autoFocus
+                placeholder="ornek-kanal"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                maxLength={60}
+              />
+            </div>
+          </label>
+
+          <label className="stoa-field">
+            <span className="stoa-field-label">Açıklama <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>(opsiyonel)</span></span>
+            <textarea
+              placeholder="Bu kanal ne için kullanılacak?"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={2}
+              maxLength={280}
+            />
+          </label>
+
+          <div className="stoa-field">
+            <span className="stoa-field-label">Kanal tipi</span>
+            <div className="stoa-radio-group">
+              <label className={`stoa-radio-card ${type === 'public' ? 'is-active' : ''}`} onClick={() => setType('public')}>
+                <Icon name="globe" size={16} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Genel</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Projedeki herkes katılır ve görür.</div>
+                </div>
+              </label>
+              <label className={`stoa-radio-card ${type === 'private' ? 'is-active' : ''}`} onClick={() => setType('private')}>
+                <Icon name="lock" size={16} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Özel</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Sadece davet edilenler erişir.</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {type === 'private' && (
+            <div className="stoa-field">
+              <span className="stoa-field-label">
+                Üyeler <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>({selected.size} seçili)</span>
+              </span>
+              <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginBottom: 6 }}>
+                Bu kanalı sadece eklediğiniz kişiler görebilir.
+              </div>
+              {selected.size > 0 && (
+                <div className="stoa-chip-row">
+                  {Array.from(selected).map(slug => {
+                    const m = others.find(o => o.id === slug);
+                    return (
+                      <span key={slug} className="stoa-chip">
+                        {m?.name || slug}
+                        <button onClick={() => toggleMember(slug)} title="Kaldır"><Icon name="x" size={10} /></button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="stoa-member-search">
+                <Icon name="search" size={13} />
+                <input
+                  placeholder="Üye ara…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+                <div className="stoa-quick-actions">
+                  <button onClick={selectAll}>Tümünü seç</button>
+                  <button onClick={clearAll}>Temizle</button>
+                </div>
+              </div>
+              <div className="stoa-member-list">
+                {filtered.length === 0 ? (
+                  <div style={{ padding: 16, fontSize: 12, color: 'var(--ink-faint)', textAlign: 'center' }}>
+                    Eşleşen üye yok.
+                  </div>
+                ) : filtered.map(m => {
+                  const checked = selected.has(m.id);
+                  return (
+                    <label key={m.id} className={`stoa-member-row ${checked ? 'is-checked' : ''}`} onClick={() => toggleMember(m.id)}>
+                      <Avatar member={m} size="sm" />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</div>
+                        {m.role && <div style={{ fontSize: 11, color: 'var(--ink-faint)' }}>{m.role}</div>}
+                      </div>
+                      <div className="stoa-checkbox" data-checked={checked}>
+                        {checked && <Icon name="check" size={11} />}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="stoa-channel-modal-foot">
+          <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>İptal</button>
+          <button className="btn btn-primary" onClick={submit} disabled={!canSubmit}>
+            {submitting ? 'Oluşturuluyor…' : 'Kanal Oluştur'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── Role badge ────────────────────────────────────────────────────────────
+function RoleBadge({ role }) {
+  if (!role) return null;
+  const meta = {
+    owner:  { label: 'Sahip',    bg: 'oklch(60% 0.18 295 / 0.18)', fg: 'oklch(40% 0.15 295)', icon: 'gem' },
+    admin:  { label: 'Yönetici', bg: 'oklch(60% 0.15 230 / 0.18)', fg: 'oklch(40% 0.14 230)', icon: 'shield' },
+    member: { label: 'Üye',      bg: 'oklch(85% 0.01 240 / 0.50)', fg: 'oklch(45% 0.02 240)', icon: null },
+  }[role] || null;
+  if (!meta) return null;
+  return (
+    <span className="stoa-role-badge" style={{ background: meta.bg, color: meta.fg }} data-role={role}>
+      {meta.icon && <Icon name={meta.icon} size={9} />}
+      {meta.label}
+    </span>
+  );
+}
+
+// ── Add-member modal ─────────────────────────────────────────────────────
+function AddMemberModal({ open, onClose, channel, onAdded, allMembers, me }) {
+  const [selected, setSelected] = useChatS(new Set());
+  const [search, setSearch] = useChatS('');
+  const [submitting, setSubmitting] = useChatS(false);
+
+  useChatE(() => {
+    if (open) { setSelected(new Set()); setSearch(''); setSubmitting(false); }
+  }, [open]);
+
+  useChatE(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [open]);
+
+  if (!open || !channel) return null;
+  const memberSlugs = new Set((channel.members || []).map(m => m.user_id));
+  const candidates = (allMembers || []).filter(m => m.id !== me && !memberSlugs.has(m.id));
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? candidates.filter(m => (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q))
+    : candidates;
+
+  const toggle = (slug) => setSelected(prev => {
+    const n = new Set(prev); n.has(slug) ? n.delete(slug) : n.add(slug); return n;
+  });
+
+  const submit = async () => {
+    if (selected.size === 0 || submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await window.API.addChannelMembers(channel.channel_id, Array.from(selected));
+      onAdded(res.channel);
+      window.showToast?.(`${res.added.length} üye eklendi`, 'success');
+      onClose();
+    } catch (e) {
+      window.showToast?.('Üye eklenemedi: ' + e.message, 'error');
+      setSubmitting(false);
+    }
+  };
+
+  return ReactDOM.createPortal(
+    <div className="stoa-channel-modal-backdrop" onClick={onClose}>
+      <div className="stoa-channel-modal" onClick={e => e.stopPropagation()} style={{ width: 'min(440px, 100%)' }}>
+        <div className="stoa-channel-modal-head">
+          <div style={{ fontSize: 15, fontWeight: 600 }}>
+            <span style={{ color: 'var(--ink-muted)', fontWeight: 400 }}>#{channel.name}</span> kanalına üye ekle
+          </div>
+          <button className="icon-btn" onClick={onClose} title="Kapat" style={{ padding: 4 }}>
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+        <div className="stoa-channel-modal-body">
+          {candidates.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-faint)', fontSize: 12 }}>
+              Bu workspace'teki tüm üyeler zaten kanalda.
+            </div>
+          ) : (
+            <>
+              <div className="stoa-member-search">
+                <Icon name="search" size={13} />
+                <input placeholder="Üye ara…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
+              </div>
+              <div className="stoa-member-list">
+                {filtered.length === 0 ? (
+                  <div style={{ padding: 16, fontSize: 12, color: 'var(--ink-faint)', textAlign: 'center' }}>Eşleşen üye yok.</div>
+                ) : filtered.map(m => {
+                  const checked = selected.has(m.id);
+                  return (
+                    <label key={m.id} className={`stoa-member-row ${checked ? 'is-checked' : ''}`} onClick={() => toggle(m.id)}>
+                      <Avatar member={m} size="sm" />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</div>
+                        {m.role && <div style={{ fontSize: 11, color: 'var(--ink-faint)' }}>{m.role}</div>}
+                      </div>
+                      <div className="stoa-checkbox" data-checked={checked}>
+                        {checked && <Icon name="check" size={11} />}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+        <div className="stoa-channel-modal-foot">
+          <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>İptal</button>
+          <button className="btn btn-primary" onClick={submit} disabled={selected.size === 0 || submitting}>
+            {submitting ? 'Ekleniyor…' : `Ekle (${selected.size})`}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── Channel-settings modal ───────────────────────────────────────────────
+function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me }) {
+  const [name, setName] = useChatS('');
+  const [description, setDescription] = useChatS('');
+  const [type, setType] = useChatS('public');
+  const [confirmDelete, setConfirmDelete] = useChatS(false);
+  const [deleteTypeInput, setDeleteTypeInput] = useChatS('');
+  const [submitting, setSubmitting] = useChatS(false);
+
+  useChatE(() => {
+    if (open && channel) {
+      setName(channel.name || '');
+      setDescription(channel.description || '');
+      setType(channel.type || 'public');
+      setConfirmDelete(false);
+      setDeleteTypeInput('');
+      setSubmitting(false);
+    }
+  }, [open, channel?.channel_id]);
+
+  useChatE(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [open]);
+
+  if (!open || !channel) return null;
+  const myRole = channel.my_role;
+  const canManage = myRole === 'owner' || myRole === 'admin';
+  const isOwner = myRole === 'owner';
+  const isDefault = !!channel.is_default;
+
+  const saveBasic = async () => {
+    if (submitting) return;
+    if (!name.trim()) { window.showToast?.('Kanal adı boş olamaz', 'error'); return; }
+    setSubmitting(true);
+    try {
+      const updated = await window.API.updateChannel(channel.channel_id, {
+        name: name.trim(),
+        description: description.trim(),
+      });
+      onUpdated(updated);
+      window.showToast?.('Kanal güncellendi', 'success');
+    } catch (e) {
+      window.showToast?.(e.message, 'error');
+    } finally { setSubmitting(false); }
+  };
+
+  const flipType = async () => {
+    if (!isOwner || isDefault || submitting) return;
+    const newType = type === 'public' ? 'private' : 'public';
+    const confirmText = newType === 'public'
+      ? `#${channel.name} kanalını GENEL yap? Tüm workspace üyeleri otomatik eklenir.`
+      : `#${channel.name} kanalını ÖZEL yap? Yeni üyeler sadece davetle katılabilir.`;
+    if (!confirm(confirmText)) return;
+    setSubmitting(true);
+    try {
+      const updated = await window.API.updateChannel(channel.channel_id, { type: newType });
+      setType(newType);
+      onUpdated(updated);
+      window.showToast?.('Kanal tipi değiştirildi', 'success');
+    } catch (e) {
+      window.showToast?.(e.message, 'error');
+    } finally { setSubmitting(false); }
+  };
+
+  const leaveChannel = async () => {
+    if (isDefault) { window.showToast?.('Varsayılan kanaldan ayrılamazsınız', 'error'); return; }
+    if (!confirm(`#${channel.name} kanalından ayrılmak istediğinden emin misin?`)) return;
+    setSubmitting(true);
+    try {
+      const mySlug = window.CURRENT_USER?.slug || window.CURRENT_USER?.id || me;
+      await window.API.removeChannelMember(channel.channel_id, mySlug);
+      onDeleted({ slug: channel.slug || channel.id, leftSelf: true });
+      window.showToast?.(`#${channel.name} kanalından ayrıldın`, 'info');
+      onClose();
+    } catch (e) {
+      window.showToast?.(e.message, 'error');
+      setSubmitting(false);
+    }
+  };
+
+  const deleteChannel = async () => {
+    if (!isOwner || isDefault) return;
+    if (deleteTypeInput !== channel.name) {
+      window.showToast?.('Onaylamak için kanal adını tam olarak yazın', 'error');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await window.API.deleteChannel(channel.channel_id);
+      onDeleted({ slug: channel.slug || channel.id });
+      window.showToast?.('Kanal silindi', 'info');
+      onClose();
+    } catch (e) {
+      window.showToast?.(e.message, 'error');
+      setSubmitting(false);
+    }
+  };
+
+  return ReactDOM.createPortal(
+    <div className="stoa-channel-modal-backdrop" onClick={onClose}>
+      <div className="stoa-channel-modal" onClick={e => e.stopPropagation()}>
+        <div className="stoa-channel-modal-head">
+          <div style={{ fontSize: 15, fontWeight: 600 }}>
+            {isDefault ? <span style={{ color: 'var(--ink-muted)', fontWeight: 400 }}>#</span> : <Icon name={type === 'private' ? 'lock' : 'hash'} size={13} style={{ marginRight: 4 }} />}
+            {channel.name} ayarları
+          </div>
+          <button className="icon-btn" onClick={onClose} title="Kapat" style={{ padding: 4 }}>
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+        <div className="stoa-channel-modal-body">
+          <label className="stoa-field">
+            <span className="stoa-field-label">Kanal adı</span>
+            <div className="stoa-input-prefix">
+              <span style={{ color: 'var(--ink-faint)' }}>#</span>
+              <input value={name} onChange={e => setName(e.target.value)} disabled={!canManage} maxLength={60} />
+            </div>
+          </label>
+          <label className="stoa-field">
+            <span className="stoa-field-label">Açıklama</span>
+            <textarea value={description} onChange={e => setDescription(e.target.value)} disabled={!canManage} rows={2} maxLength={280} />
+          </label>
+          {canManage && (
+            <button className="btn btn-secondary" onClick={saveBasic} disabled={submitting} style={{ alignSelf: 'flex-start' }}>
+              Bilgileri kaydet
+            </button>
+          )}
+
+          {isOwner && !isDefault && (
+            <div className="stoa-field" style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+              <span className="stoa-field-label">Kanal tipi</span>
+              <div className="stoa-radio-group">
+                <div className={`stoa-radio-card ${type === 'public' ? 'is-active' : ''}`}>
+                  <Icon name="globe" size={16} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>Genel</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Tüm workspace üyeleri.</div>
+                  </div>
+                </div>
+                <div className={`stoa-radio-card ${type === 'private' ? 'is-active' : ''}`}>
+                  <Icon name="lock" size={16} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>Özel</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Sadece davetli üyeler.</div>
+                  </div>
+                </div>
+              </div>
+              <button className="btn btn-secondary" onClick={flipType} disabled={submitting} style={{ alignSelf: 'flex-start', marginTop: 6 }}>
+                {type === 'public' ? '🔒 Özele dönüştür' : '🌐 Genele dönüştür'}
+              </button>
+            </div>
+          )}
+
+          {!isDefault && (
+            <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={leaveChannel} disabled={submitting}>
+                Kanaldan ayrıl
+              </button>
+              {isOwner && (
+                !confirmDelete ? (
+                  <button
+                    className="btn"
+                    style={{ alignSelf: 'flex-start', background: 'oklch(95% 0.04 25 / 0.5)', color: 'var(--status-rose)' }}
+                    onClick={() => setConfirmDelete(true)}
+                  >Kanalı sil</button>
+                ) : (
+                  <div style={{ padding: 12, border: '1px solid var(--status-rose)', borderRadius: 10, background: 'oklch(95% 0.04 25 / 0.35)' }}>
+                    <div style={{ fontSize: 12, color: 'var(--ink)', marginBottom: 6 }}>
+                      Silmeyi onaylamak için kanal adını yazın: <strong>{channel.name}</strong>
+                    </div>
+                    <input
+                      value={deleteTypeInput}
+                      onChange={e => setDeleteTypeInput(e.target.value)}
+                      placeholder={channel.name}
+                      style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, marginBottom: 8, background: 'var(--bg)' }}
+                    />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn btn-secondary" onClick={() => setConfirmDelete(false)} disabled={submitting}>İptal</button>
+                      <button
+                        className="btn"
+                        style={{ background: 'var(--status-rose)', color: 'white' }}
+                        onClick={deleteChannel}
+                        disabled={submitting || deleteTypeInput !== channel.name}
+                      >Kalıcı olarak sil</button>
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── Pinned messages banner (above chat) ───────────────────────────────────
+function PinnedBanner({ pinned, allMembers, onJump, onUnpin, onClose }) {
+  const [expanded, setExpanded] = useChatS(false);
+  if (!pinned || pinned.length === 0) return null;
+  const ordered = [...pinned].sort((a, b) => {
+    const ta = a.ts || a.created_at || ''; const tb = b.ts || b.created_at || '';
+    return tb.localeCompare(ta);
+  });
+  const top = ordered[0];
+  const sender = allMembers.find(m => m.id === top.from);
+  const preview = top.deleted
+    ? 'Bu mesaj silindi'
+    : (top.text || (top.file_url ? `📎 ${top.file_name || 'Dosya'}` : ''));
+
+  return (
+    <div className="chat-pinned-banner" style={{
+      position: 'sticky', top: 0, zIndex: 5,
+      background: 'var(--bg-raised, var(--bg))',
+      borderBottom: '1px solid var(--line)',
+      boxShadow: '0 2px 6px oklch(0% 0 0 / 0.05)',
+    }}>
+      <div
+        onClick={() => onJump(top.id)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 12px', cursor: 'pointer',
+        }}
+      >
+        <Icon name="pin" size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.3 }}>
+          <div style={{ fontWeight: 600, color: 'var(--ink)', fontSize: 11 }}>
+            Sabitli mesaj{ordered.length > 1 ? ` (${ordered.length})` : ''} · {sender?.name || top.from}
+          </div>
+          <div style={{
+            color: 'var(--ink-muted)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{preview}</div>
+        </div>
+        {ordered.length > 1 && (
+          <button
+            className="icon-btn"
+            title={expanded ? 'Daralt' : 'Tümünü gör'}
+            onClick={(e) => { e.stopPropagation(); setExpanded(x => !x); }}
+            style={{ padding: 3, color: 'var(--ink-muted)' }}
+          >
+            <Icon name={expanded ? 'chevronUp' : 'chevronDown'} size={12} />
+          </button>
+        )}
+        <button
+          className="icon-btn"
+          title="Sabitlemeyi kaldır"
+          onClick={(e) => { e.stopPropagation(); onUnpin(top); }}
+          style={{ padding: 3, color: 'var(--ink-muted)' }}
+        >
+          <Icon name="x" size={12} />
+        </button>
+      </div>
+      {expanded && ordered.slice(1).map(msg => {
+        const s = allMembers.find(m => m.id === msg.from);
+        const p = msg.deleted ? 'Bu mesaj silindi' : (msg.text || (msg.file_url ? `📎 ${msg.file_name || 'Dosya'}` : ''));
+        return (
+          <div key={msg.id}
+            onClick={() => onJump(msg.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 12px 6px 32px', cursor: 'pointer',
+              borderTop: '1px dashed var(--line)',
+              fontSize: 11.5, color: 'var(--ink-muted)',
+            }}
+          >
+            <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{s?.name || msg.from}:</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{p}</span>
+            <button className="icon-btn" title="Kaldır" onClick={(e) => { e.stopPropagation(); onUnpin(msg); }} style={{ padding: 2 }}>
+              <Icon name="x" size={10} />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Custom Video Player ───────────────────────────────────────────────────
+function CustomVideoPlayer({ src, poster, autoPlay = false, fullscreenContainer = false, lightbox = false }) {
+  const videoRef = useChatRef(null);
+  const wrapRef  = useChatRef(null);
+  const [playing, setPlaying]   = useChatS(false);
+  const [muted, setMuted]       = useChatS(false);
+  const [duration, setDuration] = useChatS(0);
+  const [progress, setProgress] = useChatS(0);
+  const [volume, setVolume]     = useChatS(1);
+  const [showCtrls, setShowCtrls] = useChatS(true);
+  const hideTimer = useChatRef(null);
+
+  const fmtTime = (s) => {
+    if (!isFinite(s) || s < 0) return '0:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60).toString().padStart(2, '0');
+    return `${m}:${sec}`;
+  };
+
+  const togglePlay = () => {
+    const v = videoRef.current; if (!v) return;
+    if (v.paused) v.play(); else v.pause();
+  };
+
+  const toggleMute = () => {
+    const v = videoRef.current; if (!v) return;
+    v.muted = !v.muted; setMuted(v.muted);
+  };
+
+  const skip = (deltaSeconds) => {
+    const v = videoRef.current; if (!v) return;
+    v.currentTime = Math.max(0, Math.min((v.duration || 0), v.currentTime + deltaSeconds));
+    setProgress(v.currentTime);
+  };
+
+  const onTimeUpdate = () => {
+    const v = videoRef.current; if (!v) return;
+    setProgress(v.currentTime);
+  };
+  const onLoaded = () => {
+    const v = videoRef.current; if (!v) return;
+    setDuration(v.duration || 0);
+    setVolume(v.volume);
+    setMuted(v.muted);
+  };
+  // Drag-to-seek — pointermove/up listeners are attached to `document` so the drag
+  // survives even if the pointer leaves the bar. A ref tracks the in-flight drag so
+  // we don't depend on React state propagation between rapid pointer events.
+  const [seeking, setSeeking] = useChatS(false);
+  const [hoverSeek, setHoverSeek] = useChatS(null); // ratio 0..1 while pointer hovers
+  const seekBarRef = useChatRef(null);
+  const seekActiveRef = useChatRef(false);
+
+  const _ratioFromClientX = (clientX) => {
+    const bar = seekBarRef.current;
+    if (!bar) return 0;
+    const rect = bar.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  };
+
+  const onSeekPointerDown = (e) => {
+    const v = videoRef.current;
+    if (!v) return;
+    // Use v.duration directly — duration state can lag behind metadata load
+    const dur = (isFinite(v.duration) && v.duration > 0) ? v.duration : duration;
+    if (!dur) return;
+    if (e.button != null && e.button !== 0) return; // left click only
+    e.preventDefault();
+    e.stopPropagation();
+    seekActiveRef.current = true;
+    setSeeking(true);
+    // Immediate jump on first click
+    const r0 = _ratioFromClientX(e.clientX);
+    v.currentTime = r0 * dur;
+    setProgress(v.currentTime);
+    setHoverSeek(r0);
+
+    const onMove = (ev) => {
+      if (!seekActiveRef.current) return;
+      const r = _ratioFromClientX(ev.clientX);
+      const d = (isFinite(v.duration) && v.duration > 0) ? v.duration : dur;
+      v.currentTime = r * d;
+      setProgress(v.currentTime);
+      setHoverSeek(r);
+    };
+    const onUp = () => {
+      seekActiveRef.current = false;
+      setSeeking(false);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+      showAndAutoHide();
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+    showAndAutoHide();
+  };
+
+  // Pure-hover preview (no drag): only runs when we are NOT mid-drag
+  const onSeekPointerMove = (e) => {
+    if (seekActiveRef.current) return;
+    setHoverSeek(_ratioFromClientX(e.clientX));
+  };
+  const onSeekPointerLeave = () => {
+    if (!seekActiveRef.current) setHoverSeek(null);
+  };
+  const changeVolume = (e) => {
+    const v = videoRef.current; if (!v) return;
+    const val = parseFloat(e.target.value);
+    v.volume = val; setVolume(val);
+    if (val > 0 && v.muted) { v.muted = false; setMuted(false); }
+  };
+  const toggleFullscreen = () => {
+    const el = wrapRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else el.requestFullscreen?.();
+  };
+
+  const showAndAutoHide = () => {
+    setShowCtrls(true);
+    clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => {
+      const v = videoRef.current;
+      if (v && !v.paused) setShowCtrls(false);
+    }, 2000);
+  };
+
+  // Keyboard shortcuts — only active in lightbox/fullscreen modes to avoid stealing typing focus
+  useChatE(() => {
+    if (!lightbox && !fullscreenContainer) return;
+    const onKey = (e) => {
+      // Don't hijack when user is in an input/textarea
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      switch (e.key) {
+        case ' ':
+        case 'k':
+        case 'K':
+          e.preventDefault(); togglePlay(); showAndAutoHide(); break;
+        case 'ArrowLeft':
+          e.preventDefault(); skip(-5); showAndAutoHide(); break;
+        case 'ArrowRight':
+          e.preventDefault(); skip(5); showAndAutoHide(); break;
+        case 'f':
+        case 'F':
+          e.preventDefault(); toggleFullscreen(); break;
+        case 'm':
+        case 'M':
+          e.preventDefault(); toggleMute(); showAndAutoHide(); break;
+        default: break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightbox, fullscreenContainer]);
+
+  const wrapStyle = lightbox
+    ? {
+        position: 'relative',
+        borderRadius: 12,
+        overflow: 'hidden',
+        background: '#000',
+        display: 'inline-flex',
+        maxWidth: 'calc(100vw - 48px)',
+        maxHeight: 'calc(100vh - 48px)',
+      }
+    : {
+        position: 'relative',
+        borderRadius: fullscreenContainer ? 0 : 12,
+        overflow: 'hidden',
+        background: '#000',
+        width: '100%',
+        maxWidth: fullscreenContainer ? 'none' : 520,
+        aspectRatio: '16 / 10',
+      };
+
+  const videoStyle = lightbox
+    ? {
+        maxWidth: 'calc(100vw - 48px)',
+        maxHeight: 'calc(100vh - 48px)',
+        objectFit: 'contain',
+        display: 'block',
+        cursor: 'pointer',
+      }
+    : { width: '100%', height: '100%', objectFit: 'contain', display: 'block', cursor: 'pointer' };
+
+  return (
+    <div
+      ref={wrapRef}
+      className="stoa-video"
+      onMouseMove={showAndAutoHide}
+      onMouseLeave={() => { const v = videoRef.current; if (v && !v.paused) setShowCtrls(false); }}
+      style={wrapStyle}
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        poster={poster}
+        preload="metadata"
+        autoPlay={autoPlay}
+        controls={false}
+        onPlay={() => { setPlaying(true); showAndAutoHide(); }}
+        onPause={() => { setPlaying(false); setShowCtrls(true); }}
+        onTimeUpdate={onTimeUpdate}
+        onLoadedMetadata={onLoaded}
+        onClick={togglePlay}
+        style={videoStyle}
+      />
+      {!playing && (
+        <button
+          onClick={togglePlay}
+          aria-label="Oynat"
+          style={{
+            position: 'absolute', inset: 0, margin: 'auto',
+            width: 64, height: 64, borderRadius: '50%',
+            background: 'oklch(0% 0 0 / 0.55)',
+            border: '2px solid white', color: 'white',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+      )}
+      <div
+        className="stoa-video-ctrls"
+        style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0,
+          padding: '20px 12px 10px',
+          background: 'linear-gradient(transparent, oklch(0% 0 0 / 0.65))',
+          opacity: (showCtrls || seeking) ? 1 : 0,
+          transition: 'opacity 0.25s',
+          pointerEvents: (showCtrls || seeking) ? 'auto' : 'none',
+        }}
+      >
+        <div
+          ref={seekBarRef}
+          className="stoa-video-seekbar"
+          data-active={seeking}
+          onPointerDown={onSeekPointerDown}
+          onPointerMove={onSeekPointerMove}
+          onPointerLeave={onSeekPointerLeave}
+          style={{
+            position: 'relative',
+            height: 18, // bigger hit-area for dragging; visual bar sits inside
+            cursor: 'pointer',
+            marginBottom: 8,
+            touchAction: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            userSelect: 'none',
+          }}
+        >
+          {/* Track */}
+          <div style={{
+            position: 'absolute', left: 0, right: 0,
+            height: seeking ? 6 : 4,
+            background: 'oklch(100% 0 0 / 0.25)',
+            borderRadius: 4,
+            transition: 'height 0.12s var(--ease, ease-out)',
+          }} />
+          {/* Hover preview overlay (faint white up to hover position) */}
+          {hoverSeek != null && !seeking && (
+            <div style={{
+              position: 'absolute', left: 0,
+              width: `${hoverSeek * 100}%`,
+              height: seeking ? 6 : 4,
+              background: 'oklch(100% 0 0 / 0.18)',
+              borderRadius: 4,
+              pointerEvents: 'none',
+            }} />
+          )}
+          {/* Progress fill */}
+          <div style={{
+            position: 'absolute', left: 0,
+            width: `${duration ? (progress / duration) * 100 : 0}%`,
+            height: seeking ? 6 : 4,
+            background: 'var(--accent)',
+            borderRadius: 4,
+            transition: 'height 0.12s var(--ease, ease-out)',
+            pointerEvents: 'none',
+          }} />
+          {/* Draggable thumb */}
+          <div style={{
+            position: 'absolute',
+            left: `${duration ? (progress / duration) * 100 : 0}%`,
+            width: seeking ? 14 : 12,
+            height: seeking ? 14 : 12,
+            borderRadius: '50%',
+            background: 'var(--accent)',
+            boxShadow: '0 0 0 3px oklch(100% 0 0 / 0.25)',
+            transform: 'translate(-50%, 0)',
+            transition: 'width 0.12s var(--ease, ease-out), height 0.12s var(--ease, ease-out), opacity 0.12s',
+            opacity: (seeking || hoverSeek != null) ? 1 : 0,
+            pointerEvents: 'none',
+          }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'white', fontSize: 11 }}>
+          <button onClick={togglePlay} className="icon-btn" style={{ color: 'white', padding: 2 }} aria-label={playing ? 'Duraklat' : 'Oynat'}>
+            {playing
+              ? <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+              : <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>}
+          </button>
+          <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: 80 }}>
+            {fmtTime(progress)} / {fmtTime(duration)}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button onClick={toggleMute} className="icon-btn" style={{ color: 'white', padding: 2 }} aria-label={muted ? 'Sesi aç' : 'Sustur'} title={muted ? 'Sesi aç (M)' : 'Sustur (M)'}>
+            {muted || volume === 0
+              ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+              : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>}
+          </button>
+          <input
+            type="range" min="0" max="1" step="0.01" value={muted ? 0 : volume}
+            onChange={changeVolume}
+            style={{ width: 70, accentColor: 'var(--accent)' }}
+            aria-label="Ses"
+          />
+          <button onClick={toggleFullscreen} className="icon-btn" style={{ color: 'white', padding: 2 }} aria-label="Tam ekran" title="Tam ekran (F)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zM14 5v2h3v3h2V5z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Video thumbnail (poster captured from first frame, lazy via IntersectionObserver) ─
+function VideoThumb({ src, size = 'square', onClick }) {
+  const [poster, setPoster] = useChatS(null);
+  const [duration, setDuration] = useChatS(null);
+  const [visible, setVisible] = useChatS(false);
+  const refEl = useChatRef(null);
+
+  useChatE(() => {
+    if (!refEl.current) return;
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) { setVisible(true); io.disconnect(); } });
+    }, { rootMargin: '200px' });
+    io.observe(refEl.current);
+    return () => io.disconnect();
+  }, []);
+
+  useChatE(() => {
+    if (!visible || poster) return;
+    const v = document.createElement('video');
+    v.crossOrigin = 'anonymous';
+    v.preload = 'metadata';
+    v.muted = true;
+    v.src = src;
+    v.addEventListener('loadedmetadata', () => {
+      setDuration(v.duration || 0);
+      try { v.currentTime = Math.min(0.5, (v.duration || 1) / 3); } catch {}
+    });
+    v.addEventListener('seeked', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = v.videoWidth || 320;
+        canvas.height = v.videoHeight || 180;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+        setPoster(canvas.toDataURL('image/jpeg', 0.7));
+      } catch {
+        setPoster(null);
+      }
+      v.remove();
+    });
+    v.addEventListener('error', () => v.remove());
+    return () => { try { v.remove(); } catch {} };
+  }, [visible, src]);
+
+  const fmtDur = (s) => {
+    if (s == null || !isFinite(s)) return '';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60).toString().padStart(2, '0');
+    return `${m}:${sec}`;
+  };
+
+  return (
+    <div
+      ref={refEl}
+      onClick={onClick}
+      style={{
+        position: 'relative',
+        paddingBottom: size === 'square' ? '100%' : '56.25%',
+        background: '#222', borderRadius: 6, overflow: 'hidden', cursor: 'pointer',
+      }}
+    >
+      {poster && (
+        <img src={poster} alt="" style={{
+          position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+        }} />
+      )}
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <div style={{
+          width: 32, height: 32, borderRadius: '50%',
+          background: 'oklch(0% 0 0 / 0.55)', border: '1.5px solid white',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+        </div>
+      </div>
+      {duration != null && duration > 0 && (
+        <div style={{
+          position: 'absolute', bottom: 4, right: 4,
+          background: 'oklch(0% 0 0 / 0.75)', color: 'white',
+          fontSize: 10, padding: '1px 5px', borderRadius: 3,
+          fontVariantNumeric: 'tabular-nums',
+        }}>{fmtDur(duration)}</div>
+      )}
+    </div>
+  );
 }
 
 // ── Media Gallery Tab ─────────────────────────────────────────────────────
@@ -274,18 +1310,15 @@ function MediaList({ media, allMembers, onImageClick }) {
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
             Videolar ({videos.length})
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {videos.map(m => {
-              const sender = allMembers.find(u => u.id === m.from);
-              return (
-                <div key={m.id} style={{ background: 'var(--bg-dim)', borderRadius: 8, padding: 8 }}>
-                  <video src={m.file_url} controls style={{ width: '100%', borderRadius: 6, maxHeight: 180 }} />
-                  <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4 }}>
-                    {sender?.name || m.from} · {fmtMsgDateTime(m)}
-                  </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+            {videos.map(m => (
+              <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <VideoThumb src={m.file_url} onClick={() => onImageClick({ src: m.file_url, kind: 'video' })} />
+                <div style={{ fontSize: 9, color: 'var(--ink-faint)', lineHeight: 1.2, padding: '0 2px' }}>
+                  {fmtMsgDateTime(m)}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -408,62 +1441,102 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
   const [headerSearchOpen, setHeaderSearchOpen] = useChatS(false);
   const [headerSearch, setHeaderSearch] = useChatS('');
 
-  // Channels: localStorage-tracked (UI mock, backend sadece "general"u biliyor)
-  // Default kanal her zaman var; kullanıcı ek kanal oluşturur.
-  const [channels, setChannels] = useChatS(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('stoa.channels') || '[]');
-      if (Array.isArray(stored) && stored.length > 0) {
-        if (!stored.find(c => c.id === 'general')) stored.unshift({ id: 'general', name: 'genel', isDefault: true });
-        return stored;
-      }
-    } catch {}
-    return [{ id: 'general', name: 'genel', isDefault: true }];
-  });
+  // Channels are now backend-backed. Initial state loads from bootstrap (window.DATA.CHANNELS),
+  // then sock'et events keep it in sync.
+  const _initialChannels = () => {
+    const fromData = (window.DATA?.CHANNELS) || [];
+    if (Array.isArray(fromData) && fromData.length) return fromData;
+    return [{ id: 'general', slug: 'general', name: 'genel', type: 'public', is_default: true, my_role: 'member', is_member: true }];
+  };
+  const [channels, setChannels] = useChatS(_initialChannels);
   const [activeChannel, setActiveChannel] = useChatS('general');
   const [addChannelOpen, setAddChannelOpen] = useChatS(false);
-  const [newChannelName, setNewChannelName] = useChatS('');
+  const [channelSettingsId, setChannelSettingsId] = useChatS(null); // for future use
 
-  const addChannel = () => {
-    const raw = newChannelName.trim().toLowerCase().replace(/[^a-z0-9-_çğıöşü]+/g, '-').replace(/^-+|-+$/g, '');
-    if (!raw) return;
-    if (channels.find(c => c.id === raw)) {
-      window.showToast?.('Bu isimde bir kanal zaten var.', 'error');
-      return;
-    }
-    const next = [...channels, { id: raw, name: raw }];
-    setChannels(next);
-    localStorage.setItem('stoa.channels', JSON.stringify(next));
-    setNewChannelName('');
-    setAddChannelOpen(false);
-    setActiveChannel(raw);
-    window.showToast?.(`#${raw} kanalı oluşturuldu`, 'success');
-  };
+  // Refresh channels from API on open / workspace switch
+  useChatE(() => {
+    if (!open) return;
+    fetch('/api/channels').then(r => r.json()).then(list => {
+      if (Array.isArray(list)) {
+        setChannels(list);
+        window.DATA.CHANNELS = list;
+      }
+    }).catch(() => {});
+  }, [open, wsId]);
 
-  const removeChannel = (id) => {
+  // Helper: find channel meta by slug (id)
+  const _findCh = (slug) => channels.find(c => (c.slug || c.id) === slug);
+
+  // Active channel detail (incl. members list with roles) — for right-panel members tab + settings
+  const [currentChannelDetail, setCurrentChannelDetail] = useChatS(null);
+  const [addMemberOpen, setAddMemberOpen] = useChatS(false);
+  const [channelSettingsOpen, setChannelSettingsOpen] = useChatS(false);
+  const [memberRowMenu, setMemberRowMenu] = useChatS(null); // { x, y, cm }
+
+  useChatE(() => {
+    if (!open || dmWith) { setCurrentChannelDetail(null); return; }
+    const ch = _findCh(activeChannel);
+    if (!ch || !ch.channel_id) { setCurrentChannelDetail(null); return; }
+    let cancelled = false;
+    window.API.getChannel(ch.channel_id).then(detail => {
+      if (!cancelled) setCurrentChannelDetail(detail);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [open, dmWith, activeChannel, channels.length]);
+
+  const removeChannel = async (id) => {
     if (id === 'general') return;
-    const next = channels.filter(c => c.id !== id);
-    setChannels(next);
-    localStorage.setItem('stoa.channels', JSON.stringify(next));
-    if (activeChannel === id) setActiveChannel('general');
+    const ch = _findCh(id);
+    if (!ch) return;
+    if (!confirm(`#${ch.name} kanalını silmek istediğinden emin misin?`)) return;
+    try {
+      await window.API.deleteChannel(ch.channel_id || ch.id);
+      const next = channels.filter(c => (c.slug || c.id) !== id);
+      setChannels(next);
+      window.DATA.CHANNELS = next;
+      if (activeChannel === id) setActiveChannel('general');
+      window.showToast?.(`#${ch.name} kanalı silindi`, 'info');
+    } catch (e) {
+      window.showToast?.('Kanal silinemedi: ' + e.message, 'error');
+    }
   };
 
-  // Format helper — wrap selected text in textarea with markdown markers
-  const wrapSelection = (prefix, suffix = prefix, placeholder = '') => {
+  // Format helper — wrap selected text in textarea with markdown markers.
+  // No selection → inserts only the marker pair and places cursor between them
+  // (user types inside, gets formatted text). No placeholder words are injected.
+  const [activeFmtKey, setActiveFmtKey] = useChatS(null);
+  const fmtPulseTimer = useChatRef(null);
+  const wrapSelection = (prefix, suffix = prefix, _placeholder = '', fmtKey = null) => {
     const el = inputRef.current;
     if (!el) return;
     const start = el.selectionStart ?? text.length;
     const end   = el.selectionEnd   ?? text.length;
     const selected = text.slice(start, end);
-    const insert = selected || placeholder;
-    const newText = text.slice(0, start) + prefix + insert + suffix + text.slice(end);
-    setText(newText);
-    setTimeout(() => {
-      el.focus();
-      const selStart = start + prefix.length;
-      const selEnd   = selStart + insert.length;
-      el.setSelectionRange(selStart, selEnd);
-    }, 0);
+    const hasSelection = end > start;
+    if (hasSelection) {
+      const newText = text.slice(0, start) + prefix + selected + suffix + text.slice(end);
+      setText(newText);
+      setTimeout(() => {
+        el.focus();
+        const selStart = start + prefix.length;
+        const selEnd   = selStart + selected.length;
+        el.setSelectionRange(selStart, selEnd);
+      }, 0);
+    } else {
+      // Insert just the marker pair with cursor between → user types into formatted region
+      const newText = text.slice(0, start) + prefix + suffix + text.slice(end);
+      setText(newText);
+      setTimeout(() => {
+        el.focus();
+        const caret = start + prefix.length;
+        el.setSelectionRange(caret, caret);
+      }, 0);
+    }
+    if (fmtKey) {
+      setActiveFmtKey(fmtKey);
+      clearTimeout(fmtPulseTimer.current);
+      fmtPulseTimer.current = setTimeout(() => setActiveFmtKey(null), 600);
+    }
   };
 
   const bottomRef   = useChatRef(null);
@@ -528,13 +1601,15 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     }
   }, [open, dmWith, tab, wsId]);
 
-  // ── Load history — AbortController prevents stale responses on rapid DM switches ──
-  // wsId in deps so general messages reload when workspace switches
+  // ── Load history — AbortController prevents stale responses on rapid DM/channel switches ──
+  // wsId + activeChannel in deps so messages reload when workspace/channel switches
   useChatE(() => {
     if (!open) return;
     const controller = new AbortController();
     msgIds.current = new Set();
-    const url = dmWith ? `/api/chat/messages?with=${dmWith}` : '/api/chat/messages';
+    const url = dmWith
+      ? `/api/chat/messages?with=${dmWith}`
+      : `/api/chat/messages?channel=${encodeURIComponent(activeChannel || 'general')}`;
     fetch(url, { signal: controller.signal })
       .then(r => r.json())
       .then(msgs => {
@@ -544,7 +1619,32 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
       })
       .catch(err => { if (err.name !== 'AbortError') setMessages([]); });
     return () => controller.abort();
-  }, [open, dmWith, wsId]);
+  }, [open, dmWith, wsId, activeChannel]);
+
+  // ── Load pinned messages for current channel/DM ──
+  const [pinnedMessages, setPinnedMessages] = useChatS([]); // backend-backed pinned for current view
+  const [pinnedAllChannels, setPinnedAllChannels] = useChatS([]); // pinned across ALL channels in ws
+  const [pinnedBannerHidden, setPinnedBannerHidden] = useChatS(false);
+  const [pinnedScope, setPinnedScope] = useChatS('channel');   // 'channel' | 'all'
+  const [starredScope, setStarredScope] = useChatS('channel'); // 'channel' | 'all'
+  useChatE(() => {
+    if (!open) return;
+    setPinnedBannerHidden(false);
+    const url = dmWith
+      ? `/api/chat/pinned?with=${dmWith}`
+      : `/api/chat/pinned?channel=${encodeURIComponent(activeChannel || 'general')}`;
+    fetch(url).then(r => r.json()).then(list => {
+      if (Array.isArray(list)) setPinnedMessages(list);
+    }).catch(() => {});
+  }, [open, dmWith, wsId, activeChannel]);
+
+  // Load "all channels" pinned set whenever the workspace changes or right tab opens to pinned
+  useChatE(() => {
+    if (!open || dmWith) return;
+    fetch('/api/chat/pinned?scope=all').then(r => r.json()).then(list => {
+      if (Array.isArray(list)) setPinnedAllChannels(list);
+    }).catch(() => {});
+  }, [open, wsId, pinnedMessages.length]);
 
   // ── Scroll to highlighted message after load ──────────────────────────────
   useChatE(() => {
@@ -570,7 +1670,9 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
       if (dmWith) {
         relevant = (msg.from === dmWith && msg.to === me) || (msg.from === me && msg.to === dmWith);
       } else {
-        relevant = !msg.to;
+        // Team channel: must match active channel (legacy null channel = 'general')
+        const msgCh = msg.channel || 'general';
+        relevant = !msg.to && msgCh === (activeChannel || 'general');
       }
       if (!relevant) return;
 
@@ -612,15 +1714,104 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
       }
     };
 
+    const onMsgPinned = (info) => {
+      // Update in-message flag
+      setMessages(prev => prev.map(m =>
+        String(m.id) === String(info.id) ? { ...m, pinned: info.pinned } : m
+      ));
+      // Update pinned banner list if relevant view
+      const sameDm = dmWith && ((info.from === dmWith && info.to === me) || (info.from === me && info.to === dmWith));
+      const sameCh = !dmWith && !info.to && (info.channel || 'general') === (activeChannel || 'general');
+      if (sameDm || sameCh) {
+        if (info.pinned) {
+          // fetch the message details by id from current messages
+          setPinnedMessages(prev => {
+            const fromList = (window.__lastMessages || []).find(m => String(m.id) === String(info.id));
+            const existing = prev.find(m => String(m.id) === String(info.id));
+            if (existing) return prev.map(m => String(m.id) === String(info.id) ? { ...m, pinned: true } : m);
+            if (fromList) return [{ ...fromList, pinned: true }, ...prev];
+            // Otherwise refetch
+            const url = dmWith
+              ? `/api/chat/pinned?with=${dmWith}`
+              : `/api/chat/pinned?channel=${encodeURIComponent(activeChannel || 'general')}`;
+            fetch(url).then(r => r.json()).then(list => Array.isArray(list) && setPinnedMessages(list)).catch(() => {});
+            return prev;
+          });
+        } else {
+          setPinnedMessages(prev => prev.filter(m => String(m.id) !== String(info.id)));
+        }
+        setPinnedBannerHidden(false);
+      }
+    };
+
+    const onChannelCreated = (ch) => {
+      const slug = ch.slug || ch.id;
+      setChannels(prev => {
+        if (prev.some(c => (c.slug || c.id) === slug)) return prev;
+        const next = [...prev, ch];
+        window.DATA.CHANNELS = next;
+        return next;
+      });
+      window.showToast?.(`#${ch.name} kanalına eklendin`, 'info');
+    };
+    const onChannelUpdated = (ch) => {
+      const slug = ch.slug || ch.id;
+      setChannels(prev => {
+        const next = prev.map(c => (c.slug || c.id) === slug ? { ...c, ...ch } : c);
+        window.DATA.CHANNELS = next;
+        return next;
+      });
+    };
+    const onChannelDeleted = ({ slug, channel_id }) => {
+      setChannels(prev => {
+        const next = prev.filter(c => (c.slug || c.id) !== slug && c.channel_id !== channel_id);
+        window.DATA.CHANNELS = next;
+        return next;
+      });
+      if (activeChannel === slug) setActiveChannel('general');
+    };
+    const onChannelMemberAdded = (ch) => onChannelUpdated(ch);
+    const onChannelMemberRemoved = (payload) => {
+      // If I'm the one removed, drop the channel from my list
+      const mySlug = window.CURRENT_USER?.slug || window.CURRENT_USER?.id;
+      if (payload.removed_user_slug && payload.removed_user_slug === mySlug) {
+        const slug = payload.slug || payload.id;
+        setChannels(prev => {
+          const next = prev.filter(c => (c.slug || c.id) !== slug);
+          window.DATA.CHANNELS = next;
+          return next;
+        });
+        if (activeChannel === slug) setActiveChannel('general');
+        window.showToast?.(`#${payload.name || slug} kanalından çıkarıldın`, 'info');
+        return;
+      }
+      onChannelUpdated(payload);
+    };
+
     sock.on('chat_message', onMsg);
     sock.on('typing', onTyping);
     sock.on('message_deleted', onMsgDeleted);
+    sock.on('message_pinned', onMsgPinned);
+    sock.on('channel_created', onChannelCreated);
+    sock.on('channel_updated', onChannelUpdated);
+    sock.on('channel_deleted', onChannelDeleted);
+    sock.on('channel_member_added', onChannelMemberAdded);
+    sock.on('channel_member_removed', onChannelMemberRemoved);
     return () => {
       sock.off('chat_message', onMsg);
       sock.off('typing', onTyping);
       sock.off('message_deleted', onMsgDeleted);
+      sock.off('message_pinned', onMsgPinned);
+      sock.off('channel_created', onChannelCreated);
+      sock.off('channel_updated', onChannelUpdated);
+      sock.off('channel_deleted', onChannelDeleted);
+      sock.off('channel_member_added', onChannelMemberAdded);
+      sock.off('channel_member_removed', onChannelMemberRemoved);
     };
-  }, [socket, dmWith, me]);
+  }, [socket, dmWith, me, activeChannel]);
+
+  // expose messages for socket handler closure
+  useChatE(() => { window.__lastMessages = messages; }, [messages]);
 
   // ── Auto-scroll ───────────────────────────────────────────────────────
   useChatE(() => {
@@ -642,6 +1833,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     const tempMsg = {
       id: tempId,
       from: me, to: dmWith || null,
+      channel: dmWith ? 'dm' : (activeChannel || 'general'),
       text: t,
       time: nowTime,
       ts: new Date().toISOString(),
@@ -659,6 +1851,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
 
     try {
       const body = { text: sentText, to: dmWith || null };
+      if (!dmWith) body.channel = activeChannel || 'general';
       if (sentFile) {
         body.file_url  = sentFile.url;
         body.file_type = sentFile.type;
@@ -705,9 +1898,9 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     // Markdown shortcuts
     if (e.ctrlKey || e.metaKey) {
       const k = e.key.toLowerCase();
-      if (k === 'b') { e.preventDefault(); wrapSelection('**', '**', 'kalın'); return; }
-      if (k === 'i') { e.preventDefault(); wrapSelection('*', '*', 'italik');  return; }
-      if (k === 'e') { e.preventDefault(); wrapSelection('`', '`', 'kod');     return; }
+      if (k === 'b') { e.preventDefault(); wrapSelection('**', '**', '', 'bold'); return; }
+      if (k === 'i') { e.preventDefault(); wrapSelection('*', '*', '', 'italic');  return; }
+      if (k === 'e') { e.preventDefault(); wrapSelection('`', '`', '', 'code');    return; }
     }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
@@ -810,25 +2003,72 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     setDeleteMenu(null);
   };
 
-  const togglePin = (msg) => {
-    const id = String(msg.id);
-    setPinnedMsgs(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-        const nextData = pinnedData.filter(m => String(m.id) !== id);
-        setPinnedData(nextData);
-        localStorage.setItem('stoa.pinnedData', JSON.stringify(nextData));
-      } else {
-        next.add(id);
-        const nextData = [...pinnedData.filter(m => String(m.id) !== id), { ...msg }];
-        setPinnedData(nextData);
-        localStorage.setItem('stoa.pinnedData', JSON.stringify(nextData));
-      }
-      localStorage.setItem('stoa.pinned', JSON.stringify([...next]));
-      return next;
-    });
+  const togglePin = async (msg) => {
     setDeleteMenu(null);
+    const id = String(msg.id);
+    // Only persisted (non-temp) messages can be pinned server-side
+    if (msg._temp || id.startsWith('temp_')) {
+      window.showToast?.('Mesaj kaydedildikten sonra sabitleyebilirsin.', 'info');
+      return;
+    }
+    // Optimistic UI
+    const wasPinned = !!msg.pinned;
+    setMessages(prev => prev.map(m => String(m.id) === id ? { ...m, pinned: !wasPinned } : m));
+    if (wasPinned) {
+      setPinnedMessages(prev => prev.filter(m => String(m.id) !== id));
+    } else {
+      setPinnedMessages(prev => [{ ...msg, pinned: true }, ...prev.filter(m => String(m.id) !== id)]);
+    }
+    setPinnedBannerHidden(false);
+    try {
+      await API.togglePinMessage(msg.id);
+    } catch (e) {
+      // Roll back
+      setMessages(prev => prev.map(m => String(m.id) === id ? { ...m, pinned: wasPinned } : m));
+      window.showToast?.('Sabitleme başarısız: ' + e.message, 'error');
+    }
+  };
+
+  // Jump to a message: switch channel/DM if it lives elsewhere, then smooth-scroll & highlight.
+  // Accepts either a msg id (legacy) or a full msg object (with channel/to/from fields).
+  const scrollToMessage = (msgOrId) => {
+    const msg = (msgOrId && typeof msgOrId === 'object') ? msgOrId : null;
+    const id  = msg ? msg.id : msgOrId;
+
+    const doScroll = () => {
+      const el = document.querySelector(`[data-msgid="${id}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.remove('chat-msg-jumped');
+      // force reflow so animation can restart
+      void el.offsetWidth;
+      el.classList.add('chat-msg-jumped');
+      setTimeout(() => el.classList.remove('chat-msg-jumped'), 2400);
+    };
+
+    if (msg) {
+      // DM target switch
+      const isDm = !!msg.to || msg.channel === 'dm';
+      if (isDm) {
+        const peer = (msg.from === me) ? msg.to : msg.from;
+        if (peer && peer !== dmWith) {
+          setDmWith(peer);
+          setTab('dm');
+          setTimeout(doScroll, 350);
+          return;
+        }
+      } else {
+        const ch = msg.channel || 'general';
+        if (dmWith || ch !== (activeChannel || 'general')) {
+          if (dmWith) setDmWith(null);
+          setTab('general');
+          setActiveChannel(ch);
+          setTimeout(doScroll, 350);
+          return;
+        }
+      }
+    }
+    setTimeout(doScroll, 30);
   };
 
   const replyToMessage = (msg) => {
@@ -878,7 +2118,130 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <>
-      {lightbox && <Lightbox src={lightbox} onClose={() => setLightbox(null)} />}
+      <CreateChannelModal
+        open={addChannelOpen}
+        onClose={() => setAddChannelOpen(false)}
+        onCreated={(ch) => {
+          const slug = ch.slug || ch.id;
+          setChannels(prev => {
+            if (prev.some(c => (c.slug || c.id) === slug)) {
+              return prev.map(c => (c.slug || c.id) === slug ? { ...c, ...ch } : c);
+            }
+            const next = [...prev, ch];
+            window.DATA.CHANNELS = next;
+            return next;
+          });
+          setActiveChannel(slug);
+          setDmWith(null);
+          setTab('general');
+          window.showToast?.(`#${ch.name} kanalı oluşturuldu`, 'success');
+        }}
+        allMembers={allMembers}
+        me={me}
+      />
+      <AddMemberModal
+        open={addMemberOpen}
+        onClose={() => setAddMemberOpen(false)}
+        channel={currentChannelDetail}
+        onAdded={(updated) => {
+          setCurrentChannelDetail(updated);
+          setChannels(prev => prev.map(c => c.channel_id === updated.channel_id ? { ...c, member_count: updated.member_count, my_role: c.my_role } : c));
+        }}
+        allMembers={allMembers}
+        me={me}
+      />
+      <ChannelSettingsModal
+        open={channelSettingsOpen}
+        onClose={() => setChannelSettingsOpen(false)}
+        channel={currentChannelDetail}
+        me={me}
+        onUpdated={(updated) => {
+          setCurrentChannelDetail(updated);
+          setChannels(prev => prev.map(c => c.channel_id === updated.channel_id ? { ...c, name: updated.name, description: updated.description, type: updated.type, member_count: updated.member_count, my_role: updated.my_role } : c));
+        }}
+        onDeleted={({ slug }) => {
+          setChannels(prev => {
+            const next = prev.filter(c => (c.slug || c.id) !== slug);
+            window.DATA.CHANNELS = next;
+            return next;
+          });
+          if (activeChannel === slug) setActiveChannel('general');
+          setCurrentChannelDetail(null);
+        }}
+      />
+      {memberRowMenu && ReactDOM.createPortal(
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setMemberRowMenu(null)} />
+          <div style={{
+            position: 'fixed',
+            top: Math.min(memberRowMenu.y, window.innerHeight - 220),
+            left: Math.max(8, Math.min(memberRowMenu.x, window.innerWidth - 200)),
+            zIndex: 9999,
+            background: 'var(--bg-raised)', border: '1px solid var(--line)',
+            borderRadius: 10, boxShadow: 'var(--shadow-lg, 0 8px 24px oklch(0% 0 0 / 0.18))',
+            overflow: 'hidden', minWidth: 190,
+          }}>
+            <button className="chat-menu-item" onClick={() => {
+              const target = memberRowMenu.member;
+              setMemberRowMenu(null);
+              openDm(target.id);
+            }}>
+              <Icon name="msg" size={13} style={{ color: 'var(--ink-muted)' }} /> Mesaj gönder
+            </button>
+            {memberRowMenu.canChangeRole && (
+              <>
+                <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
+                  onClick={async () => {
+                    const cm = memberRowMenu.cm;
+                    const nextRole = cm.role === 'admin' ? 'member' : 'admin';
+                    setMemberRowMenu(null);
+                    try {
+                      const updated = await window.API.updateChannelMemberRole(currentChannelDetail.channel_id, cm.user_id, nextRole);
+                      setCurrentChannelDetail(updated);
+                      window.showToast?.(`${memberRowMenu.member.name} rolü: ${nextRole === 'admin' ? 'Yönetici' : 'Üye'}`, 'success');
+                    } catch (e) { window.showToast?.(e.message, 'error'); }
+                  }}>
+                  <Icon name="shield" size={13} style={{ color: 'var(--ink-muted)' }} />
+                  {memberRowMenu.cm.role === 'admin' ? 'Yöneticiyi geri al' : 'Yönetici yap'}
+                </button>
+                <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
+                  onClick={async () => {
+                    const cm = memberRowMenu.cm;
+                    setMemberRowMenu(null);
+                    if (!confirm(`${memberRowMenu.member.name} kanal sahipliğini devralsın mı? Sen yönetici olursun.`)) return;
+                    try {
+                      const updated = await window.API.updateChannelMemberRole(currentChannelDetail.channel_id, cm.user_id, 'owner');
+                      setCurrentChannelDetail(updated);
+                      window.showToast?.('Sahiplik devredildi', 'success');
+                    } catch (e) { window.showToast?.(e.message, 'error'); }
+                  }}>
+                  <Icon name="gem" size={13} style={{ color: 'var(--ink-muted)' }} />
+                  Sahiplik devret
+                </button>
+              </>
+            )}
+            {memberRowMenu.canRemove && (
+              <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)', color: 'var(--status-rose)' }}
+                onClick={async () => {
+                  const cm = memberRowMenu.cm;
+                  const name = memberRowMenu.member.name;
+                  setMemberRowMenu(null);
+                  if (!confirm(`${name} kanaldan çıkarılsın mı?`)) return;
+                  try {
+                    await window.API.removeChannelMember(currentChannelDetail.channel_id, cm.user_id);
+                    const refreshed = await window.API.getChannel(currentChannelDetail.channel_id);
+                    setCurrentChannelDetail(refreshed);
+                    window.showToast?.(`${name} kanaldan çıkarıldı`, 'info');
+                  } catch (e) { window.showToast?.(e.message, 'error'); }
+                }}>
+                <Icon name="x" size={13} /> Kanaldan çıkar
+              </button>
+            )}
+          </div>
+        </>,
+        document.body
+      )}
+      {lightbox && <Lightbox src={typeof lightbox === 'string' ? lightbox : lightbox.src} kind={typeof lightbox === 'string' ? 'image' : (lightbox.kind || 'image')} onClose={() => setLightbox(null)} />}
       {deleteMenu && ReactDOM.createPortal(
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setDeleteMenu(null)} />
@@ -891,11 +2254,6 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
             borderRadius: 10, boxShadow: 'var(--shadow-lg)', overflow: 'hidden', minWidth: 180,
           }}>
             <button className="chat-menu-item"
-              onClick={() => replyToMessage(deleteMenu.msg)}>
-              <Icon name="arrowUpRight" size={13} style={{ transform: 'scaleX(-1)', color: 'var(--ink-muted)' }} />
-              Cevapla
-            </button>
-            <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
               onClick={() => toggleStar(deleteMenu.msg)}>
               <Icon name="star" size={13} style={{ color: deleteMenu.starred ? 'var(--status-yellow)' : 'var(--ink-muted)' }} />
               {deleteMenu.starred ? 'Yıldızı kaldır' : 'Yıldızla'}
@@ -906,19 +2264,58 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               {deleteMenu.pinned ? 'Sabitlemeyi kaldır' : 'Kanala sabitle'}
             </button>
             <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-subtle)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              onClick={() => replyToMessage(deleteMenu.msg)}>
+              <Icon name="arrowUpRight" size={13} style={{ transform: 'scaleX(-1)', color: 'var(--ink-muted)' }} />
+              Cevapla
+            </button>
+            <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
+              onClick={async () => {
+                const text = deleteMenu.msg.text || deleteMenu.msg.file_url || '';
+                try {
+                  await navigator.clipboard?.writeText(text);
+                  window.showToast?.('Mesaj kopyalandı', 'success');
+                } catch {
+                  window.showToast?.('Kopyalama başarısız', 'error');
+                }
+                setDeleteMenu(null);
+              }}>
+              <Icon name="copy" size={13} style={{ color: 'var(--ink-muted)' }} />
+              Kopyala
+            </button>
+            {deleteMenu.isMine && !deleteMenu.msg.file_url && (
+              <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
+                onClick={() => {
+                  setDeleteMenu(null);
+                  const current = deleteMenu.msg.text || '';
+                  const updated = window.prompt('Mesajı düzenle:', current);
+                  if (updated == null || updated.trim() === '' || updated === current) return;
+                  // Optimistic — backend edit endpoint not yet wired; show toast and skip
+                  window.showToast?.('Mesaj düzenleme yakında — şimdilik silip yeniden gönderebilirsin', 'info');
+                }}>
+                <Icon name="edit" size={13} style={{ color: 'var(--ink-muted)' }} />
+                Düzenle
+              </button>
+            )}
+            <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
               onClick={() => handleDeleteMessage(deleteMenu.msgId, 'self')}
             >
               <Icon name="eyeOff" size={13} style={{ color: 'var(--ink-muted)' }} /> Benden sil
             </button>
             {deleteMenu.isMine && (
               <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)', color: 'var(--status-rose)' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-subtle)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'none'}
                 onClick={() => handleDeleteMessage(deleteMenu.msgId, 'all')}
               >
                 <Icon name="trash" size={13} /> Herkesten sil
+              </button>
+            )}
+            {!deleteMenu.isMine && (
+              <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
+                onClick={() => {
+                  setDeleteMenu(null);
+                  window.showToast?.('Mesaj raporlandı, ekibimiz inceleyecek.', 'info');
+                }}>
+                <Icon name="alertTriangle" size={13} style={{ color: 'var(--status-yellow)' }} />
+                Şikayet et
               </button>
             )}
           </div>
@@ -1006,7 +2403,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                     ? `${DATA.WORKSPACE?.name || 'Atlas'} · ${channels.length} kanal`
                     : 'Cross-workspace'}
                 </span>
-                {leftListTab === 'channels' && (
+                {leftListTab === 'channels' && (DATA.WORKSPACE?.can_create_channel || DATA.WORKSPACE?.is_owner) && (
                   <button
                     className="icon-btn"
                     title="Yeni kanal"
@@ -1022,81 +2419,59 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
             <div className="chat-fp-list">
               {leftListTab === 'channels' ? (
                 <>
-                  {addChannelOpen && (
-                    <div className="chat-fp-add-channel">
-                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--ink-muted)', fontSize: 13 }}>#</span>
-                      <input
-                        autoFocus
-                        placeholder="yeni-kanal-adi"
-                        value={newChannelName}
-                        onChange={(e) => setNewChannelName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') addChannel();
-                          if (e.key === 'Escape') { setAddChannelOpen(false); setNewChannelName(''); }
-                        }}
-                        maxLength={32}
-                      />
-                      <button
-                        className="icon-btn"
-                        onClick={addChannel}
-                        disabled={!newChannelName.trim()}
-                        title="Oluştur"
-                        style={{ color: 'var(--accent)', padding: 3 }}
+                  {channels.map(ch => {
+                    const slug = ch.slug || ch.id;
+                    const isDefault = !!ch.is_default;
+                    const isPrivate = ch.type === 'private';
+                    const myRole = ch.my_role;
+                    const canDelete = !isDefault && myRole === 'owner';
+                    return (
+                      <div
+                        key={slug}
+                        className="chat-fp-row"
+                        data-active={!dmWith && activeChannel === slug}
+                        onClick={() => { setDmWith(null); setTab('general'); setActiveChannel(slug); }}
                       >
-                        <Icon name="check" size={12} />
-                      </button>
-                      <button
-                        className="icon-btn"
-                        onClick={() => { setAddChannelOpen(false); setNewChannelName(''); }}
-                        title="İptal"
-                        style={{ padding: 3 }}
-                      >
-                        <Icon name="x" size={12} />
-                      </button>
-                    </div>
-                  )}
-                  {channels.map(ch => (
-                    <div
-                      key={ch.id}
-                      className="chat-fp-row"
-                      data-active={!dmWith && activeChannel === ch.id}
-                      onClick={() => { setDmWith(null); setTab('general'); setActiveChannel(ch.id); }}
-                    >
-                      <div className="chat-fp-row-ic chat-fp-row-ic-channel">#</div>
-                      <div className="chat-fp-row-body">
-                        <div className="chat-fp-row-name">{ch.name}</div>
-                        <div className="chat-fp-row-preview">
-                          {ch.id === 'general' && messages.length > 0
-                            ? (() => {
-                                const last = messages[messages.length - 1];
-                                const sender = allMembers.find(m => m.id === last.from);
-                                const preview = last.text || last.file_name || 'Dosya';
-                                return `${(sender?.name || last.from || '').split(' ')[0]}: ${preview}`;
-                              })()
-                            : (ch.isDefault ? 'Henüz mesaj yok' : 'Mesaj henüz yok')}
+                        <div className="chat-fp-row-ic chat-fp-row-ic-channel">
+                          {isPrivate ? <Icon name="lock" size={11} /> : '#'}
+                        </div>
+                        <div className="chat-fp-row-body">
+                          <div className="chat-fp-row-name">{ch.name}</div>
+                          <div className="chat-fp-row-preview">
+                            {slug === 'general' && messages.length > 0
+                              ? (() => {
+                                  const last = messages[messages.length - 1];
+                                  const sender = allMembers.find(m => m.id === last.from);
+                                  const preview = last.text || last.file_name || 'Dosya';
+                                  return `${(sender?.name || last.from || '').split(' ')[0]}: ${preview}`;
+                                })()
+                              : (isPrivate
+                                  ? `${ch.member_count || 0} üye`
+                                  : (isDefault ? 'Henüz mesaj yok' : 'Mesaj henüz yok'))}
+                          </div>
+                        </div>
+                        <div className="chat-fp-row-right">
+                          {slug === 'general' && messages.length > 0 && (
+                            <div className="chat-fp-row-time">{fmtMsgTime(messages[messages.length - 1])}</div>
+                          )}
+                          {(() => {
+                            if (slug !== 'general') return null;
+                            const u = (unreadCounts || {})[wsId ? `general_${wsId}` : 'general'] || 0;
+                            return u > 0 && <div className="chat-fp-row-unread">+{u > 99 ? 99 : u}</div>;
+                          })()}
+                          {canDelete && (
+                            <button
+                              className="chat-fp-row-del"
+                              title="Kanalı sil"
+                              onClick={(e) => { e.stopPropagation(); removeChannel(slug); }}
+                            >
+                              <Icon name="x" size={10} />
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <div className="chat-fp-row-right">
-                        {ch.id === 'general' && messages.length > 0 && (
-                          <div className="chat-fp-row-time">{fmtMsgTime(messages[messages.length - 1])}</div>
-                        )}
-                        {(() => {
-                          if (ch.id !== 'general') return null;
-                          const u = (unreadCounts || {})[wsId ? `general_${wsId}` : 'general'] || 0;
-                          return u > 0 && <div className="chat-fp-row-unread">+{u > 99 ? 99 : u}</div>;
-                        })()}
-                        {!ch.isDefault && (
-                          <button
-                            className="chat-fp-row-del"
-                            title="Kanalı sil"
-                            onClick={(e) => { e.stopPropagation(); removeChannel(ch.id); }}
-                          >
-                            <Icon name="x" size={10} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </>
               ) : (
                 visibleMembers.map(m => {
@@ -1154,10 +2529,27 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                 </>
               ) : (
                 <>
-                  <div className="chat-fp-channel-icon">#</div>
+                  <div className="chat-fp-channel-icon">
+                    {(_findCh(activeChannel)?.type === 'private') ? <Icon name="lock" size={12} /> : '#'}
+                  </div>
                   <div className="chat-fp-conv-title-wrap">
-                    <div className="chat-fp-conv-title">genel</div>
-                    <div className="chat-fp-conv-sub">{DATA.WORKSPACE?.name || 'Atlas'} · {allMembers.length} üye</div>
+                    <div className="chat-fp-conv-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {(_findCh(activeChannel)?.name) || activeChannel || 'genel'}
+                      {currentChannelDetail && (
+                        <button
+                          className="icon-btn"
+                          title="Kanal ayarları"
+                          onClick={() => setChannelSettingsOpen(true)}
+                          style={{ padding: 2, color: 'var(--ink-faint)' }}
+                        >
+                          <Icon name="settings" size={12} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="chat-fp-conv-sub">
+                      {DATA.WORKSPACE?.name || 'Atlas'} · {currentChannelDetail?.member_count ?? allMembers.length} üye
+                      {currentChannelDetail?.description ? ` · ${currentChannelDetail.description}` : ''}
+                    </div>
                   </div>
                 </>
               )}
@@ -1222,6 +2614,15 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
             {/* Messages re-uses existing rendering by re-render via existing branch below.
                 In fullPage we keep messages rendered as DM/general messages always (never starred/media/dm-list in center). */}
             <div className="chat-messages chat-fp-messages">
+              {!pinnedBannerHidden && (
+                <PinnedBanner
+                  pinned={pinnedMessages}
+                  allMembers={allMembers}
+                  onJump={scrollToMessage}
+                  onUnpin={togglePin}
+                  onClose={() => setPinnedBannerHidden(true)}
+                />
+              )}
               {messages.length === 0 && (
                 <div className="chat-empty">
                   {dmWith ? `${dmUser?.name || dmWith} ile sohbet başlat.` : 'Genel kanala ilk mesajı gönder.'}
@@ -1267,30 +2668,53 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                           {starredMsgs.has(String(msg.id)) && (
                             <span style={{ position: 'absolute', top: 4, right: 6, fontSize: 10, color: 'var(--status-yellow)', pointerEvents: 'none' }}>★</span>
                           )}
-                          {pinnedMsgs.has(String(msg.id)) && (
+                          {!!msg.pinned && (
                             <span style={{ position: 'absolute', top: 4, left: 6, fontSize: 10, color: 'var(--accent)', pointerEvents: 'none' }}>📌</span>
                           )}
                         </div>
-                        {canDelete && (
-                          <div className="chat-fp-hover-actions" data-mine={isMine}>
-                            <button
-                              title="Reaksiyon"
-                              onClick={(e) => openEmojiPicker(e, msg.id)}
-                            ><Icon name="smile" size={13} /></button>
-                            <button
-                              title="Cevapla"
-                              onClick={() => replyToMessage(msg)}
-                            ><Icon name="arrowUpRight" size={13} style={{ transform: 'scaleX(-1)' }} /></button>
-                            <button
-                              title="Daha fazla"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setDeleteMenu({ msgId: msg.id, isMine, starred: starredMsgs.has(String(msg.id)), pinned: pinnedMsgs.has(String(msg.id)), msg, x: isMine ? rect.left - 160 : rect.right + 4, y: rect.top });
-                              }}
-                            ><Icon name="moreH" size={13} /></button>
-                          </div>
-                        )}
+                        {canDelete && (() => {
+                          const isStarred = starredMsgs.has(String(msg.id));
+                          return (
+                            <div
+                              className="chat-fp-hover-actions"
+                              data-mine={isMine}
+                            >
+                              <button title="Reaksiyon" onClick={(e) => openEmojiPicker(e, msg.id)}>
+                                <Icon name="smile" size={14} />
+                              </button>
+                              <button title="Cevapla" onClick={() => replyToMessage(msg)}>
+                                <Icon name="arrowUpRight" size={14} style={{ transform: 'scaleX(-1)' }} />
+                              </button>
+                              <button
+                                title={isStarred ? 'Yıldızı kaldır' : 'Yıldızla'}
+                                data-active={isStarred}
+                                onClick={() => toggleStar(msg)}
+                              >
+                                <Icon name="star" size={14} />
+                              </button>
+                              <button
+                                title={msg.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
+                                data-active={!!msg.pinned}
+                                onClick={() => togglePin(msg)}
+                              >
+                                <Icon name="pin" size={14} />
+                              </button>
+                              <button
+                                title="Daha fazla"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setDeleteMenu({
+                                    msgId: msg.id, isMine,
+                                    starred: isStarred, pinned: !!msg.pinned, msg,
+                                    x: Math.max(8, rect.left - 90),
+                                    y: rect.bottom + 6,
+                                  });
+                                }}
+                              ><Icon name="moreH" size={14} /></button>
+                            </div>
+                          );
+                        })()}
                       </div>
                       {hasReactions && (
                         <div className="chat-reactions">
@@ -1368,9 +2792,9 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                 rows={1}
               />
               <div className="chat-fp-composer-row">
-                <button title="Kalın (Ctrl+B)" onClick={() => wrapSelection('**', '**', 'kalın')} style={{ fontWeight: 700 }}>B</button>
-                <button title="İtalik (Ctrl+I)" onClick={() => wrapSelection('*', '*', 'italik')} style={{ fontStyle: 'italic' }}>I</button>
-                <button title="Kod (Ctrl+E)" onClick={() => wrapSelection('`', '`', 'kod')}><Icon name="code" size={12} /></button>
+                <button title="Kalın (Ctrl+B) — önce metin seçin veya tıklayıp yazın" data-fmt-active={activeFmtKey === 'bold'} onClick={() => wrapSelection('**', '**', '', 'bold')} className="chat-fmt-btn" style={{ fontWeight: 700 }}>B</button>
+                <button title="İtalik (Ctrl+I) — önce metin seçin veya tıklayıp yazın" data-fmt-active={activeFmtKey === 'italic'} onClick={() => wrapSelection('*', '*', '', 'italic')} className="chat-fmt-btn" style={{ fontStyle: 'italic' }}>I</button>
+                <button title="Kod (Ctrl+E) — önce metin seçin veya tıklayıp yazın" data-fmt-active={activeFmtKey === 'code'} onClick={() => wrapSelection('`', '`', '', 'code')} className="chat-fmt-btn"><Icon name="code" size={12} /></button>
                 <span className="chat-fp-composer-sep" />
                 <button title="Dosya ekle" disabled={uploading} onClick={() => fileRef.current?.click()}>
                   {uploading ? <span style={{ fontSize: 11 }}>⏳</span> : <Icon name="paperclip" size={14} />}
@@ -1418,95 +2842,186 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                 </div>
               </div>
               <div className="chat-fp-right-body">
-                {rightTab === 'members' && (
-                  <div className="chat-fp-members">
-                    <div className="chat-fp-section-title">
-                      Üyeler <span>{allMembers.length}</span>
-                    </div>
-                    {allMembers.map(m => {
-                      const mStatus = m.id === me ? 'online' : (statuses.get(m.id) || (online.has(m.id) ? 'online' : 'offline'));
-                      return (
-                        <div key={m.id} className="chat-fp-member-row"
-                          onClick={() => m.id !== me && openDm(m.id)}
-                          style={{ cursor: m.id !== me ? 'pointer' : 'default' }}
-                        >
-                          <div style={{ position: 'relative', flexShrink: 0, display: 'flex' }}>
-                            <Avatar member={m} size="sm" />
-                            <span style={{ position: 'absolute', bottom: -1, right: -1 }}>
-                              <StatusDot status={mStatus} />
-                            </span>
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)' }}>{m.name}{m.id === me && <span style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 400, marginLeft: 4 }}>(siz)</span>}</div>
-                            <div style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{m.role || _statusLabel(mStatus)}</div>
-                          </div>
-                          {m.id !== me && <Icon name="msg" size={11} style={{ color: 'var(--ink-faint)' }} />}
+                {rightTab === 'members' && (() => {
+                  const detail = currentChannelDetail;
+                  const channelMembers = detail?.members || [];
+                  const myRole = detail?.my_role;
+                  const canManage = myRole === 'owner' || myRole === 'admin';
+                  const isOwner = myRole === 'owner';
+                  const isPrivate = detail?.type === 'private';
+                  const memberCount = channelMembers.length || (detail?.member_count ?? allMembers.length);
+                  // For public channels with no detail loaded yet, fall back to workspace members
+                  const fallback = !detail && !dmWith;
+                  return (
+                    <div className="chat-fp-members">
+                      <div className="chat-fp-section-title">
+                        Üyeler <span>{memberCount}</span>
+                        {canManage && (
+                          <button
+                            className="icon-btn"
+                            style={{ marginLeft: 'auto', padding: 4, color: 'var(--accent)' }}
+                            title="Üye Ekle"
+                            onClick={() => setAddMemberOpen(true)}
+                          ><Icon name="plus" size={12} /></button>
+                        )}
+                      </div>
+                      {isPrivate && (
+                        <div style={{ fontSize: 11, color: 'var(--ink-faint)', padding: '0 0 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Icon name="lock" size={10} /> Özel kanal · sadece davetli üyeler
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      )}
+                      {(fallback ? allMembers.map(m => ({ user_id: m.id, name: m.name, role: m.id === me ? 'member' : 'member' })) : channelMembers).map(cm => {
+                        const m = allMembers.find(am => am.id === cm.user_id) || { id: cm.user_id, name: cm.name };
+                        const mStatus = m.id === me ? 'online' : (statuses.get(m.id) || (online.has(m.id) ? 'online' : 'offline'));
+                        const isSelf = m.id === me;
+                        const canActOnRow = !isSelf && canManage && cm.role !== 'owner';
+                        return (
+                          <div key={m.id} className="chat-fp-member-row" style={{ cursor: 'default' }}>
+                            <div style={{ position: 'relative', flexShrink: 0, display: 'flex' }}>
+                              <Avatar member={m} size="sm" />
+                              <span style={{ position: 'absolute', bottom: -1, right: -1 }}>
+                                <StatusDot status={mStatus} />
+                              </span>
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {m.name}
+                                {isSelf && <span style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 400 }}>(siz)</span>}
+                                <RoleBadge role={cm.role} />
+                              </div>
+                              <div style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{m.role || _statusLabel(mStatus)}</div>
+                            </div>
+                            {!isSelf && (
+                              <button
+                                className="icon-btn"
+                                title="Aksiyonlar"
+                                style={{ padding: 4, color: 'var(--ink-muted)' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setMemberRowMenu({
+                                    x: rect.left - 160,
+                                    y: rect.bottom + 4,
+                                    cm,
+                                    member: m,
+                                    canRemove: canActOnRow,
+                                    canChangeRole: isOwner && cm.role !== 'owner',
+                                  });
+                                }}
+                              ><Icon name="moreH" size={12} /></button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
                 {rightTab === 'media' && (
                   <MediaGallery allMembers={allMembers} onImageClick={setLightbox} />
                 )}
-                {rightTab === 'starred' && (
-                  <div className="chat-fp-pinned">
-                    <div className="chat-fp-section-title">Yıldızlanmış <span>{starredData.length}</span></div>
-                    {starredData.length === 0 ? (
-                      <div className="chat-empty" style={{ padding: 16 }}>Henüz yıldızlanmış mesaj yok.</div>
-                    ) : (
-                      [...starredData].reverse().map(msg => {
-                        const sender = allMembers.find(m => m.id === msg.from);
-                        return (
-                          <div key={msg.id} className="chat-fp-pinned-item">
-                            <div className="chat-fp-pinned-head">
-                              <Icon name="star" size={11} style={{ color: 'var(--status-yellow)' }} />
-                              <strong>{sender?.name || msg.from}</strong>
-                              <span className="chat-fp-pinned-time">{fmtMsgDateTime(msg)}</span>
-                              <button onClick={() => toggleStar(msg)} className="icon-btn" style={{ padding: 2, marginLeft: 'auto' }} title="Kaldır">
-                                <Icon name="x" size={11} />
-                              </button>
+                {rightTab === 'starred' && (() => {
+                  const list = starredScope === 'all'
+                    ? [...starredData].reverse()
+                    : [...starredData].reverse().filter(m => {
+                        if (m.to) return false; // skip DM starred when viewing channel
+                        return (m.channel || 'general') === (activeChannel || 'general');
+                      });
+                  return (
+                    <div className="chat-fp-pinned">
+                      <div className="chat-fp-section-title">Yıldızlanmış <span>{list.length}</span></div>
+                      <div className="chat-scope-toggle">
+                        <button data-active={starredScope === 'channel'} onClick={() => setStarredScope('channel')}>Bu kanal</button>
+                        <button data-active={starredScope === 'all'} onClick={() => setStarredScope('all')}>Tüm kanallar</button>
+                      </div>
+                      {list.length === 0 ? (
+                        <div className="chat-empty" style={{ padding: 16 }}>Henüz yıldızlanmış mesaj yok.</div>
+                      ) : (
+                        list.map(msg => {
+                          const sender = allMembers.find(m => m.id === msg.from);
+                          const msgCh = msg.to ? null : (msg.channel || 'general');
+                          const chMeta = msgCh ? (channels.find(c => c.id === msgCh) || { id: msgCh, name: msgCh }) : null;
+                          return (
+                            <div key={msg.id} className="chat-fp-pinned-item" onClick={() => scrollToMessage(msg)} style={{ cursor: 'pointer' }}>
+                              <div className="chat-fp-pinned-head">
+                                <Icon name="star" size={11} style={{ color: 'var(--status-yellow)' }} />
+                                <strong>{sender?.name || msg.from}</strong>
+                                {chMeta && (
+                                  <span
+                                    className="chat-channel-chip"
+                                    data-active={msgCh === activeChannel}
+                                    title={`#${chMeta.name} kanalına git`}
+                                    onClick={(e) => { e.stopPropagation(); setDmWith(null); setTab('general'); setActiveChannel(msgCh); }}
+                                  >#{chMeta.name}</span>
+                                )}
+                                <span className="chat-fp-pinned-time">{fmtMsgDateTime(msg)}</span>
+                                <button onClick={(e) => { e.stopPropagation(); toggleStar(msg); }} className="icon-btn" style={{ padding: 2, marginLeft: 'auto' }} title="Kaldır">
+                                  <Icon name="x" size={11} />
+                                </button>
+                              </div>
+                              <div className="chat-fp-pinned-body">
+                                {msg.deleted
+                                  ? <em style={{ color: 'var(--ink-faint)' }}>Bu mesaj silindi</em>
+                                  : msg.file_url ? <span>📎 {msg.file_name || 'Dosya'}</span> : msg.text}
+                              </div>
                             </div>
-                            <div className="chat-fp-pinned-body">
-                              {msg.deleted
-                                ? <em style={{ color: 'var(--ink-faint)' }}>Bu mesaj silindi</em>
-                                : msg.file_url ? <span>📎 {msg.file_name || 'Dosya'}</span> : msg.text}
+                          );
+                        })
+                      )}
+                    </div>
+                  );
+                })()}
+                {rightTab === 'pinned' && (() => {
+                  const list = dmWith
+                    ? pinnedMessages
+                    : (pinnedScope === 'all' ? pinnedAllChannels : pinnedMessages);
+                  return (
+                    <div className="chat-fp-pinned">
+                      <div className="chat-fp-section-title">
+                        {pinnedScope === 'all' && !dmWith ? 'Tüm sabitliler' : 'Kanala sabitli'} <span>{list.length}</span>
+                      </div>
+                      {!dmWith && (
+                        <div className="chat-scope-toggle">
+                          <button data-active={pinnedScope === 'channel'} onClick={() => setPinnedScope('channel')}>Bu kanal</button>
+                          <button data-active={pinnedScope === 'all'} onClick={() => setPinnedScope('all')}>Tüm kanallar</button>
+                        </div>
+                      )}
+                      {list.length === 0 ? (
+                        <div className="chat-empty" style={{ padding: 16 }}>Henüz sabitlenmiş mesaj yok.<br /><span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Bir mesajda ⋯ menüsünden "Kanala sabitle" seçeneğini kullanın.</span></div>
+                      ) : (
+                        list.map(msg => {
+                          const sender = allMembers.find(m => m.id === msg.from);
+                          const msgCh = msg.to ? null : (msg.channel || 'general');
+                          const chMeta = msgCh ? (channels.find(c => c.id === msgCh) || { id: msgCh, name: msgCh }) : null;
+                          return (
+                            <div key={msg.id} className="chat-fp-pinned-item" onClick={() => scrollToMessage(msg)} style={{ cursor: 'pointer' }}>
+                              <div className="chat-fp-pinned-head">
+                                <Icon name="pin" size={11} style={{ color: 'var(--accent)' }} />
+                                <strong>{sender?.name || msg.from}</strong>
+                                {chMeta && pinnedScope === 'all' && (
+                                  <span
+                                    className="chat-channel-chip"
+                                    data-active={msgCh === activeChannel}
+                                    title={`#${chMeta.name} kanalına git`}
+                                    onClick={(e) => { e.stopPropagation(); setDmWith(null); setTab('general'); setActiveChannel(msgCh); }}
+                                  >#{chMeta.name}</span>
+                                )}
+                                <span className="chat-fp-pinned-time">{fmtMsgDateTime(msg)}</span>
+                                <button onClick={(e) => { e.stopPropagation(); togglePin(msg); }} className="icon-btn" style={{ padding: 2, marginLeft: 'auto' }} title="Kaldır">
+                                  <Icon name="x" size={11} />
+                                </button>
+                              </div>
+                              <div className="chat-fp-pinned-body">
+                                {msg.deleted
+                                  ? <em style={{ color: 'var(--ink-faint)' }}>Bu mesaj silindi</em>
+                                  : msg.file_url ? <span>📎 {msg.file_name || 'Dosya'}</span> : msg.text}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
-                {rightTab === 'pinned' && (
-                  <div className="chat-fp-pinned">
-                    <div className="chat-fp-section-title">Kanala sabitli <span>{pinnedData.length}</span></div>
-                    {pinnedData.length === 0 ? (
-                      <div className="chat-empty" style={{ padding: 16 }}>Henüz sabitlenmiş mesaj yok.<br /><span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Bir mesajda ⋯ menüsünden "Kanala sabitle" seçeneğini kullanın.</span></div>
-                    ) : (
-                      [...pinnedData].reverse().map(msg => {
-                        const sender = allMembers.find(m => m.id === msg.from);
-                        return (
-                          <div key={msg.id} className="chat-fp-pinned-item">
-                            <div className="chat-fp-pinned-head">
-                              <Icon name="pin" size={11} style={{ color: 'var(--accent)' }} />
-                              <strong>{sender?.name || msg.from}</strong>
-                              <span className="chat-fp-pinned-time">{fmtMsgDateTime(msg)}</span>
-                              <button onClick={() => togglePin(msg)} className="icon-btn" style={{ padding: 2, marginLeft: 'auto' }} title="Kaldır">
-                                <Icon name="x" size={11} />
-                              </button>
-                            </div>
-                            <div className="chat-fp-pinned-body">
-                              {msg.deleted
-                                ? <em style={{ color: 'var(--ink-faint)' }}>Bu mesaj silindi</em>
-                                : msg.file_url ? <span>📎 {msg.file_name || 'Dosya'}</span> : msg.text}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
+                          );
+                        })
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </aside>
           )}
@@ -1601,33 +3116,50 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
           <MediaGallery allMembers={allMembers} onImageClick={setLightbox} />
         ) : !dmWith && tab === 'starred' ? (
           <div className="chat-starred-list">
-            {starredData.length === 0
-              ? <div className="chat-empty">Henüz yıldızlanmış mesaj yok.</div>
-              : [...starredData].reverse().map(msg => {
-                  const sender = allMembers.find(m => m.id === msg.from);
-                  const isMine = msg.from === me;
-                  return (
-                    <div key={msg.id} className="chat-starred-item">
-                      <div className="chat-starred-meta">
-                        <Avatar member={sender} size="sm" />
-                        <span className="chat-starred-name">{isMine ? 'Sen' : (sender?.name || msg.from)}</span>
-                        <span className="chat-starred-time">{fmtMsgTime(msg)}</span>
-                        <button className="icon-btn" style={{ marginLeft: 'auto', color: 'var(--status-yellow)' }}
-                          onClick={() => toggleStar(msg)}>
-                          <Icon name="star" size={13} />
-                        </button>
-                      </div>
-                      <div className="chat-starred-body">
-                        {msg.deleted
-                          ? <em style={{ color: 'var(--ink-faint)', fontSize: 12 }}>Bu mesaj silindi</em>
-                          : msg.file_url
-                            ? <span style={{ color: 'var(--ink-muted)', fontSize: 12 }}>📎 {msg.file_name || 'Dosya'}</span>
-                            : <span>{msg.text}</span>}
-                      </div>
+            <div className="chat-scope-toggle" style={{ margin: '8px 12px' }}>
+              <button data-active={starredScope === 'channel'} onClick={() => setStarredScope('channel')}>Bu kanal</button>
+              <button data-active={starredScope === 'all'} onClick={() => setStarredScope('all')}>Tüm kanallar</button>
+            </div>
+            {(() => {
+              const list = starredScope === 'all'
+                ? [...starredData].reverse()
+                : [...starredData].reverse().filter(m => !m.to && (m.channel || 'general') === (activeChannel || 'general'));
+              if (list.length === 0) return <div className="chat-empty">Henüz yıldızlanmış mesaj yok.</div>;
+              return list.map(msg => {
+                const sender = allMembers.find(m => m.id === msg.from);
+                const isMine = msg.from === me;
+                const msgCh = msg.to ? null : (msg.channel || 'general');
+                const chMeta = msgCh ? (channels.find(c => c.id === msgCh) || { id: msgCh, name: msgCh }) : null;
+                return (
+                  <div key={msg.id} className="chat-starred-item" onClick={() => scrollToMessage(msg)} style={{ cursor: 'pointer' }}>
+                    <div className="chat-starred-meta">
+                      <Avatar member={sender} size="sm" />
+                      <span className="chat-starred-name">{isMine ? 'Sen' : (sender?.name || msg.from)}</span>
+                      {chMeta && (
+                        <span
+                          className="chat-channel-chip"
+                          data-active={msgCh === activeChannel}
+                          title={`#${chMeta.name} kanalına git`}
+                          onClick={(e) => { e.stopPropagation(); setDmWith(null); setTab('general'); setActiveChannel(msgCh); }}
+                        >#{chMeta.name}</span>
+                      )}
+                      <span className="chat-starred-time">{fmtMsgTime(msg)}</span>
+                      <button className="icon-btn" style={{ marginLeft: 'auto', color: 'var(--status-yellow)' }}
+                        onClick={(e) => { e.stopPropagation(); toggleStar(msg); }}>
+                        <Icon name="star" size={13} />
+                      </button>
                     </div>
-                  );
-                })
-            }
+                    <div className="chat-starred-body">
+                      {msg.deleted
+                        ? <em style={{ color: 'var(--ink-faint)', fontSize: 12 }}>Bu mesaj silindi</em>
+                        : msg.file_url
+                          ? <span style={{ color: 'var(--ink-muted)', fontSize: 12 }}>📎 {msg.file_name || 'Dosya'}</span>
+                          : <span>{msg.text}</span>}
+                    </div>
+                  </div>
+                );
+              });
+            })()}
           </div>
         ) : !dmWith && tab === 'dm' ? (
           /* DM member list */
@@ -1671,6 +3203,15 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
           <>
             {/* Messages */}
             <div className="chat-messages">
+              {!pinnedBannerHidden && (
+                <PinnedBanner
+                  pinned={pinnedMessages}
+                  allMembers={allMembers}
+                  onJump={scrollToMessage}
+                  onUnpin={togglePin}
+                  onClose={() => setPinnedBannerHidden(true)}
+                />
+              )}
               {messages.length === 0 && (
                 <div className="chat-empty">
                   {dmWith ? `${dmUser?.name || dmWith} ile sohbet başlat.` : 'Genel kanala ilk mesajı gönder.'}
@@ -1727,7 +3268,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const rect = e.currentTarget.getBoundingClientRect();
-                                setDeleteMenu({ msgId: msg.id, isMine, starred: starredMsgs.has(String(msg.id)), pinned: pinnedMsgs.has(String(msg.id)), msg, x: isMine ? rect.left - 160 : rect.right + 4, y: rect.top });
+                                setDeleteMenu({ msgId: msg.id, isMine, starred: starredMsgs.has(String(msg.id)), pinned: !!msg.pinned, msg, x: isMine ? rect.left - 160 : rect.right + 4, y: rect.top });
                               }}
                             >
                               <Icon name="chevronDown" size={12} />

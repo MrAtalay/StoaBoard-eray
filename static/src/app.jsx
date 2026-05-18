@@ -464,6 +464,7 @@ function App() {
     window.DATA.PROJECTS      = data.projects      || [];
     window.DATA.WORKSPACE     = data.workspace     || {};
     window.DATA.WORKSPACES    = data.workspaces    || [];
+    window.DATA.CHANNELS      = data.channels      || [];
     setIsOwner(!!(data.workspace?.is_owner));
     setWsLogoUrl(data.workspace?.logo_url || null);
     window.DATA.NOTIFICATIONS = data.notifications || [];
@@ -651,7 +652,7 @@ function App() {
     if (window.SOCKET) { window.SOCKET.disconnect(); window.SOCKET = null; setSocket(null); }
     try { await API.logout(); } catch (_) {}
     window.DATA.MEMBERS = []; window.DATA.COLUMNS = []; window.DATA.LABELS = {};
-    window.DATA.PROJECTS = []; window.DATA.WORKSPACE = {}; window.DATA.WORKSPACES = [];
+    window.DATA.PROJECTS = []; window.DATA.WORKSPACE = {}; window.DATA.WORKSPACES = []; window.DATA.CHANNELS = [];
     setAuthed(false); setNeedsWorkspace(false); setIsOwner(false);
     setTasks([]); setOnlineUsers(new Map()); setWorkspaces([]);
     setWsLogoUrl(null);

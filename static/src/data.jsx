@@ -110,13 +110,33 @@ window.API = {
     apiFetch(`/api/columns/${id}`, { method: 'DELETE' }),
 
   // Chat
-  getChatMessages: (withSlug) =>
-    apiFetch(withSlug ? `/api/chat/messages?with=${withSlug}` : '/api/chat/messages'),
+  getChatMessages: (withSlug, channel) => {
+    if (withSlug) return apiFetch(`/api/chat/messages?with=${withSlug}`);
+    const ch = channel || 'general';
+    return apiFetch(`/api/chat/messages?channel=${encodeURIComponent(ch)}`);
+  },
   sendChatMessage: (data) =>
     apiFetch('/api/chat/messages', { method: 'POST', body: data }),
   deleteChatMessage: (id, scope) =>
     apiFetch(`/api/chat/messages/${id}`, { method: 'DELETE', body: { scope } }),
   getChatMedia: (type) => apiFetch('/api/chat/media' + (type ? '?type=' + type : '')),
+  togglePinMessage: (id) =>
+    apiFetch(`/api/chat/messages/${id}/pin`, { method: 'POST' }),
+  getPinnedMessages: (withSlug, channel) => {
+    if (withSlug) return apiFetch(`/api/chat/pinned?with=${withSlug}`);
+    const ch = channel || 'general';
+    return apiFetch(`/api/chat/pinned?channel=${encodeURIComponent(ch)}`);
+  },
+
+  // Channels (membership-aware)
+  listChannels:            ()                          => apiFetch('/api/channels'),
+  createChannel:           (data)                      => apiFetch('/api/channels', { method: 'POST', body: data }),
+  getChannel:              (channelId)                 => apiFetch(`/api/channels/${channelId}`),
+  updateChannel:           (channelId, data)           => apiFetch(`/api/channels/${channelId}`, { method: 'PATCH', body: data }),
+  deleteChannel:           (channelId)                 => apiFetch(`/api/channels/${channelId}`, { method: 'DELETE' }),
+  addChannelMembers:       (channelId, memberSlugs)    => apiFetch(`/api/channels/${channelId}/members`, { method: 'POST', body: { member_slugs: memberSlugs } }),
+  removeChannelMember:     (channelId, userSlug)       => apiFetch(`/api/channels/${channelId}/members/${userSlug}`, { method: 'DELETE' }),
+  updateChannelMemberRole: (channelId, userSlug, role) => apiFetch(`/api/channels/${channelId}/members/${userSlug}`, { method: 'PATCH', body: { role } }),
 
   // Workspace setup & switching
   createWorkspace:   (data)  => apiFetch('/api/workspaces',              { method: 'POST', body: data }),
