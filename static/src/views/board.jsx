@@ -3,6 +3,7 @@
 const { useState: useBoardState, useRef: useBoardRef, useEffect: useBoardEf } = React;
 
 const COL_NAME_MAX = 30;
+const COL_COLORS = ['#6366f1','#3b82f6','#06b6d4','#10b981','#f59e0b','#f97316','#ef4444','#a855f7','#ec4899','#6b7280'];
 
 function FilterBar({ activeLabels, activePriority, activeOverdue, activeMyTasks, onToggleLabel, onTogglePriority, onToggleOverdue, onToggleMyTasks, onClear }) {
   const labelEntries = Object.entries(DATA.LABELS || {});
@@ -67,7 +68,6 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
   const me = window.CURRENT_USER?.id;
   const isAssignedToMe = me && (task.assignees || []).includes(me);
   const meMember = isAssignedToMe ? DATA.MEMBERS.find(m => m.id === me) : null;
-  const creator = task.created_by ? DATA.MEMBERS.find(m => m.id === task.created_by) : null;
   const titleRef = useBoardRef(null);
   const [editing, setEditing] = useBoardState(false);
   const touchState = useBoardRef({ timer: null, startX: 0, startY: 0, moved: false });
@@ -205,12 +205,6 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
           )}
         </div>
       )}
-      {creator && (
-        <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
-          <Icon name="user" size={9} />
-          <span>{window.t('board_created_by')}: {creator.name.split(' ')[0]}</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -223,6 +217,7 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
   const [renaming, setRenaming] = useBoardState(false);
   const [renameVal, setRenameVal] = useBoardState(col.title_tr || col.title || '');
   const [columnDragging, setColumnDragging] = useBoardState(false);
+  const [colorPickerOpen, setColorPickerOpen] = useBoardState(false);
   const menuRef = useBoardRef(null);
   const moreRef = useBoardRef(null);
   const headerRef = useBoardRef(null);
@@ -278,6 +273,7 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
       className="column"
       data-col-id={col.id}
       data-col-drag-over={isColDragOver}
+      style={{ '--col-color': col.is_done ? 'var(--status-green)' : (col.color || 'var(--ink-faint)') }}
       onDragOver={e => { e.preventDefault(); onColumnDragOver?.(col.id); }}
       onDrop={e => { e.preventDefault(); onColumnDrop?.(col.id); }}
     >
@@ -294,7 +290,6 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
         onTouchCancel={handleColumnTouchEnd}
         style={canManageProjects && !renaming ? { cursor: 'grab' } : undefined}
       >
-        <div className="col-dot" style={{ background: col.is_done ? 'var(--status-green)' : col.color }} />
         {renaming ? (
           <>
           <input
@@ -316,7 +311,7 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
           )}
           </>
         ) : (
-          <span className="col-title">{col.title_tr}</span>
+          <span className="col-label-chip">{col.title_tr}</span>
         )}
         <span className="col-count">{tasks.length}</span>
         <div className="col-actions">
@@ -344,6 +339,19 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
                     <button className="col-menu-item" onClick={() => { setMenuOpen(false); setRenaming(true); setRenameVal(col.title_tr || col.title || ''); }}>
                       <Icon name="edit" size={13} /> {window.t('board_col_rename')}
                     </button>
+                    <button className="col-menu-item" onClick={() => setColorPickerOpen(o => !o)}>
+                      <Icon name="palette" size={13} /> Renk değiştir
+                    </button>
+                    {colorPickerOpen && (
+                      <div className="col-menu-colors">
+                        {COL_COLORS.map(c => (
+                          <button key={c} type="button" className="col-color-swatch"
+                            data-active={col.color === c}
+                            style={{ background: c }}
+                            onClick={() => { onUpdateColumn?.(col.db_id, { color: c }); setColorPickerOpen(false); setMenuOpen(false); }} />
+                        ))}
+                      </div>
+                    )}
                     {confirmDelete ? (
                       <div className="col-menu-item col-menu-item-danger" style={{ cursor: 'default', gap: 6 }}>
                         <span style={{ flex: 1, fontSize: 12, color: 'var(--ink-muted)' }}>{window.t('board_col_confirm_delete')}</span>
@@ -714,6 +722,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
   });
   const [isAddingColumn, setIsAddingColumn] = useBoardState(false);
   const [newColumnTitle, setNewColumnTitle] = useBoardState("");
+  const [newColumnColor, setNewColumnColor] = useBoardState(COL_COLORS[0]);
   const [addingColumnBusy, setAddingColumnBusy] = useBoardState(false);
   const initialColumnsSet = useBoardRef(false);
 
@@ -983,11 +992,12 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
 
     setAddingColumnBusy(true);
     try {
-      const created = await API.createColumn(projectId, { title });
+      const created = await API.createColumn(projectId, { title, color: newColumnColor });
       const nextColumns = [...columns, created];
       setColumns(nextColumns);
       window.DATA.COLUMNS = nextColumns;
       setNewColumnTitle("");
+      setNewColumnColor(COL_COLORS[0]);
       setIsAddingColumn(false);
     } catch (e) {
       window.showToast?.('Kolon oluşturulamadı: ' + e.message, 'error');
@@ -1091,31 +1101,39 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
       ))}
       {canManageProjects && (isAddingColumn ? (
         <div className="add-column-form">
-          <div>
-            <input
-              autoFocus
-              className="add-column-input"
-              placeholder={window.t('board_col_title_placeholder')}
-              maxLength={COL_NAME_MAX}
-              value={newColumnTitle}
-              onChange={(e) => setNewColumnTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleAddColumn();
-                if (e.key === 'Escape') setIsAddingColumn(false);
-              }}
-              style={newColumnTitle.length >= COL_NAME_MAX ? { borderColor: 'var(--status-rose)' } : {}}
-            />
-            {newColumnTitle.length >= COL_NAME_MAX - 5 && (
-              <div style={{ textAlign: 'right', fontSize: 10, marginTop: 4, color: newColumnTitle.length >= COL_NAME_MAX ? 'var(--status-rose)' : 'var(--ink-muted)' }}>
-                {newColumnTitle.length}/{COL_NAME_MAX}
-              </div>
-            )}
+          <div className="add-col-preview">
+            <span className="col-label-chip" style={{ '--col-color': newColumnColor }}>
+              {newColumnTitle || window.t('board_col_title_placeholder')}
+            </span>
           </div>
+          <div className="col-color-swatches">
+            {COL_COLORS.map(c => (
+              <button key={c} type="button" className="col-color-swatch" data-active={newColumnColor === c} style={{ background: c }} onClick={() => setNewColumnColor(c)} />
+            ))}
+          </div>
+          <input
+            autoFocus
+            className="add-column-input"
+            placeholder={window.t('board_col_title_placeholder')}
+            maxLength={COL_NAME_MAX}
+            value={newColumnTitle}
+            onChange={(e) => setNewColumnTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleAddColumn();
+              if (e.key === 'Escape') { setIsAddingColumn(false); setNewColumnTitle(''); setNewColumnColor(COL_COLORS[0]); }
+            }}
+            style={newColumnTitle.length >= COL_NAME_MAX ? { borderColor: 'var(--status-rose)' } : {}}
+          />
+          {newColumnTitle.length >= COL_NAME_MAX - 5 && (
+            <div style={{ textAlign: 'right', fontSize: 10, color: newColumnTitle.length >= COL_NAME_MAX ? 'var(--status-rose)' : 'var(--ink-muted)' }}>
+              {newColumnTitle.length}/{COL_NAME_MAX}
+            </div>
+          )}
           <div className="add-column-actions">
             <button className="btn-save" onClick={handleAddColumn} disabled={addingColumnBusy || !newColumnTitle.trim()}>
               {addingColumnBusy ? window.t('board_col_adding') : window.t('board_col_add')}
             </button>
-            <button className="btn-cancel" onClick={() => { setIsAddingColumn(false); setNewColumnTitle(''); }} disabled={addingColumnBusy}>{window.t('app_cancel')}</button>
+            <button className="btn-cancel" onClick={() => { setIsAddingColumn(false); setNewColumnTitle(''); setNewColumnColor(COL_COLORS[0]); }} disabled={addingColumnBusy}>{window.t('app_cancel')}</button>
           </div>
         </div>
       ) : (

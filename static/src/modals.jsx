@@ -164,25 +164,19 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
   const [titleError, setTitleError]   = useModalState(false);
   const [startError, setStartError]   = useModalState(false);
   const [dueError, setDueError]       = useModalState(false);
-  const [colOpen, setColOpen]           = useModalState(false);
-  const [priorityOpen, setPriorityOpen] = useModalState(false);
-  const [colPos, setColPos]             = useModalState({ top: 0, left: 0, width: 0 });
-  const [priPos, setPriPos]             = useModalState({ top: 0, left: 0, width: 0 });
-  const colBtnRef      = useModalRef(null);
-  const priBtnRef      = useModalRef(null);
-  const colMenuRef     = useModalRef(null);
-  const priMenuRef     = useModalRef(null);
+  const [colOpen, setColOpen] = useModalState(false);
+  const [colPos, setColPos]   = useModalState({ top: 0, left: 0, width: 0 });
+  const colBtnRef  = useModalRef(null);
+  const colMenuRef = useModalRef(null);
 
   useModalEffect(() => {
     const handleClick = (e) => {
       if (colOpen && colMenuRef.current && !colMenuRef.current.contains(e.target) &&
           colBtnRef.current && !colBtnRef.current.contains(e.target)) setColOpen(false);
-      if (priorityOpen && priMenuRef.current && !priMenuRef.current.contains(e.target) &&
-          priBtnRef.current && !priBtnRef.current.contains(e.target)) setPriorityOpen(false);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [colOpen, priorityOpen]);
+  }, [colOpen]);
 
   const openDropdown = (btnRef, setPos, setOpenFn) => {
     if (btnRef.current) {
@@ -275,6 +269,7 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
               <div className="custom-dropdown">
                 <button ref={colBtnRef} type="button" className="custom-dropdown-btn"
                   onClick={() => openDropdown(colBtnRef, setColPos, setColOpen)}>
+                  <span className="col-dot" style={{ background: DATA.COLUMNS.find(c => c.id === col)?.color || 'var(--ink-faint)', flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{DATA.COLUMNS.find(c => c.id === col)?.title_tr || window.t('modal_select')}</span>
                   <Icon name="chevronDown" size={12} />
                 </button>
@@ -284,9 +279,10 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
                     {DATA.COLUMNS.map(c => (
                       <button key={c.id} type="button"
                         className={`custom-dropdown-item${c.id === col ? ' active' : ''}`}
-                        style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                         onClick={() => { setCol(c.id); setColOpen(false); }}>
-                        {c.title_tr}
+                        <span className="col-dot" style={{ background: c.is_done ? 'var(--status-green)' : c.color, flexShrink: 0 }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title_tr}</span>
                       </button>
                     ))}
                   </div>,
@@ -296,25 +292,15 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
             </div>
             <div className="field">
               <label>{window.t('modal_priority_label')}</label>
-              <div className="custom-dropdown">
-                <button ref={priBtnRef} type="button" className="custom-dropdown-btn"
-                  onClick={() => openDropdown(priBtnRef, setPriPos, setPriorityOpen)}>
-                  <span>{priority === 'high' ? window.t('board_priority_high') : priority === 'mid' ? window.t('board_priority_mid') : window.t('board_priority_low')}</span>
-                  <Icon name="chevronDown" size={12} />
-                </button>
-                {priorityOpen && ReactDOM.createPortal(
-                  <div ref={priMenuRef} className="custom-dropdown-menu"
-                    style={{ position: 'fixed', top: priPos.top, left: priPos.left, minWidth: priPos.width, zIndex: 9999 }}>
-                    {[{id:'high',label:window.t('board_priority_high')},{id:'mid',label:window.t('board_priority_mid')},{id:'low',label:window.t('board_priority_low')}].map(item => (
-                      <button key={item.id} type="button"
-                        className={`custom-dropdown-item${item.id === priority ? ' active' : ''}`}
-                        onClick={() => { setPriority(item.id); setPriorityOpen(false); }}>
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>,
-                  document.body
-                )}
+              <div className="priority-pills-select">
+                {[{id:'low',label:window.t('board_priority_low')},{id:'mid',label:window.t('board_priority_mid')},{id:'high',label:window.t('board_priority_high')}].map(p => (
+                  <button key={p.id} type="button" className="priority-pill-btn"
+                    data-active={priority === p.id} data-p={p.id}
+                    onClick={() => setPriority(p.id)}>
+                    <span className="priority-dot" data-p={p.id} />
+                    {p.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
