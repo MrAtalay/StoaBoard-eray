@@ -248,8 +248,8 @@ function Sidebar({
       </div>
 
       <div className="sidebar-section">
-        <NavItem icon="home"          label="Ana Sayfa"   sub="Dashboard" onClick={() => onView('dashboard')} active={view === 'dashboard'} />
-        <NavItem icon="circleCheck"   label="Görevlerim"  sub="My Tasks"
+        <NavItem icon="home"          label={window.t?.('nav_home') || 'Ana Sayfa'}   sub="Dashboard" onClick={() => onView('dashboard')} active={view === 'dashboard'} />
+        <NavItem icon="circleCheck"   label={window.t?.('nav_tasks') || 'Görevlerim'}  sub="My Tasks"
           badge={myTasksOpenCount > 0 ? (myTasksOpenCount > 99 ? '99+' : String(myTasksOpenCount)) : null}
           badgeUnread
           onClick={() => {
@@ -259,20 +259,20 @@ function Sidebar({
           }}
           active={false}
         />
-        <NavItem icon="layoutBoard"   label="Pano"        sub="Kanban"    onClick={() => onView('board')}     active={view === 'board'} />
-        <NavItem icon="calendar"      label="Takvim"      sub="Calendar"  onClick={() => onView('calendar')}  active={view === 'calendar'} />
-        <NavItem icon="msg"           label="Sohbet"      sub="Chat"
+        <NavItem icon="layoutBoard"   label={window.t?.('nav_board') || 'Pano'}       sub="Kanban"    onClick={() => onView('board')}     active={view === 'board'} />
+        <NavItem icon="calendar"      label={window.t?.('nav_calendar') || 'Takvim'}  sub="Calendar"  onClick={() => onView('calendar')}  active={view === 'calendar'} />
+        <NavItem icon="msg"           label={window.t?.('nav_chat') || 'Sohbet'}      sub="Chat"
           badge={chatUnreadTotal > 0 ? (chatUnreadTotal > 99 ? '99+' : String(chatUnreadTotal)) : null}
           badgeUnread
           onClick={() => onView('chat')}
           active={view === 'chat'}
         />
-        <NavItem icon="note"          label="Notlar"      sub="Notes"
+        <NavItem icon="note"          label={window.t?.('nav_notes') || 'Notlar'}     sub="Notes"
           badge={notesCount > 0 ? (notesCount > 99 ? '99+' : String(notesCount)) : null}
           onClick={() => onView('notes')}
           active={view === 'notes'}
         />
-        <NavItem icon="bell"          label="Bildirimler" sub="Notifications"
+        <NavItem icon="bell"          label={window.t?.('nav_notifications') || 'Bildirimler'} sub="Notifications"
           badge={notifCount > 0 ? (notifCount > 99 ? '99+' : String(notifCount)) : null}
           badgeUnread
           onClick={() => onOpenNotifs?.()}
@@ -282,8 +282,8 @@ function Sidebar({
 
       <div className="sidebar-section">
         <div className="sidebar-section-title">
-          <span>Projeler</span>
-          {canManageProjects && <button title="Yeni proje" onClick={onNewProject}><Icon name="plus" size={13} /></button>}
+          <span>{window.t?.('nav_projects') || 'Projeler'}</span>
+          {canManageProjects && <button title={window.t?.('nav_new_project') || 'Yeni proje'} onClick={onNewProject}><Icon name="plus" size={13} /></button>}
         </div>
         {(projects || []).map(p => (
           <div className="project-item" key={p.id} onClick={() => onSwitchProject && onSwitchProject(p.id)}>
@@ -296,13 +296,13 @@ function Sidebar({
         ))}
         {(projects || []).length === 0 && (
           <div style={{ padding: '6px 10px', fontSize: 12, color: 'var(--ink-faint)' }}>
-            <span className="sidebar-label">Henüz proje yok</span>
+            <span className="sidebar-label">{window.t?.('nav_no_projects') || 'Henüz proje yok'}</span>
           </div>
         )}
       </div>
 
       <div className="sidebar-section">
-        <div className="sidebar-section-title"><span>Direkt Mesajlar</span></div>
+        <div className="sidebar-section-title"><span>{window.t?.('nav_dms') || 'Direkt Mesajlar'}</span></div>
         {teamMembers.slice(0, 6).map(m => {
           const mStatus = statuses.get(m.id) || (online.has(m.id) ? 'online' : 'offline');
           const dotColor = { online: 'var(--status-green)', away: 'oklch(75% 0.14 75)', dnd: 'var(--status-rose)', offline: 'var(--ink-faint)' }[mStatus];
@@ -324,13 +324,13 @@ function Sidebar({
         })}
         {teamMembers.length === 0 && (
           <div style={{ padding: '4px 10px', fontSize: 12, color: 'var(--ink-faint)' }}>
-            <span className="sidebar-label">Henüz başka üye yok</span>
+            <span className="sidebar-label">{window.t?.('nav_no_members') || 'Henüz başka üye yok'}</span>
           </div>
         )}
       </div>
 
       <div className="sidebar-footer">
-        <NavItem icon="settings" label="Ayarlar" sub="Settings" onClick={() => onView('settings')} active={view === 'settings'} />
+        <NavItem icon="settings" label={window.t?.('nav_settings') || 'Ayarlar'} sub="Settings" onClick={() => onView('settings')} active={view === 'settings'} />
         <StatusProfileWidget me={me} myStatus={myStatus} onStatusChange={onStatusChange} collapsed={collapsed} />
       </div>
     </aside>
@@ -468,9 +468,9 @@ function Topbar({ view, onView, openCmd, openNotifs, openModal, activeCrumb, onC
       <div className="topbar-right">
         {(view === 'board' || view === 'calendar' || view === 'dashboard') && (
           <div className="view-switch">
-            <button data-active={view==='dashboard'} onClick={() => onView('dashboard')}><Icon name="home" size={13} /> Ana Sayfa</button>
-            <button data-active={view==='board'}     onClick={() => onView('board')}>    <Icon name="layoutBoard" size={13} /> Pano</button>
-            <button data-active={view==='calendar'}  onClick={() => onView('calendar')}> <Icon name="calendar" size={13} /> Takvim</button>
+            <button data-active={view==='dashboard'} onClick={() => onView('dashboard')}><Icon name="home" size={13} /> {window.t?.('nav_home') || 'Ana Sayfa'}</button>
+            <button data-active={view==='board'}     onClick={() => onView('board')}>    <Icon name="layoutBoard" size={13} /> {window.t?.('nav_board') || 'Pano'}</button>
+            <button data-active={view==='calendar'}  onClick={() => onView('calendar')}> <Icon name="calendar" size={13} /> {window.t?.('nav_calendar') || 'Takvim'}</button>
           </div>
         )}
         {inviteCode && (
@@ -489,7 +489,7 @@ function Topbar({ view, onView, openCmd, openNotifs, openModal, activeCrumb, onC
           className="icon-btn"
           onClick={view === 'chat' ? undefined : onChatOpen}
           disabled={view === 'chat'}
-          title={view === 'chat' ? 'Sohbet zaten tam ekran açık' : 'Hızlı Sohbet'}
+          title={view === 'chat' ? (window.t?.('topbar_chat_open') || 'Sohbet zaten tam ekran açık') : (window.t?.('topbar_quick_chat') || 'Hızlı Sohbet')}
           style={view === 'chat' ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
         >
           <Icon name="msg" size={16} />
@@ -501,7 +501,7 @@ function Topbar({ view, onView, openCmd, openNotifs, openModal, activeCrumb, onC
             : <span className="pip" />
           }
         </button>
-        {canManageTasks && <button className="btn btn-primary" onClick={openModal}><Icon name="plus" size={14} /> Yeni görev</button>}
+        {canManageTasks && <button className="btn btn-primary" onClick={openModal}><Icon name="plus" size={14} /> {window.t?.('topbar_new_task')?.replace('+ ','') || 'Yeni görev'}</button>}
       </div>
     </div>
   );

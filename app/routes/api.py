@@ -745,6 +745,44 @@ def update_preferences():
     return jsonify({'ok': True, 'away_timeout': user.away_timeout, 'status': user.status})
 
 
+# ── Transfer Ownership ─────────────────────────────────────────────────────
+
+@api_bp.route('/workspaces/me/transfer-ownership', methods=['POST'])
+@_login_required
+def transfer_ownership():
+    user = _current_user()
+    member = _current_member(user)
+    if not member or member.role != 'owner':
+        return jsonify({'error': 'Bu işlem için sahip yetkisi gereklidir'}), 403
+
+    data = request.get_json(silent=True) or {}
+    target_slug = (data.get('to_slug') or '').strip()
+    if not target_slug:
+        return jsonify({'error': 'Hedef üye belirtilmedi'}), 400
+
+    target_user = User.query.filter_by(slug=target_slug).first()
+    if not target_user:
+        return jsonify({'error': 'Kullanıcı bulunamadı'}), 404
+    if target_user.id == user.id:
+        return jsonify({'error': 'Kendinize sahiplik aktaramazsınız'}), 400
+
+    target_member = WorkspaceMember.query.filter_by(
+        workspace_id=member.workspace_id, user_id=target_user.id
+    ).first()
+    if not target_member:
+        return jsonify({'error': 'Bu kullanıcı çalışma alanının üyesi değil'}), 400
+
+    from app.models import Workspace
+    ws = Workspace.query.get(member.workspace_id)
+    ws.owner_id = target_user.id
+    target_member.role = 'owner'
+    target_member.role_id = None
+    member.role = 'member'
+
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 # ── Invite Code ────────────────────────────────────────────────────────────
 
 @api_bp.route('/workspaces/me/regen-code', methods=['POST'])

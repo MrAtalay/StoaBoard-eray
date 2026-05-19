@@ -1400,7 +1400,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
   const [dmWith, setDmWith]       = useChatS(null);
   const [messages, setMessages]   = useChatS([]);
   const [text, setText]           = useChatS('');
-  const [typingUser, setTypingUser] = useChatS(null);
+  const [typingUsers, setTypingUsers] = useChatS(() => new Set());
   const [uploading, setUploading] = useChatS(false);
   const [lightbox, setLightbox]   = useChatS(null);
   const [pendingFile, setPendingFile] = useChatS(null);
@@ -1540,7 +1540,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
   };
 
   const bottomRef   = useChatRef(null);
-  const typingTimer = useChatRef(null);
+  const typingTimers = useChatRef({});
   const inputRef    = useChatRef(null);
   const fileRef     = useChatRef(null);
   const msgIds      = useChatRef(new Set());
@@ -1552,6 +1552,9 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
   const dmUser = dmWith ? allMembers.find(m => m.id === dmWith) : null;
   const online = onlineUsers || new Set();
   const statuses = onlineStatuses || new Map();
+  const lastReadSentId = dmWith
+    ? ([...messages].reverse().find(m => m.to === dmWith && m.is_read && !m._temp)?.id ?? null)
+    : null;
 
   // @mention autocomplete
   const [mentionOpen, setMentionOpen] = useChatS(false);
@@ -1593,6 +1596,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     if (!open || !markAsRead) return;
     if (dmWith) {
       markAsRead(`dm_${dmWith}`);
+      if (socket) socket.emit('dm_mark_read', { with: dmWith });
     } else if (tab === 'general') {
       const key = wsId ? `general_${wsId}` : 'general';
       markAsRead(key);
@@ -1694,16 +1698,31 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
         return [...prev, msg];
       });
 
+      // If message is from the other person and we're actively viewing the DM, mark as read
+      if (dmWith && msg.from === dmWith && msg.to === me && socket) {
+        socket.emit('dm_mark_read', { with: dmWith });
+      }
     };
 
     const onTyping = ({ user, typing }) => {
-      if (user === dmWith) {
-        setTypingUser(typing ? user : null);
-        if (typing) {
-          clearTimeout(typingTimer.current);
-          typingTimer.current = setTimeout(() => setTypingUser(null), 3000);
-        }
+      if (!dmWith || user !== dmWith) return;
+      setTypingUsers(prev => {
+        const next = new Set(prev);
+        typing ? next.add(user) : next.delete(user);
+        return next;
+      });
+      if (typing) {
+        clearTimeout(typingTimers.current[user]);
+        typingTimers.current[user] = setTimeout(() => {
+          setTypingUsers(prev => { const next = new Set(prev); next.delete(user); return next; });
+        }, 3000);
       }
+    };
+
+    const onDmRead = ({ by, msg_ids }) => {
+      setMessages(prev => prev.map(m =>
+        msg_ids.includes(m.id) ? { ...m, is_read: true } : m
+      ));
     };
 
     const onMsgDeleted = ({ id, scope }) => {
@@ -1790,6 +1809,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
 
     sock.on('chat_message', onMsg);
     sock.on('typing', onTyping);
+    sock.on('dm_read', onDmRead);
     sock.on('message_deleted', onMsgDeleted);
     sock.on('message_pinned', onMsgPinned);
     sock.on('channel_created', onChannelCreated);
@@ -1800,6 +1820,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     return () => {
       sock.off('chat_message', onMsg);
       sock.off('typing', onTyping);
+      sock.off('dm_read', onDmRead);
       sock.off('message_deleted', onMsgDeleted);
       sock.off('message_pinned', onMsgPinned);
       sock.off('channel_created', onChannelCreated);
@@ -2493,7 +2514,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                       <div className="chat-fp-row-body">
                         <div className="chat-fp-row-name">{m.name}</div>
                         <div className="chat-fp-row-preview">
-                          {typingUser === m.id ? <em>yazıyor…</em> : _statusLabel(mStatus)}
+                          {typingUsers.has(m.id) ? <em>yazıyor…</em> : _statusLabel(mStatus)}
                         </div>
                       </div>
                       <div className="chat-fp-row-right">
@@ -2728,14 +2749,24 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                         </div>
                       )}
                       {!showSender && <div className="chat-msg-time">{fmtMsgTime(msg)}</div>}
+                      {isMine && dmWith && msg.id === lastReadSentId && (
+                        <div className="chat-read-receipt">
+                          <span className="chat-read-label">Görüldü</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   </React.Fragment>
                 );
               })}
-              {typingUser && (
+              {typingUsers.size > 0 && dmWith && (
                 <div className="chat-typing-indicator">
-                  <span>{allMembers.find(m => m.id === typingUser)?.name || typingUser} yazıyor</span>
+                  <div className="chat-typing-avatars">
+                    {[...typingUsers].map(slug => {
+                      const m = allMembers.find(x => x.id === slug);
+                      return m ? <Avatar key={slug} member={m} size="sm" /> : null;
+                    })}
+                  </div>
                   <span className="typing-dots"><span /><span /><span /></span>
                 </div>
               )}
@@ -3299,14 +3330,24 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                         </div>
                       )}
                       <div className="chat-msg-time">{fmtMsgTime(msg)}</div>
+                      {isMine && dmWith && msg.id === lastReadSentId && (
+                        <div className="chat-read-receipt">
+                          <span className="chat-read-label">Görüldü</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   </React.Fragment>
                 );
               })}
-              {typingUser && (
+              {typingUsers.size > 0 && dmWith && (
                 <div className="chat-typing-indicator">
-                  <span>{allMembers.find(m => m.id === typingUser)?.name || typingUser} yazıyor</span>
+                  <div className="chat-typing-avatars">
+                    {[...typingUsers].map(slug => {
+                      const m = allMembers.find(x => x.id === slug);
+                      return m ? <Avatar key={slug} member={m} size="sm" /> : null;
+                    })}
+                  </div>
                   <span className="typing-dots"><span /><span /><span /></span>
                 </div>
               )}

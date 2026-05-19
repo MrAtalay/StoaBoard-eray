@@ -89,6 +89,10 @@ function App() {
     try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: value } }, '*'); } catch (e) {}
   };
 
+  // ── Global translation fn — always current before any child renders ─────────
+  const _appLang = tweaks.locale || localStorage.getItem('stoa.lang') || 'tr';
+  window.t = (key) => (window.APP_I18N?.[_appLang] || window.APP_I18N?.tr || {})[key] || (window.APP_I18N?.tr || {})[key] || key;
+
   const myMember = members.find(m => m.id === window.CURRENT_USER?.id) || {};
   const myPerms = myMember.role_permissions || [];
   const canManageTasks = isOwner || myPerms.includes('manage_tasks');
@@ -741,7 +745,7 @@ function App() {
     );
   }
 
-  const crumb = { board:'Pano', calendar:'Takvim', dashboard:'Ana Sayfa', settings:'Ayarlar', chat:'Sohbet', notifications:'Bildirimler', notes:'Notlar' }[view] || 'Pano';
+  const crumb = { board:window.t('crumb_board'), 'board-list':window.t('crumb_list'), calendar:window.t('crumb_calendar'), dashboard:window.t('crumb_dashboard'), settings:window.t('crumb_settings'), chat:window.t('crumb_chat'), notifications:window.t('crumb_notifications'), notes:window.t('crumb_notes') }[view] || window.t('crumb_board');
 
   // My-tasks open count (assigned to me, not in a done column)
   const myId = window.CURRENT_USER?.id;
@@ -802,7 +806,7 @@ function App() {
         notesCount={notesCount}
         onOpenNotifs={() => { setView('notifications'); setNotifCount(0); }}
       />
-      <div className="main">
+      <div className="main" key={_appLang}>
         <Topbar
           view={view} onView={setView}
           openCmd={() => setCmdOpen(true)}
@@ -818,11 +822,11 @@ function App() {
         {noProject && view !== 'settings' ? (
           <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16, color:'var(--ink-muted)' }}>
             <Icon name="layoutBoard" size={48} strokeWidth={1} />
-            <div style={{ fontSize:22, fontFamily:'var(--font-display)', color:'var(--ink)' }}>Henüz proje yok</div>
+            <div style={{ fontSize:22, fontFamily:'var(--font-display)', color:'var(--ink)' }}>{window.t('nav_no_projects')}</div>
             <div style={{ fontSize:14 }}>İlk projenizi oluşturun.</div>
             {canManageProjects && (
               <button className="btn btn-primary" onClick={() => setProjectModal(true)}>
-                <Icon name="plus" size={14} /> Proje Oluştur
+                <Icon name="plus" size={14} /> {window.t('nav_new_project')}
               </button>
             )}
           </div>

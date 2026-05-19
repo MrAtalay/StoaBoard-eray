@@ -49,6 +49,10 @@ def _migrate_db():
             "ALTER TABLE chat_messages ADD COLUMN pinned BOOLEAN DEFAULT FALSE"
             if is_pg else
             "ALTER TABLE chat_messages ADD COLUMN pinned INTEGER DEFAULT 0"),
+        ('chat_messages', 'is_read',
+            "ALTER TABLE chat_messages ADD COLUMN is_read BOOLEAN DEFAULT FALSE"
+            if is_pg else
+            "ALTER TABLE chat_messages ADD COLUMN is_read INTEGER DEFAULT 0"),
     ]
     index_migrations = [
         "CREATE INDEX IF NOT EXISTS ix_task_project_id  ON tasks(project_id)",

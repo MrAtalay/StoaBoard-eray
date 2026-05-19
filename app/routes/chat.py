@@ -225,3 +225,28 @@ def on_typing(data):
         if receiver:
             emit('typing', {'user': user.slug, 'typing': is_typing},
                  to=f'user_{receiver.id}', include_self=False)
+
+
+@socketio.on('dm_mark_read')
+def on_dm_mark_read(data):
+    user = _get_user()
+    if not user:
+        return
+    with_slug = (data.get('with') or '').strip()
+    if not with_slug:
+        return
+    sender = User.query.filter_by(slug=with_slug).first()
+    if not sender:
+        return
+    msgs = ChatMessage.query.filter_by(
+        sender_id=sender.id,
+        receiver_id=user.id,
+        is_read=False,
+    ).all()
+    if not msgs:
+        return
+    for m in msgs:
+        m.is_read = True
+    db.session.commit()
+    emit('dm_read', {'by': user.slug, 'msg_ids': [m.id for m in msgs]},
+         to=f'user_{sender.id}', include_self=False)

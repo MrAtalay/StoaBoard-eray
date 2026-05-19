@@ -1,6 +1,208 @@
 // Auth page + Workspace setup — v3 FINAL
 const { useState: useAuthState, useEffect: useAuthEffect, useRef: useAuthRef } = React;
 
+// ── Dil tanımları ─────────────────────────────────────────────────────────────
+const AUTH_LANGS = [
+  { code: 'tr', label: 'TR', flag: '🇹🇷', name: 'Türkçe' },
+  { code: 'en', label: 'EN', flag: '🇬🇧', name: 'English' },
+  { code: 'de', label: 'DE', flag: '🇩🇪', name: 'Deutsch' },
+  { code: 'es', label: 'ES', flag: '🇪🇸', name: 'Español' },
+  { code: 'ru', label: 'RU', flag: '🇷🇺', name: 'Русский' },
+];
+
+const AUTH_I18N = {
+  tr: {
+    greet_morning: "Günaydın, StoaBoard'a dön.",
+    greet_day: "İyi günler, StoaBoard'a dön.",
+    greet_evening: "İyi akşamlar, StoaBoard'a dön.",
+    create_account: 'Yeni Hesap Oluştur.',
+    subtitle_signin: 'Kaldığın yerden devam etmek için giriş yap.',
+    subtitle_signup: 'Takımınla projelerini yönetmeye hemen başla.',
+    tab_signin: 'Giriş yap', tab_signup: 'Kaydol',
+    label_name: 'AD SOYAD', label_email: 'E-POSTA', label_password: 'PAROLA',
+    forgot_link: 'Unuttun mu?',
+    checking: 'DOĞRULANIYOR…', btn_signin: 'GİRİŞ YAP', btn_signup: 'HESAP OLUŞTUR',
+    no_account: 'Hesabın yok mu?', free_signup: 'Ücretsiz kaydol',
+    have_account: 'Hesabın var mı?', signin_here: 'Buradan giriş yap',
+    err_email_domain: 'Lütfen geçerli bir e-posta adresi kullanın (Gmail, Hotmail, Outlook, Yahoo vb.)',
+    err_login_fail: 'Giriş yapılamadı. Bilgilerini kontrol et.',
+    err_name_required: 'Ad soyad zorunludur',
+    forgot_title: 'Şifreni mi unuttun?',
+    forgot_sub: 'Kayıtlı e-posta adresini gir, doğrulama kodu gönderelim.',
+    forgot_checking: 'KONTROL EDİLİYOR…', forgot_send: 'DOĞRULAMA KODU GÖNDER',
+    back_signin: '← Giriş ekranına dön',
+    code_title: 'Kodu Doğrula',
+    code_sent: '{{email}} adresine 6 haneli kod gönderildi.',
+    label_code: 'DOĞRULAMA KODU',
+    btn_continue: 'Devam Et', btn_change_pass: 'ŞİFREYİ DEĞİŞTİR',
+    back_prev: '← Geri dön',
+    newpass_title: 'Yeni Şifre Belirle',
+    newpass_sub: 'Hesabın için güçlü bir şifre oluştur.',
+    label_new_pass: 'YENİ PAROLA', label_confirm_pass: 'PAROLAYI TEKRARLA',
+    btn_no_change: 'Değiştirme', saving: 'KAYDEDİLİYOR…', btn_save: 'KAYDET',
+    err_code_required: 'Lütfen kodu girin.',
+    err_pass_short: 'Şifre en az 8 karakter olmalıdır.',
+    err_pass_match: 'Şifreler eşleşmiyor.',
+    err_reset_fail: 'Kod yanlış veya süresi dolmuş. Yeni kod isteyin.',
+    err_account_not_found: 'Bu e-posta adresiyle kayıtlı bir hesap bulunamadı.',
+    invite_text: 'Takıma davet edildiniz.',
+    invite_join_signup: 'Hesap oluşturarak', invite_join_signin: 'Giriş yaparak',
+    invite_continue: 'katılmaya devam edin.',
+  },
+  en: {
+    greet_morning: 'Good morning, welcome back to StoaBoard.',
+    greet_day: 'Good afternoon, welcome back to StoaBoard.',
+    greet_evening: 'Good evening, welcome back to StoaBoard.',
+    create_account: 'Create a New Account.',
+    subtitle_signin: 'Sign in to pick up where you left off.',
+    subtitle_signup: 'Start managing your projects with your team right away.',
+    tab_signin: 'Sign In', tab_signup: 'Sign Up',
+    label_name: 'FULL NAME', label_email: 'EMAIL', label_password: 'PASSWORD',
+    forgot_link: 'Forgot?',
+    checking: 'VERIFYING…', btn_signin: 'SIGN IN', btn_signup: 'CREATE ACCOUNT',
+    no_account: "Don't have an account?", free_signup: 'Sign up for free',
+    have_account: 'Already have an account?', signin_here: 'Sign in here',
+    err_email_domain: 'Please use a valid email address (Gmail, Hotmail, Outlook, Yahoo, etc.)',
+    err_login_fail: 'Sign-in failed. Please check your credentials.',
+    err_name_required: 'Full name is required',
+    forgot_title: 'Forgot your password?',
+    forgot_sub: "Enter your registered email and we'll send you a verification code.",
+    forgot_checking: 'CHECKING…', forgot_send: 'SEND VERIFICATION CODE',
+    back_signin: '← Back to sign in',
+    code_title: 'Verify Code',
+    code_sent: 'A 6-digit code was sent to {{email}}.',
+    label_code: 'VERIFICATION CODE',
+    btn_continue: 'Continue', btn_change_pass: 'CHANGE PASSWORD',
+    back_prev: '← Go back',
+    newpass_title: 'Set New Password',
+    newpass_sub: 'Create a strong password for your account.',
+    label_new_pass: 'NEW PASSWORD', label_confirm_pass: 'CONFIRM PASSWORD',
+    btn_no_change: 'Cancel', saving: 'SAVING…', btn_save: 'SAVE',
+    err_code_required: 'Please enter the code.',
+    err_pass_short: 'Password must be at least 8 characters.',
+    err_pass_match: 'Passwords do not match.',
+    err_reset_fail: 'Code is incorrect or expired. Please request a new one.',
+    err_account_not_found: 'No account found with this email address.',
+    invite_text: 'You have been invited to a team.',
+    invite_join_signup: 'Sign up', invite_join_signin: 'Sign in',
+    invite_continue: 'to continue joining.',
+  },
+  de: {
+    greet_morning: 'Guten Morgen, willkommen zurück bei StoaBoard.',
+    greet_day: 'Guten Tag, willkommen zurück bei StoaBoard.',
+    greet_evening: 'Guten Abend, willkommen zurück bei StoaBoard.',
+    create_account: 'Neues Konto erstellen.',
+    subtitle_signin: 'Melden Sie sich an, um weiterzumachen.',
+    subtitle_signup: 'Verwalten Sie Ihre Projekte sofort mit Ihrem Team.',
+    tab_signin: 'Anmelden', tab_signup: 'Registrieren',
+    label_name: 'VOR- UND NACHNAME', label_email: 'E-MAIL', label_password: 'PASSWORT',
+    forgot_link: 'Vergessen?',
+    checking: 'WIRD ÜBERPRÜFT…', btn_signin: 'ANMELDEN', btn_signup: 'KONTO ERSTELLEN',
+    no_account: 'Noch kein Konto?', free_signup: 'Kostenlos registrieren',
+    have_account: 'Bereits ein Konto?', signin_here: 'Hier anmelden',
+    err_email_domain: 'Bitte verwenden Sie eine gültige E-Mail-Adresse (Gmail, Hotmail, Outlook, Yahoo usw.)',
+    err_login_fail: 'Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Zugangsdaten.',
+    err_name_required: 'Vor- und Nachname sind erforderlich',
+    forgot_title: 'Passwort vergessen?',
+    forgot_sub: 'Geben Sie Ihre registrierte E-Mail ein, um einen Bestätigungscode zu erhalten.',
+    forgot_checking: 'WIRD GEPRÜFT…', forgot_send: 'BESTÄTIGUNGSCODE SENDEN',
+    back_signin: '← Zurück zur Anmeldung',
+    code_title: 'Code bestätigen',
+    code_sent: 'Ein 6-stelliger Code wurde an {{email}} gesendet.',
+    label_code: 'BESTÄTIGUNGSCODE',
+    btn_continue: 'Weiter', btn_change_pass: 'PASSWORT ÄNDERN',
+    back_prev: '← Zurück',
+    newpass_title: 'Neues Passwort festlegen',
+    newpass_sub: 'Erstellen Sie ein sicheres Passwort für Ihr Konto.',
+    label_new_pass: 'NEUES PASSWORT', label_confirm_pass: 'PASSWORT WIEDERHOLEN',
+    btn_no_change: 'Abbrechen', saving: 'WIRD GESPEICHERT…', btn_save: 'SPEICHERN',
+    err_code_required: 'Bitte geben Sie den Code ein.',
+    err_pass_short: 'Das Passwort muss mindestens 8 Zeichen lang sein.',
+    err_pass_match: 'Die Passwörter stimmen nicht überein.',
+    err_reset_fail: 'Code ist falsch oder abgelaufen. Fordern Sie einen neuen an.',
+    err_account_not_found: 'Es wurde kein Konto mit dieser E-Mail-Adresse gefunden.',
+    invite_text: 'Sie wurden zu einem Team eingeladen.',
+    invite_join_signup: 'Registrieren Sie sich,', invite_join_signin: 'Melden Sie sich an,',
+    invite_continue: 'um dem Team beizutreten.',
+  },
+  es: {
+    greet_morning: 'Buenos días, bienvenido de nuevo a StoaBoard.',
+    greet_day: 'Buenas tardes, bienvenido de nuevo a StoaBoard.',
+    greet_evening: 'Buenas noches, bienvenido de nuevo a StoaBoard.',
+    create_account: 'Crear una cuenta nueva.',
+    subtitle_signin: 'Inicia sesión para continuar donde lo dejaste.',
+    subtitle_signup: 'Empieza a gestionar tus proyectos con tu equipo ahora mismo.',
+    tab_signin: 'Iniciar sesión', tab_signup: 'Registrarse',
+    label_name: 'NOMBRE COMPLETO', label_email: 'CORREO ELECTRÓNICO', label_password: 'CONTRASEÑA',
+    forgot_link: '¿Olvidaste?',
+    checking: 'VERIFICANDO…', btn_signin: 'INICIAR SESIÓN', btn_signup: 'CREAR CUENTA',
+    no_account: '¿No tienes cuenta?', free_signup: 'Regístrate gratis',
+    have_account: '¿Ya tienes cuenta?', signin_here: 'Inicia sesión aquí',
+    err_email_domain: 'Por favor, usa una dirección de correo válida (Gmail, Hotmail, Outlook, Yahoo, etc.)',
+    err_login_fail: 'No se pudo iniciar sesión. Verifica tus datos.',
+    err_name_required: 'El nombre completo es obligatorio',
+    forgot_title: '¿Olvidaste tu contraseña?',
+    forgot_sub: 'Ingresa tu correo registrado y te enviaremos un código de verificación.',
+    forgot_checking: 'COMPROBANDO…', forgot_send: 'ENVIAR CÓDIGO DE VERIFICACIÓN',
+    back_signin: '← Volver al inicio de sesión',
+    code_title: 'Verificar código',
+    code_sent: 'Se envió un código de 6 dígitos a {{email}}.',
+    label_code: 'CÓDIGO DE VERIFICACIÓN',
+    btn_continue: 'Continuar', btn_change_pass: 'CAMBIAR CONTRASEÑA',
+    back_prev: '← Volver',
+    newpass_title: 'Establecer nueva contraseña',
+    newpass_sub: 'Crea una contraseña segura para tu cuenta.',
+    label_new_pass: 'NUEVA CONTRASEÑA', label_confirm_pass: 'CONFIRMAR CONTRASEÑA',
+    btn_no_change: 'Cancelar', saving: 'GUARDANDO…', btn_save: 'GUARDAR',
+    err_code_required: 'Por favor, ingresa el código.',
+    err_pass_short: 'La contraseña debe tener al menos 8 caracteres.',
+    err_pass_match: 'Las contraseñas no coinciden.',
+    err_reset_fail: 'El código es incorrecto o ha expirado. Solicita uno nuevo.',
+    err_account_not_found: 'No se encontró ninguna cuenta con esta dirección de correo.',
+    invite_text: 'Has sido invitado a un equipo.',
+    invite_join_signup: 'Regístrate', invite_join_signin: 'Inicia sesión',
+    invite_continue: 'para continuar uniéndote.',
+  },
+  ru: {
+    greet_morning: 'Доброе утро, добро пожаловать обратно в StoaBoard.',
+    greet_day: 'Добрый день, добро пожаловать обратно в StoaBoard.',
+    greet_evening: 'Добрый вечер, добро пожаловать обратно в StoaBoard.',
+    create_account: 'Создать новый аккаунт.',
+    subtitle_signin: 'Войдите, чтобы продолжить с того места, где остановились.',
+    subtitle_signup: 'Начните управлять проектами вместе с командой прямо сейчас.',
+    tab_signin: 'Войти', tab_signup: 'Регистрация',
+    label_name: 'ИМЯ И ФАМИЛИЯ', label_email: 'ЭЛЕКТРОННАЯ ПОЧТА', label_password: 'ПАРОЛЬ',
+    forgot_link: 'Забыли?',
+    checking: 'ПРОВЕРКА…', btn_signin: 'ВОЙТИ', btn_signup: 'СОЗДАТЬ АККАУНТ',
+    no_account: 'Нет аккаунта?', free_signup: 'Зарегистрироваться бесплатно',
+    have_account: 'Уже есть аккаунт?', signin_here: 'Войти здесь',
+    err_email_domain: 'Пожалуйста, используйте действительный адрес (Gmail, Hotmail, Outlook, Yahoo и т. д.)',
+    err_login_fail: 'Не удалось войти. Проверьте введённые данные.',
+    err_name_required: 'Имя и фамилия обязательны',
+    forgot_title: 'Забыли пароль?',
+    forgot_sub: 'Введите зарегистрированный email, и мы отправим вам код подтверждения.',
+    forgot_checking: 'ПРОВЕРЯЕТСЯ…', forgot_send: 'ОТПРАВИТЬ КОД ПОДТВЕРЖДЕНИЯ',
+    back_signin: '← Вернуться ко входу',
+    code_title: 'Подтвердить код',
+    code_sent: 'На адрес {{email}} отправлен 6-значный код.',
+    label_code: 'КОД ПОДТВЕРЖДЕНИЯ',
+    btn_continue: 'Продолжить', btn_change_pass: 'ИЗМЕНИТЬ ПАРОЛЬ',
+    back_prev: '← Назад',
+    newpass_title: 'Установить новый пароль',
+    newpass_sub: 'Создайте надёжный пароль для вашего аккаунта.',
+    label_new_pass: 'НОВЫЙ ПАРОЛЬ', label_confirm_pass: 'ПОВТОРИТЕ ПАРОЛЬ',
+    btn_no_change: 'Отмена', saving: 'СОХРАНЕНИЕ…', btn_save: 'СОХРАНИТЬ',
+    err_code_required: 'Пожалуйста, введите код.',
+    err_pass_short: 'Пароль должен содержать не менее 8 символов.',
+    err_pass_match: 'Пароли не совпадают.',
+    err_reset_fail: 'Код неверный или истёк. Запросите новый.',
+    err_account_not_found: 'Аккаунт с таким адресом электронной почты не найден.',
+    invite_text: 'Вас пригласили в команду.',
+    invite_join_signup: 'Зарегистрируйтесь,', invite_join_signin: 'Войдите,',
+    invite_continue: 'чтобы продолжить вступление.',
+  },
+};
+
 const EyeOpen = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>;
 const EyeClosed = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>;
 
@@ -97,11 +299,30 @@ function AuthPage({ onSignIn }) {
   const [forgotCode, setForgotCode] = useAuthState('');
   const [forgotNewPass, setForgotNewPass] = useAuthState('');
   const [forgotConfirmPass, setForgotConfirmPass] = useAuthState('');
-  const [mockSentCode, setMockSentCode] = useAuthState('');
   const [forgotError, setForgotError] = useAuthState('');
   const [forgotBusy, setForgotBusy] = useAuthState(false);
   const [forgotShowNewPass, setForgotShowNewPass] = useAuthState(false);
   const [greeting, setGreeting] = useAuthState('Tekrar hoşgeldin.');
+  const [lang, setLang] = useAuthState(() => {
+    try { const tw = JSON.parse(localStorage.getItem('stoa.tweaks') || '{}'); if (tw.locale) return tw.locale; } catch {}
+    return localStorage.getItem('stoa.lang') || 'tr';
+  });
+  const [langMenuOpen, setLangMenuOpen] = useAuthState(false);
+  const langMenuRef = useAuthRef(null);
+  const t = (key) => (AUTH_I18N[lang] || AUTH_I18N.tr)[key] || AUTH_I18N.tr[key] || key;
+
+  const switchLang = (code) => {
+    setLang(code);
+    localStorage.setItem('stoa.lang', code);
+    try { const tw = JSON.parse(localStorage.getItem('stoa.tweaks') || '{}'); localStorage.setItem('stoa.tweaks', JSON.stringify({ ...tw, locale: code })); } catch {}
+  };
+
+  useAuthEffect(() => {
+    if (!langMenuOpen) return;
+    const close = (e) => { if (!langMenuRef.current?.contains(e.target)) setLangMenuOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [langMenuOpen]);
 
   // YENİ FOTOĞRAFLAR - zoom azaltıldı
   const slideImages = [
@@ -121,10 +342,10 @@ function AuthPage({ onSignIn }) {
 
   useAuthEffect(() => {
     const h = new Date().getHours();
-    if (h < 12) setGreeting("Günaydın, StoaBoard'a dön.");
-    else if (h < 18) setGreeting("İyi günler, StoaBoard'a dön.");
-    else setGreeting("İyi akşamlar, StoaBoard'a dön.");
-  }, []);
+    if (h < 12) setGreeting(t('greet_morning'));
+    else if (h < 18) setGreeting(t('greet_day'));
+    else setGreeting(t('greet_evening'));
+  }, [lang]);
 
   const [particles] = useAuthState(() => Array.from({ length: 30 }).map((_, i) => ({
     id: i, size: Math.random() * 4 + 1 + 'px', left: Math.random() * 100 + '%',
@@ -152,31 +373,28 @@ function AuthPage({ onSignIn }) {
     e.preventDefault(); setForgotError(''); setForgotBusy(true);
     try {
       await window.API.sendPasswordReset(forgotEmail);
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setMockSentCode(code);
-      console.log('[StoaBoard DEV] Şifre kodu:', code);
       setForgotStep('code');
-    } catch { setForgotError('Bu e-posta adresiyle kayıtlı bir hesap bulunamadı.'); }
+    } catch (err) { setForgotError(err.message || t('err_account_not_found')); }
     finally { setForgotBusy(false); }
   };
 
   const handleForgotCodeSubmit = (e) => {
     e.preventDefault(); setForgotError('');
-    if (forgotCode.trim() !== mockSentCode) { setForgotError('Kod yanlış. Tekrar deneyin.'); return; }
+    if (!forgotCode.trim()) { setForgotError(t('err_code_required')); return; }
     setForgotStep('newpassword');
   };
 
   const handleForgotNewPassSubmit = async (e) => {
     e.preventDefault(); setForgotError('');
-    if (forgotNewPass.length < 8) { setForgotError('Şifre en az 8 karakter olmalıdır.'); return; }
-    if (forgotNewPass !== forgotConfirmPass) { setForgotError('Şifreler eşleşmiyor.'); return; }
+    if (forgotNewPass.length < 8) { setForgotError(t('err_pass_short')); return; }
+    if (forgotNewPass !== forgotConfirmPass) { setForgotError(t('err_pass_match')); return; }
     setForgotBusy(true);
     try {
-      await window.API.resetPassword(forgotEmail, forgotNewPass);
+      await window.API.resetPassword(forgotEmail, forgotNewPass, forgotCode.trim());
       window.showToast?.('Şifreniz başarıyla güncellendi!', 'success');
       setShowForgot(false); setForgotStep('email');
       setForgotEmail(''); setForgotCode(''); setForgotNewPass(''); setForgotConfirmPass('');
-    } catch { setForgotError('Şifre güncellenirken hata oluştu.'); }
+    } catch (err) { setForgotError(err.message || t('err_reset_fail')); }
     finally { setForgotBusy(false); }
   };
 
@@ -188,16 +406,16 @@ function AuthPage({ onSignIn }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setError('');
     if (mode === 'signup' && !isValidEmailDomain(form.email)) {
-      setError('Lütfen geçerli bir e-posta adresi kullanın (Gmail, Hotmail, Outlook, Yahoo vb.)');
+      setError(t('err_email_domain'));
       setIsShaking(true); setTimeout(() => setIsShaking(false), 500); return;
     }
     setBusy(true); setIsShaking(false);
     try {
       if (mode === 'signin') { await window.API.login(form.email, form.password); }
-      else { if (!form.name.trim()) throw new Error('Ad soyad zorunludur'); await window.API.register(form.name.trim(), form.email, form.password); }
+      else { if (!form.name.trim()) throw new Error(t('err_name_required')); await window.API.register(form.name.trim(), form.email, form.password); }
       onSignIn();
     } catch (err) {
-      setError(err.message || 'Giriş yapılamadı. Bilgilerini kontrol et.');
+      setError(err.message || t('err_login_fail'));
       setIsShaking(true); setTimeout(() => setIsShaking(false), 500);
     } finally { setBusy(false); }
   };
@@ -235,89 +453,111 @@ function AuthPage({ onSignIn }) {
         </div>
       </div>
 
-      <div className="auth-form-wrap">
+      <div className="auth-form-wrap" style={{ position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 14, right: 14, zIndex: 10 }} ref={langMenuRef}>
+          <button onClick={() => setLangMenuOpen(o => !o)} style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 11px', borderRadius:8, cursor:'pointer', background:'var(--bg)', color:'var(--ink)', border:'1px solid var(--line)', fontSize:12, fontWeight:600, transition:'all 0.15s', boxShadow:'0 1px 4px rgba(0,0,0,0.07)' }}>
+            <span>{AUTH_LANGS.find(l => l.code === lang)?.label || 'TR'}</span>
+            <svg width="10" height="7" viewBox="0 0 10 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d={langMenuOpen ? 'M1 6L5 2L9 6' : 'M1 1L5 5L9 1'}/></svg>
+          </button>
+          {langMenuOpen && (
+            <div style={{ position:'absolute', top:'calc(100% + 5px)', right:0, background:'var(--bg)', border:'1px solid var(--line)', borderRadius:10, overflow:'hidden', minWidth:148, boxShadow:'0 8px 24px rgba(0,0,0,0.13)', zIndex:200 }}>
+              {AUTH_LANGS.map((l, i) => (
+                <button key={l.code} onClick={() => { switchLang(l.code); setLangMenuOpen(false); }}
+                  style={{ display:'flex', alignItems:'center', gap:9, width:'100%', padding:'9px 14px', cursor:'pointer', textAlign:'left',
+                    background: lang === l.code ? 'oklch(55% 0.13 250 / 0.08)' : 'transparent',
+                    color: lang === l.code ? 'var(--accent)' : 'var(--ink)',
+                    fontWeight: lang === l.code ? 600 : 400, fontSize:13, border:'none',
+                    borderBottom: i < AUTH_LANGS.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                  <span style={{ fontSize:16 }}>{l.flag}</span>
+                  <span style={{ flex:1 }}>{l.name}</span>
+                  {lang === l.code && <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2 6L5 9L10 3"/></svg>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="auth-form">
           {showForgot ? (
             <div style={{ animation: 'fadeIn 0.3s ease' }}>
               {forgotStep === 'email' && (<>
-                <h2>Şifreni mi unuttun?</h2>
-                <p className="sub">Kayıtlı e-posta adresini gir, doğrulama kodu gönderelim.</p>
+                <h2>{t('forgot_title')}</h2>
+                <p className="sub">{t('forgot_sub')}</p>
                 {forgotError && <div className="error-msg">{forgotError}</div>}
                 <form className="auth-fields" onSubmit={handleForgotEmailSubmit}>
-                  <div className="field"><label className="field-label">E-POSTA</label>
+                  <div className="field"><label className="field-label">{t('label_email')}</label>
                     <input className="glow-input" autoFocus type="email" placeholder="sen@example.com" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} required />
                   </div>
-                  <button type="submit" className="auth-submit" disabled={forgotBusy}>{forgotBusy ? 'KONTROL EDİLİYOR…' : 'DOĞRULAMA KODU GÖNDER'}</button>
+                  <button type="submit" className="auth-submit" disabled={forgotBusy}>{forgotBusy ? t('forgot_checking') : t('forgot_send')}</button>
                 </form>
-                <div className="auth-foot"><a onClick={() => { setShowForgot(false); setForgotError(''); }}>← Giriş ekranına dön</a></div>
+                <div className="auth-foot"><a onClick={() => { setShowForgot(false); setForgotError(''); }}>{t('back_signin')}</a></div>
               </>)}
               {forgotStep === 'code' && (<>
-                <h2>Kodu Doğrula</h2>
-                <p className="sub"><strong>{forgotEmail}</strong> adresine 6 haneli kod gönderildi.</p>
+                <h2>{t('code_title')}</h2>
+                <p className="sub">{(() => { const [before, after] = t('code_sent').split('{{email}}'); return <>{before}<strong>{forgotEmail}</strong>{after}</>; })()}</p>
                 {forgotError && <div className="error-msg">{forgotError}</div>}
                 <form className="auth-fields" onSubmit={handleForgotCodeSubmit}>
-                  <div className="field"><label className="field-label">DOĞRULAMA KODU</label>
+                  <div className="field"><label className="field-label">{t('label_code')}</label>
                     <input className="glow-input" autoFocus placeholder="123456" value={forgotCode} onChange={e => setForgotCode(e.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={6} style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.3em', fontSize: 20, textAlign: 'center', fontWeight: 'bold' }} required />
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <button type="button" className="auth-submit" style={{ background: 'transparent', color: 'var(--color-ink)', border: '1px solid var(--color-line)', flex: 1 }} onClick={handleContinueWithoutChange}>Devam Et</button>
-                    <button type="submit" className="auth-submit" style={{ flex: 2 }}>ŞİFREYİ DEĞİŞTİR</button>
+                    <button type="button" className="auth-submit" style={{ background: 'transparent', color: 'var(--color-ink)', border: '1px solid var(--color-line)', flex: 1 }} onClick={handleContinueWithoutChange}>{t('btn_continue')}</button>
+                    <button type="submit" className="auth-submit" style={{ flex: 2 }}>{t('btn_change_pass')}</button>
                   </div>
                 </form>
-                <div className="auth-foot"><a onClick={() => { setForgotStep('email'); setForgotError(''); setForgotCode(''); }}>← Geri dön</a></div>
+                <div className="auth-foot"><a onClick={() => { setForgotStep('email'); setForgotError(''); setForgotCode(''); }}>{t('back_prev')}</a></div>
               </>)}
               {forgotStep === 'newpassword' && (<>
-                <h2>Yeni Şifre Belirle</h2>
-                <p className="sub">Hesabın için güçlü bir şifre oluştur.</p>
+                <h2>{t('newpass_title')}</h2>
+                <p className="sub">{t('newpass_sub')}</p>
                 {forgotError && <div className="error-msg">{forgotError}</div>}
                 <form className="auth-fields" onSubmit={handleForgotNewPassSubmit}>
-                  <div className="field"><label className="field-label">YENİ PAROLA</label>
+                  <div className="field"><label className="field-label">{t('label_new_pass')}</label>
                     <div className="password-wrapper">
                       <input className="glow-input" autoFocus type={forgotShowNewPass ? 'text' : 'password'} placeholder="••••••••" value={forgotNewPass} onChange={e => setForgotNewPass(e.target.value)} required minLength={8} />
                       <span className="toggle-eye" onClick={() => setForgotShowNewPass(!forgotShowNewPass)}>{forgotShowNewPass ? <EyeClosed /> : <EyeOpen />}</span>
                     </div>
                   </div>
-                  <div className="field"><label className="field-label">PAROLAYI TEKRARLA</label>
+                  <div className="field"><label className="field-label">{t('label_confirm_pass')}</label>
                     <input className="glow-input" type="password" placeholder="••••••••" value={forgotConfirmPass} onChange={e => setForgotConfirmPass(e.target.value)} required />
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <button type="button" className="auth-submit" style={{ background: 'transparent', color: 'var(--color-ink)', border: '1px solid var(--color-line)', flex: 1 }} onClick={handleContinueWithoutChange}>Değiştirme</button>
-                    <button type="submit" className="auth-submit" disabled={forgotBusy} style={{ flex: 2 }}>{forgotBusy ? 'KAYDEDİLİYOR…' : 'KAYDET'}</button>
+                    <button type="button" className="auth-submit" style={{ background: 'transparent', color: 'var(--color-ink)', border: '1px solid var(--color-line)', flex: 1 }} onClick={handleContinueWithoutChange}>{t('btn_no_change')}</button>
+                    <button type="submit" className="auth-submit" disabled={forgotBusy} style={{ flex: 2 }}>{forgotBusy ? t('saving') : t('btn_save')}</button>
                   </div>
                 </form>
               </>)}
             </div>
           ) : (
             <div style={{ animation: 'fadeIn 0.3s ease' }}>
-              <h2>{mode === 'signin' ? greeting : 'Yeni Hesap Oluştur.'}</h2>
-              <p className="sub">{mode === 'signin' ? 'Kaldığın yerden devam etmek için giriş yap.' : 'Takımınla projelerini yönetmeye hemen başla.'}</p>
+              <h2>{mode === 'signin' ? greeting : t('create_account')}</h2>
+              <p className="sub">{mode === 'signin' ? t('subtitle_signin') : t('subtitle_signup')}</p>
               {joinInviteCode && (
                 <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:10, background:'oklch(55% 0.13 250 / 0.1)', border:'1px solid oklch(55% 0.13 250 / 0.25)', marginBottom:16, fontSize:13 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="oklch(55% 0.13 250)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                   <span style={{ color:'var(--ink)' }}>
-                    Takıma davet edildiniz.{' '}
-                    <strong>{mode === 'signup' ? 'Hesap oluşturarak' : 'Giriş yaparak'}</strong> katılmaya devam edin.
+                    {t('invite_text')}{' '}
+                    <strong>{mode === 'signup' ? t('invite_join_signup') : t('invite_join_signin')}</strong> {t('invite_continue')}
                   </span>
                 </div>
               )}
               <div className="auth-tabs">
-                <button className="tab-btn" data-active={mode === 'signin'} onClick={() => { setMode('signin'); setError(''); }}>Giriş yap</button>
-                <button className="tab-btn" data-active={mode === 'signup'} onClick={() => { setMode('signup'); setError(''); }}>Kaydol</button>
+                <button className="tab-btn" data-active={mode === 'signin'} onClick={() => { setMode('signin'); setError(''); }}>{t('tab_signin')}</button>
+                <button className="tab-btn" data-active={mode === 'signup'} onClick={() => { setMode('signup'); setError(''); }}>{t('tab_signup')}</button>
               </div>
               {error && <div className="error-msg">{error}</div>}
               <form className={`auth-fields ${isShaking ? 'shake' : ''}`} onSubmit={handleSubmit}>
                 {mode === 'signup' && (
-                  <div className="field"><label className="field-label">AD SOYAD</label>
+                  <div className="field"><label className="field-label">{t('label_name')}</label>
                     <input className="glow-input" placeholder="Aliz Kaya" value={form.name} onChange={set('name')} required />
                   </div>
                 )}
-                <div className="field"><label className="field-label">E-POSTA</label>
+                <div className="field"><label className="field-label">{t('label_email')}</label>
                   <input className="glow-input" type="email" placeholder="sen@example.com" value={form.email} onChange={set('email')} required />
                 </div>
                 <div className="field">
                   <div className="password-header">
-                    <label className="field-label">PAROLA</label>
-                    {mode === 'signin' && <a className="forgot-link" onClick={e => { e.preventDefault(); setShowForgot(true); setForgotEmail(form.email); }}>Unuttun mu?</a>}
+                    <label className="field-label">{t('label_password')}</label>
+                    {mode === 'signin' && <a className="forgot-link" onClick={e => { e.preventDefault(); setShowForgot(true); setForgotEmail(form.email); }}>{t('forgot_link')}</a>}
                   </div>
                   <div className="password-wrapper">
                     <input className="glow-input" type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={form.password} onChange={set('password')} required minLength={8} />
@@ -330,13 +570,13 @@ function AuthPage({ onSignIn }) {
                   </div>
                 )}
                 <button type="submit" className="auth-submit" disabled={busy}>
-                  {busy ? 'DOĞRULANIYOR…' : (mode === 'signin' ? 'GİRİŞ YAP' : 'HESAP OLUŞTUR')}
+                  {busy ? t('checking') : (mode === 'signin' ? t('btn_signin') : t('btn_signup'))}
                 </button>
               </form>
               <div className="auth-foot">
                 {mode === 'signin'
-                  ? <><span>Hesabın yok mu?</span> <a onClick={() => { setMode('signup'); setError(''); }}>Ücretsiz kaydol</a></>
-                  : <><span>Hesabın var mı?</span> <a onClick={() => { setMode('signin'); setError(''); }}>Buradan giriş yap</a></>}
+                  ? <><span>{t('no_account')}</span> <a onClick={() => { setMode('signup'); setError(''); }}>{t('free_signup')}</a></>
+                  : <><span>{t('have_account')}</span> <a onClick={() => { setMode('signin'); setError(''); }}>{t('signin_here')}</a></>}
               </div>
             </div>
           )}

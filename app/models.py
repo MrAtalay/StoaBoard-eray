@@ -579,6 +579,7 @@ class ChatMessage(db.Model):
     hidden_for = db.Column(db.JSON, default=list)  # list of user IDs who deleted "for self"
     channel = db.Column(db.String(80), default='general')  # 'general' = legacy default; team channel id
     pinned = db.Column(db.Boolean, default=False)
+    is_read = db.Column(db.Boolean, default=False)
 
     sender = db.relationship('User', foreign_keys=[sender_id])
     receiver = db.relationship('User', foreign_keys=[receiver_id])
@@ -592,6 +593,7 @@ class ChatMessage(db.Model):
             'ts': self.created_at.isoformat() if self.created_at else '',
             'channel': self.channel or 'general',
             'pinned': bool(self.pinned),
+            'is_read': bool(self.is_read) if self.receiver_id else None,
         }
         if self.is_deleted:
             base['deleted'] = True

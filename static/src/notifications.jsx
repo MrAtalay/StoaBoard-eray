@@ -260,12 +260,7 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
                 checked={v('crossTeamDM', true)}
                 onChange={(b) => updatePref('crossTeamDM', b)}
               />
-              <NotifPrefRow
-                label="E-posta özeti"
-                desc="Günlük 08:00 özeti"
-                checked={v('emailDigest', false)}
-                onChange={(b) => updatePref('emailDigest', b)}
-              />
+
               <div className="notif-prefs-foot">
                 <button onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('stoa:gotoSettings', { detail: { section: 'notifications' } })); }}>
                   Tüm ayarlar →

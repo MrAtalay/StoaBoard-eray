@@ -381,6 +381,10 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
   const [deleteEmail, setDeleteEmail] = React.useState('');
   const [deleteBusy, setDeleteBusy] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState('');
+  const [transferOpen, setTransferOpen] = React.useState(false);
+  const [transferSlug, setTransferSlug] = React.useState('');
+  const [transferBusy, setTransferBusy] = React.useState(false);
+  const [transferError, setTransferError] = React.useState('');
   const [avatarUrl, setAvatarUrl]     = React.useState(me.avatar_photo_url || null);
   const [avatarBusy, setAvatarBusy]   = React.useState(false);
   const avatarInputRef = React.useRef(null);
@@ -604,6 +608,22 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
     } catch (e) { window.showToast?.(e.message, 'error'); }
   };
 
+  const transferOwnership = async () => {
+    setTransferError('');
+    if (!transferSlug) { setTransferError('Lütfen bir üye seçin.'); return; }
+    setTransferBusy(true);
+    try {
+      await API.transferOwnership(transferSlug);
+      window.showToast?.('Sahiplik aktarıldı. Yetkiniz güncellendi.', 'success');
+      setTransferOpen(false);
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (e) {
+      setTransferError(e.message || 'Sahiplik aktarılamadı.');
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
   const deleteAccount = async () => {
     setDeleteError('');
     if (!deleteEmail.trim()) {
@@ -640,22 +660,21 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
   // ── Render ────────────────────────────────────────────────────────────────
 
   // Inner-nav sections (ids match section [data-nav-id])
+  const _t = (k, fb) => window.t?.(k) || fb;
   const navSections = [
-    { id: 'profile',       label: 'Profil',           icon: 'user' },
-    { id: 'appearance',    label: 'Görünüm',          icon: 'palette' },
-    { id: 'workspace',     label: 'Çalışma Alanı',    icon: 'building', ownerOnly: true },
-    { id: 'invite',        label: 'Davet Kodu',       icon: 'key', ownerOnly: true },
-    { id: 'roles',         label: 'Roller',           icon: 'shield', membersOnly: true },
-    { id: 'members',       label: 'Üyeler',           icon: 'users', membersOnly: true },
-    { id: 'labels',        label: 'Etiketler',        icon: 'tag' },
-    { id: 'notifications', label: 'Bildirimler',      icon: 'bell' },
-    { id: 'shortcuts',     label: 'Kısayollar',       icon: 'cmd' },
-    { id: 'privacy',       label: 'Gizlilik',         icon: 'shield' },
-    { id: 'integrations',  label: 'Entegrasyonlar',   icon: 'plug' },
-    { id: 'billing',       label: 'Faturalama',       icon: 'creditCard' },
-    { id: 'language',      label: 'Dil & Bölge',      icon: 'languages' },
-    { id: 'export',        label: 'Veri & Dışa Aktarma', icon: 'download' },
-    { id: 'danger',        label: 'Tehlikeli Bölge',  icon: 'alertTriangle', danger: true },
+    { id: 'profile',       label: _t('set_profile','Profil'),              icon: 'user' },
+    { id: 'appearance',    label: _t('set_appearance','Görünüm'),          icon: 'palette' },
+    { id: 'workspace',     label: _t('set_workspace','Çalışma Alanı'),     icon: 'building', ownerOnly: true },
+    { id: 'invite',        label: _t('set_invite','Davet Kodu'),           icon: 'key', ownerOnly: true },
+    { id: 'roles',         label: _t('set_roles','Roller'),                icon: 'shield', membersOnly: true },
+    { id: 'members',       label: _t('set_members','Üyeler'),              icon: 'users', membersOnly: true },
+    { id: 'labels',        label: _t('set_labels','Etiketler'),            icon: 'tag' },
+    { id: 'notifications', label: _t('set_notifications','Bildirimler'),   icon: 'bell' },
+    { id: 'shortcuts',     label: _t('set_shortcuts','Kısayollar'),        icon: 'cmd' },
+    { id: 'privacy',       label: _t('set_privacy','Gizlilik'),            icon: 'shield' },
+    { id: 'language',      label: _t('set_language','Dil & Bölge'),        icon: 'languages' },
+    { id: 'export',        label: _t('set_export','Veri & Dışa Aktarma'),  icon: 'download' },
+    { id: 'danger',        label: _t('set_danger','Tehlikeli Bölge'),      icon: 'alertTriangle', danger: true },
   ];
   const [activeNav, setActiveNav] = React.useState('profile');
   const scrollRef = React.useRef(null);
@@ -703,8 +722,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {/* ─── Inner nav (sticky left rail) ─── */}
       <aside className="settings-nav">
         <div className="settings-nav-head">
-          <h1 className="settings-nav-title">Ayarlar</h1>
-          <p className="settings-nav-sub">Hesap & çalışma alanı</p>
+          <h1 className="settings-nav-title">{_t('set_title','Ayarlar')}</h1>
+          <p className="settings-nav-sub">{_t('set_subtitle','Hesap & çalışma alanı')}</p>
         </div>
         <nav className="settings-nav-list">
           {navSections.map(s => {
@@ -1286,8 +1305,6 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                 <tr>
                   <th>Olay</th>
                   <th>Uygulama</th>
-                  <th>Push</th>
-                  <th>E-posta</th>
                 </tr>
               </thead>
               <tbody>
@@ -1299,30 +1316,23 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                   { k: 'reaction', label: 'Mesajına reaksiyon' },
                   { k: 'calendar', label: 'Takvim hatırlatma' },
                 ].map(row => {
-                  const get = (ch, def) => {
-                    const key = `notifMatrix_${row.k}_${ch}`;
+                  const get = (def) => {
+                    const key = `notifMatrix_${row.k}_inapp`;
                     return tweaks[key] === undefined ? def : !!tweaks[key];
                   };
-                  const setCh = (ch, val) => setTweak(`notifMatrix_${row.k}_${ch}`, val);
                   return (
                     <tr key={row.k}>
                       <td>{row.label}</td>
-                      {[
-                        ['inapp', true],
-                        ['push', row.k === 'mention' || row.k === 'dm' || row.k === 'taskAssign' || row.k === 'calendar'],
-                        ['email', row.k === 'taskAssign'],
-                      ].map(([ch, def]) => (
-                        <td key={ch} style={{ textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            className="toggle-switch"
-                            data-on={get(ch, def)}
-                            onClick={() => setCh(ch, !get(ch, def))}
-                          >
-                            <span className="toggle-knob" />
-                          </button>
-                        </td>
-                      ))}
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          className="toggle-switch"
+                          data-on={get(true)}
+                          onClick={() => setTweak(`notifMatrix_${row.k}_inapp`, !get(true))}
+                        >
+                          <span className="toggle-knob" />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -1455,130 +1465,18 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
         </div>
       </div>
 
-      {/* ── Integrations ── */}
-      <div className="settings-section" data-nav-id="integrations">
-        <div>
-          <h3>Entegrasyonlar</h3>
-          <p className="desc">Dış servisleri Stoaboard'a bağlayın.</p>
-        </div>
-        <div className="settings-card settings-panel">
-          <div className="integration-list">
-            {[
-              { id: 'gcal',   name: 'Google Calendar', desc: 'İki yönlü takvim senkronu' },
-              { id: 'figma',  name: 'Figma',           desc: 'Mesaj ve görevlerde frame önizleme' },
-              { id: 'linear', name: 'Linear',          desc: 'Linear konularını kanban kartlarına bağla' },
-              { id: 'zapier', name: 'Zapier',          desc: 'Otomasyonlar ve zaplar' },
-              { id: 'github', name: 'GitHub',          desc: 'PR önizleme ve commit linkleri' },
-              { id: 'drive',  name: 'Google Drive',    desc: "Drive'dan dosya ekle" },
-            ].map(it => {
-              const key = `integration_${it.id}`;
-              const enabled = !!tweaks[key];
-              return (
-                <div key={it.id} className="integration-row">
-                  <div className="integration-logo">{it.name[0]}</div>
-                  <div className="integration-body">
-                    <div className="integration-name">{it.name}</div>
-                    <div className="integration-desc">{it.desc}</div>
-                  </div>
-                  <button
-                    className="btn btn-ghost"
-                    style={{ fontSize: 12 }}
-                    onClick={() => setTweak(key, !enabled)}
-                  >
-                    {enabled ? '✓ Bağlı' : 'Bağla'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="webhook-block">
-            <div className="webhook-head">
-              <strong>API anahtarı</strong>
-              <span className="webhook-desc">Geliştirici erişimi · 1 token</span>
-            </div>
-            <div className="webhook-row">
-              <code className="webhook-token">sk_live_••••••••••••••••</code>
-              <button
-                className="btn btn-ghost"
-                onClick={() => navigator.clipboard?.writeText('sk_live_demo_token').then(() => window.showToast?.('Kopyalandı', 'success'))}
-              >
-                <Icon name="copy" size={12} /> Kopyala
-              </button>
-              <button className="btn btn-ghost" onClick={() => window.showToast?.('Anahtar yenilendi (mock).', 'success')}>
-                <Icon name="refresh" size={12} /> Yenile
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Billing & Plan ── */}
-      <div className="settings-section" data-nav-id="billing">
-        <div>
-          <h3>Faturalama &amp; Plan</h3>
-          <p className="desc">Plan, kullanım ve ödeme bilgileri.</p>
-        </div>
-        <div className="settings-card settings-panel">
-          <div className="billing-plan-row">
-            <div>
-              <div className="billing-plan-name">Takım planı</div>
-              <div className="billing-plan-sub">Kullanıcı başı $12 / ay · 14 Haz 2026 yenilenir</div>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button className="btn btn-primary" disabled>Yükselt</button>
-              <button className="btn btn-ghost" disabled>Plan değiştir</button>
-            </div>
-          </div>
-          <div className="usage-grid">
-            {[
-              ['Depolama',  '4.2 / 25 GB',  17],
-              ['AI çalıştırmaları', '124 / 500', 25],
-              ['Koltuk',    '5 / 10',       50],
-            ].map(([label, val, pct]) => (
-              <div key={label} className="usage-row">
-                <div className="usage-head">
-                  <span>{label}</span>
-                  <span className="usage-val">{val}</span>
-                </div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="billing-info">
-            <div className="billing-info-row">
-              <span><strong>Ödeme yöntemi</strong></span>
-              <span className="billing-info-val">Visa ···· 4231 · 09/27</span>
-              <button className="btn btn-ghost" disabled>Değiştir</button>
-            </div>
-            <div className="billing-info-row">
-              <span><strong>Fatura e-postası</strong></span>
-              <span className="billing-info-val">{me.email || 'eposta@ornek.com'}</span>
-              <button className="btn btn-ghost" disabled>Düzenle</button>
-            </div>
-            <div className="billing-info-row">
-              <span><strong>Faturalar</strong></span>
-              <span className="billing-info-val">12 fatura · son 14 May</span>
-              <button className="btn btn-ghost" disabled><Icon name="download" size={12} /> Tümünü indir</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* ── Language & Region ── */}
       <div className="settings-section" data-nav-id="language">
         <div>
-          <h3>Dil &amp; Bölge</h3>
+          <h3>{_t('set_language','Dil & Bölge')}</h3>
           <p className="desc">Yerel ayarlar.</p>
         </div>
         <div className="settings-card settings-panel">
           <div className="tweak-group">
             <div className="tweak-label">Arayüz dili</div>
             <div className="tweak-options">
-              {[['tr', 'Türkçe'], ['en', 'English'], ['de', 'Deutsch']].map(([k, l]) => (
-                <button key={k} className="tweak-opt" data-active={(tweaks.locale || 'tr') === k} onClick={() => setTweak('locale', k)}>
+              {[['tr', 'Türkçe'], ['en', 'English'], ['de', 'Deutsch'], ['es', 'Español'], ['ru', 'Русский']].map(([k, l]) => (
+                <button key={k} className="tweak-opt" data-active={(tweaks.locale || 'tr') === k} onClick={() => { setTweak('locale', k); localStorage.setItem('stoa.lang', k); }}>
                   {l}
                 </button>
               ))}
@@ -1665,20 +1563,46 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           )}
           {isOwner && (
             <>
-              <button
-                className="btn btn-ghost"
-                style={{ justifyContent:'flex-start', color:'var(--status-rose)', borderColor:'oklch(58% 0.13 10 / 0.3)' }}
-                onClick={() => window.showToast?.('Arşivleme yakında — mock.', 'info')}
-              >
-                <Icon name="archive" size={14} /> Çalışma alanını arşivle
-              </button>
-              <button
-                className="btn btn-ghost"
-                style={{ justifyContent:'flex-start', color:'var(--status-rose)', borderColor:'oklch(58% 0.13 10 / 0.3)' }}
-                onClick={() => window.showToast?.('Sahiplik aktarımı yakında — mock.', 'info')}
-              >
-                <Icon name="userPlus" size={14} /> Sahipliği aktar
-              </button>
+              {!transferOpen ? (
+                <button
+                  className="btn btn-ghost"
+                  style={{ justifyContent:'flex-start', color:'var(--status-rose)', borderColor:'oklch(58% 0.13 10 / 0.3)' }}
+                  onClick={() => { setTransferOpen(true); setTransferSlug(''); setTransferError(''); }}
+                >
+                  <Icon name="userPlus" size={14} /> Sahipliği aktar
+                </button>
+              ) : (
+                <div className="danger-confirm">
+                  <div>
+                    <strong>Sahipliği başka bir üyeye aktar.</strong>
+                    <p>Bu işlemden sonra sahip yetkilerinizi kaybedersiniz. Geri alınamaz.</p>
+                  </div>
+                  <select
+                    value={transferSlug}
+                    onChange={e => setTransferSlug(e.target.value)}
+                    style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--line)', background:'var(--bg)', color:'var(--ink)', fontSize:13 }}
+                  >
+                    <option value="">— Üye seçin —</option>
+                    {members.filter(m => m.id !== window.CURRENT_USER?.id).map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                  {transferError && <div className="inline-error">{transferError}</div>}
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                    <button className="btn btn-ghost" onClick={() => { setTransferOpen(false); setTransferError(''); }} disabled={transferBusy}>
+                      İptal
+                    </button>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ color:'var(--status-rose)', borderColor:'oklch(58% 0.13 10 / 0.35)' }}
+                      onClick={transferOwnership}
+                      disabled={transferBusy || !transferSlug}
+                    >
+                      <Icon name="userPlus" size={14} /> {transferBusy ? 'Aktarılıyor…' : 'Sahipliği aktar'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
           {!deleteOpen ? (
