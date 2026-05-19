@@ -1,28 +1,42 @@
 // Notifications panel — API-backed
 
+function _parseNotifType(text) {
+  try { const d = JSON.parse(text); if (d?.type) return d.type; } catch (_) {}
+  return null;
+}
+
 function _notifType(text) {
-  if (!text) return 'info';
-  const t = text.toLowerCase();
-  if (/mesaj gönderdi|gönderdi:/.test(t)) return 'message';
-  if (/atadı|görev|atand/.test(t)) return 'task';
-  if (/@/.test(t)) return 'mention';
+  const t = _parseNotifType(text);
+  if (t) return t;
+  const low = (text || '').toLowerCase();
+  if (/mesaj gönderdi|gönderdi:|dm_received/.test(low)) return 'dm_received';
+  if (/atadı|görev|atand|task_assigned/.test(low)) return 'task_assigned';
+  if (/@|mention/.test(low)) return 'mention';
   return 'info';
 }
 
 function _notifIcon(type) {
-  return { message: 'msg', task: 'circleCheck', mention: 'at', calendar: 'calendar', info: 'bell' }[type] || 'bell';
+  return {
+    dm_received: 'msg', message: 'msg',
+    task_assigned: 'circleCheck', task: 'circleCheck',
+    mention: 'at', comment_added: 'msg',
+    join_request: 'bell', join_approved: 'bell', join_rejected: 'bell',
+    channel_added: 'msg', calendar: 'calendar', info: 'bell',
+  }[type] || 'bell';
 }
 
 function _notifCategory(n) {
-  // Returns one of: 'mention' | 'message' | 'task' | 'calendar' | 'other'
-  if (n.type) {
-    if (['mention','message','task','calendar'].includes(n.type)) return n.type;
+  const structured = _parseNotifType(n.text);
+  if (structured) {
+    if (['mention'].includes(structured)) return 'mention';
+    if (['dm_received', 'channel_added'].includes(structured)) return 'message';
+    if (['task_assigned', 'comment_added'].includes(structured)) return 'task';
+    return 'other';
   }
   const t = (n.text || '').toLowerCase();
+  if (n.chat_channel || n.sender_slug) return 'message';
+  if (n.task_id) return 'task';
   if (/@/.test(t)) return 'mention';
-  if (n.chat_channel || n.sender_slug || /mesaj/.test(t)) return 'message';
-  if (n.task_id || /görev|atandı|atadı/.test(t)) return 'task';
-  if (/takvim|hatırlat|toplantı|etkinlik/.test(t)) return 'calendar';
   return 'other';
 }
 
@@ -126,12 +140,12 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
   const unreadCount = counts.unread || 0;
 
   const tabs = [
-    { id: 'all',      label: 'Tümü',       count: counts.all || 0 },
-    { id: 'unread',   label: 'Okunmamış',  count: counts.unread || 0 },
-    { id: 'mention',  label: 'Bahsetmeler', count: counts.mention || 0 },
-    { id: 'message',  label: 'Mesajlar',   count: counts.message || 0 },
-    { id: 'task',     label: 'Görevler',   count: counts.task || 0 },
-    { id: 'calendar', label: 'Takvim',     count: counts.calendar || 0 },
+    { id: 'all',      label: window.t('notif_tab_all'),      count: counts.all || 0 },
+    { id: 'unread',   label: window.t('notif_tab_unread'),   count: counts.unread || 0 },
+    { id: 'mention',  label: window.t('notif_tab_mention'),  count: counts.mention || 0 },
+    { id: 'message',  label: window.t('notif_tab_message'),  count: counts.message || 0 },
+    { id: 'task',     label: window.t('notif_tab_task'),     count: counts.task || 0 },
+    { id: 'calendar', label: window.t('notif_tab_calendar'), count: counts.calendar || 0 },
   ];
 
   // Preferences (reflect tweaks; default ON if undefined)
@@ -148,7 +162,7 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
         data-full-page={!!fullPage}
       >
         <div className="notif-head">
-          <div className="notif-title">Bildirimler</div>
+          <div className="notif-title">{window.t('notif_title')}</div>
           {unreadCount > 0 && <div className="notif-count">{unreadCount}</div>}
           {fullPage && (
             <button
@@ -156,7 +170,7 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
               style={{ marginLeft: 'auto', fontSize: 11.5 }}
               onClick={markAllRead}
             >
-              <Icon name="check" size={12} /> Tümünü oku
+              <Icon name="check" size={12} /> {window.t('notif_mark_all_read')}
             </button>
           )}
         </div>
@@ -172,7 +186,7 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
         <div className="notif-list">
           {filtered.length === 0 && (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-muted)', fontSize: 13 }}>
-              <Icon name="check" size={20} /><br />Hepsi bu kadar.
+              <Icon name="check" size={20} /><br />{window.t('notif_empty')}
             </div>
           )}
           {filtered.map(n => {
@@ -189,8 +203,8 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
                   <Icon name={_notifIcon(type)} size={13} />
                 </div>
                 <div className="notif-body">
-                  <div className="notif-text" dangerouslySetInnerHTML={{ __html: n.text }} />
-                  <div className="notif-time">{n.time}</div>
+                  <div className="notif-text" dangerouslySetInnerHTML={{ __html: renderNotifText(n.text) }} />
+                  <div className="notif-time">{fmtTimeAgo(n.time)}</div>
                 </div>
                 {(n.task_id || n.sender_slug) && (
                   <Icon name="arrowRight" size={11} style={{ color: 'var(--ink-faint)', flexShrink: 0, marginRight: 24 }} />
@@ -198,7 +212,7 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
                 <button
                   className="notif-dismiss"
                   onClick={(e) => dismiss(e, n.id)}
-                  title="Kaldır"
+                  title={window.t('notif_dismiss')}
                 >
                   <Icon name="x" size={12} />
                 </button>
@@ -215,26 +229,26 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
             aria-expanded={prefsOpen}
           >
             <Icon name="settings" size={12} />
-            <span>Tercihler</span>
+            <span>{window.t('notif_prefs')}</span>
             <Icon name={prefsOpen ? 'chevronUp' : 'chevronDown'} size={11} style={{ marginLeft: 'auto' }} />
           </button>
           {prefsOpen && (
             <div className="notif-prefs-body">
               <NotifPrefRow
-                label="Bildirim sesi"
-                desc="Yeni mesaj/bildirim sesi"
+                label={window.t('notif_pref_sound')}
+                desc={window.t('notif_pref_sound_desc')}
                 checked={v('soundEnabled', true)}
                 onChange={(b) => updatePref('soundEnabled', b)}
               />
               <NotifPrefRow
-                label="Rahatsız etme"
-                desc="Sesler ve push'lar susturulur"
+                label={window.t('notif_pref_dnd')}
+                desc={window.t('notif_pref_dnd_desc')}
                 checked={v('dndEnabled', false)}
                 onChange={(b) => updatePref('dndEnabled', b)}
               />
               {v('dndEnabled', false) && (
                 <div className="notif-pref-schedule">
-                  <span>Saat:</span>
+                  <span>{window.t('notif_pref_dnd_time')}</span>
                   <input
                     type="time"
                     value={T.dndStart || '19:00'}
@@ -249,21 +263,21 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
                 </div>
               )}
               <NotifPrefRow
-                label="Masaüstü bildirimleri"
-                desc="Tarayıcı push"
+                label={window.t('notif_pref_desktop')}
+                desc={window.t('notif_pref_desktop_desc')}
                 checked={v('desktopPush', true)}
                 onChange={(b) => updatePref('desktopPush', b)}
               />
               <NotifPrefRow
-                label="Takımlar arası DM'ler"
-                desc="DM'ler her zaman gelir"
+                label={window.t('notif_pref_cross_dm')}
+                desc={window.t('notif_pref_cross_dm_desc')}
                 checked={v('crossTeamDM', true)}
                 onChange={(b) => updatePref('crossTeamDM', b)}
               />
 
               <div className="notif-prefs-foot">
                 <button onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('stoa:gotoSettings', { detail: { section: 'notifications' } })); }}>
-                  Tüm ayarlar →
+                  {window.t('notif_all_settings')} →
                 </button>
               </div>
             </div>
@@ -273,24 +287,24 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
         <div style={{ padding: '10px 14px', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', fontSize: 12, gap: 8 }}>
           {confirmDel ? (
             <>
-              <span style={{ color: 'var(--ink-muted)' }}>Silinsin mi?</span>
-              <button style={{ color: 'var(--status-rose)', fontWeight: 600 }} onClick={deleteAll}>Evet</button>
-              <button style={{ color: 'var(--ink-muted)' }} onClick={() => setConfirmDel(false)}>Hayır</button>
+              <span style={{ color: 'var(--ink-muted)' }}>{window.t('notif_confirm_delete')}</span>
+              <button style={{ color: 'var(--status-rose)', fontWeight: 600 }} onClick={deleteAll}>{window.t('notif_yes')}</button>
+              <button style={{ color: 'var(--ink-muted)' }} onClick={() => setConfirmDel(false)}>{window.t('notif_no')}</button>
             </>
           ) : (
             <>
               <button style={{ color: 'var(--ink-muted)' }} onClick={markAllRead}>
-                Tümünü oku
+                {window.t('notif_mark_all_read')}
               </button>
               {filtered.length > 0 && (
                 <button style={{ color: 'var(--status-rose)' }} onClick={() => setConfirmDel(true)}>
-                  Tümünü sil
+                  {window.t('notif_delete_all')}
                 </button>
               )}
             </>
           )}
           <button style={{ marginLeft: 'auto', color: 'var(--ink-muted)' }} onClick={onClose}>
-            Kapat <Icon name="arrowRight" size={11} />
+            {window.t('notif_close')} <Icon name="arrowRight" size={11} />
           </button>
         </div>
       </div>

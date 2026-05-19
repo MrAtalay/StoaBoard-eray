@@ -35,8 +35,11 @@ function DatePicker({ value, onChange, error }) {
     setOpen(o => !o);
   };
 
-  const TR_MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  const TR_DAYS = ['Pt','Sa','Ça','Pe','Cu','Ct','Pa'];
+  const lang = localStorage.getItem('stoa.lang') || 'tr';
+  const TR_MONTHS = lang === 'en'
+    ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    : ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const TR_DAYS = lang === 'en' ? ['Mo','Tu','We','Th','Fr','Sa','Su'] : ['Pt','Sa','Ça','Pe','Cu','Ct','Pa'];
 
   const getDays = () => {
     const first = new Date(viewYear, viewMonth, 1);
@@ -65,7 +68,7 @@ function DatePicker({ value, onChange, error }) {
   const nextMonth  = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y+1); } else setViewMonth(m => m+1); };
   const displayVal = parsed
     ? `${String(parsed.getDate()).padStart(2,'0')}.${String(parsed.getMonth()+1).padStart(2,'0')}.${parsed.getFullYear()}`
-    : 'Tarih seç';
+    : (window.t?.('modal_date_pick') || 'Tarih seç');
 
   const calendarContent = (
     <div ref={menuRef} style={isMobile ? {
@@ -112,7 +115,7 @@ function DatePicker({ value, onChange, error }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
         <button type="button" onClick={() => { onChange(''); setOpen(false); }}
           style={{ fontSize: 12, color: 'var(--ink-muted)', padding: '2px 6px', borderRadius: 5 }}>
-          Temizle
+          {window.t?.('modal_date_clear') || 'Temizle'}
         </button>
         <button type="button" onClick={() => {
           const t = new Date();
@@ -120,7 +123,7 @@ function DatePicker({ value, onChange, error }) {
           onChange(`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`);
           setOpen(false);
         }} style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, padding: '2px 6px', borderRadius: 5 }}>
-          Bugün
+          {window.t?.('cal_today') || 'Bugün'}
         </button>
       </div>
     </div>
@@ -236,7 +239,7 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
       });
       onClose();
     } catch (e) {
-      window.showToast?.('Görev oluşturulamadı: ' + e.message, 'error');
+      window.showToast?.(window.t('app_err_create_task') + e.message, 'error');
     } finally {
       setBusy(false);
     }
@@ -248,31 +251,31 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
     <div className="modal-overlay" data-open={open} onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} onKeyDown={handleKey}>
         <div className="modal-head">
-          <div className="modal-title">Yeni görev</div>
-          <div className="modal-sub">Atama, etiket ve son tarihi sonradan da düzenleyebilirsin.</div>
+          <div className="modal-title">{window.t('modal_new_task')}</div>
+          <div className="modal-sub">{window.t('modal_new_task_sub')}</div>
         </div>
         <div className="modal-body">
           <div className="field">
-            <label>Başlık {titleError && <span style={{ color: 'var(--status-rose)', fontWeight: 400, fontSize: 11 }}>— başlık gerekli</span>}</label>
+            <label>{window.t('modal_title_label')} {titleError && <span style={{ color: 'var(--status-rose)', fontWeight: 400, fontSize: 11 }}>— {window.t('modal_title_required')}</span>}</label>
             <input
               autoFocus
-              placeholder="Ne yapılacak?"
+              placeholder={window.t('modal_title_placeholder')}
               value={title}
               onChange={(e) => { setTitle(e.target.value); if (e.target.value.trim()) setTitleError(false); }}
               style={titleError ? { borderColor: 'var(--status-rose)', background: 'oklch(58% 0.13 10 / 0.05)' } : {}}
             />
           </div>
           <div className="field">
-            <label>Açıklama</label>
-            <textarea rows={3} placeholder="Daha fazla bağlam ekle..." value={desc} onChange={(e) => setDesc(e.target.value)} />
+            <label>{window.t('modal_desc_label')}</label>
+            <textarea rows={3} placeholder={window.t('modal_desc_placeholder')} value={desc} onChange={(e) => setDesc(e.target.value)} />
           </div>
           <div className="field-row">
             <div className="field">
-              <label>Kolon</label>
+              <label>{window.t('modal_col_label')}</label>
               <div className="custom-dropdown">
                 <button ref={colBtnRef} type="button" className="custom-dropdown-btn"
                   onClick={() => openDropdown(colBtnRef, setColPos, setColOpen)}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{DATA.COLUMNS.find(c => c.id === col)?.title_tr || 'Seç'}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{DATA.COLUMNS.find(c => c.id === col)?.title_tr || window.t('modal_select')}</span>
                   <Icon name="chevronDown" size={12} />
                 </button>
                 {colOpen && ReactDOM.createPortal(
@@ -292,17 +295,17 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
               </div>
             </div>
             <div className="field">
-              <label>Öncelik</label>
+              <label>{window.t('modal_priority_label')}</label>
               <div className="custom-dropdown">
                 <button ref={priBtnRef} type="button" className="custom-dropdown-btn"
                   onClick={() => openDropdown(priBtnRef, setPriPos, setPriorityOpen)}>
-                  <span>{priority === 'high' ? 'Yüksek' : priority === 'mid' ? 'Orta' : 'Düşük'}</span>
+                  <span>{priority === 'high' ? window.t('board_priority_high') : priority === 'mid' ? window.t('board_priority_mid') : window.t('board_priority_low')}</span>
                   <Icon name="chevronDown" size={12} />
                 </button>
                 {priorityOpen && ReactDOM.createPortal(
                   <div ref={priMenuRef} className="custom-dropdown-menu"
                     style={{ position: 'fixed', top: priPos.top, left: priPos.left, minWidth: priPos.width, zIndex: 9999 }}>
-                    {[{id:'high',label:'Yüksek'},{id:'mid',label:'Orta'},{id:'low',label:'Düşük'}].map(item => (
+                    {[{id:'high',label:window.t('board_priority_high')},{id:'mid',label:window.t('board_priority_mid')},{id:'low',label:window.t('board_priority_low')}].map(item => (
                       <button key={item.id} type="button"
                         className={`custom-dropdown-item${item.id === priority ? ' active' : ''}`}
                         onClick={() => { setPriority(item.id); setPriorityOpen(false); }}>
@@ -317,11 +320,11 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
           </div>
           <div className="field-row">
             <div className="field">
-              <label>Başlangıç {startError && <span style={{ color: 'var(--status-rose)', fontWeight: 400, fontSize: 11 }}>— gerekli</span>}</label>
+              <label>{window.t('modal_start_label')} {startError && <span style={{ color: 'var(--status-rose)', fontWeight: 400, fontSize: 11 }}>— {window.t('modal_required')}</span>}</label>
               <DatePicker value={startDate} onChange={(v) => { setStartDate(v); setStartError(false); }} error={startError} />
             </div>
             <div className="field">
-              <label>Bitiş {dueError && <span style={{ color: 'var(--status-rose)', fontWeight: 400, fontSize: 11 }}>— gerekli</span>}</label>
+              <label>{window.t('modal_due_label')} {dueError && <span style={{ color: 'var(--status-rose)', fontWeight: 400, fontSize: 11 }}>— {window.t('modal_required')}</span>}</label>
               <DatePicker value={due} onChange={(v) => { setDue(v); setDueError(false); }} error={dueError} />
             </div>
           </div>
@@ -330,7 +333,7 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
               <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', userSelect:'none' }}
                 onClick={() => setShowPerAssignee(s => !s)}>
                 <Icon name={showPerAssignee ? 'chevronDown' : 'chevronRight'} size={11} />
-                Kişi bazlı tarihler
+                {window.t('modal_per_assignee_dates')}
               </label>
               {showPerAssignee && (
                 <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:8 }}>
@@ -358,7 +361,7 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
             </div>
           )}
           <div className="field">
-            <label>Etiketler</label>
+            <label>{window.t('modal_labels_label')}</label>
             <div className="chips">
               {Object.entries(DATA.LABELS).map(([k, l]) => (
                 <div key={k} className="chip" data-selected={labels.includes(k)} onClick={() => toggleLabel(k)}>
@@ -369,7 +372,7 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
             </div>
           </div>
           <div className="field">
-            <label>Atanan</label>
+            <label>{window.t('modal_assignee_label')}</label>
             <div className="chips">
               {DATA.MEMBERS.map(m => (
                 <div key={m.id} className="chip" data-selected={assignees.includes(m.id)} onClick={() => toggleAssignee(m.id)}>
@@ -381,9 +384,9 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
           </div>
         </div>
         <div className="modal-foot">
-          <button className="btn btn-ghost" onClick={onClose}>İptal</button>
+          <button className="btn btn-ghost" onClick={onClose}>{window.t('app_cancel')}</button>
           <button className="btn btn-primary" onClick={submit} disabled={busy}>
-            <Icon name="plus" size={13} /> {busy ? 'Oluşturuluyor…' : 'Görevi oluştur'}
+            <Icon name="plus" size={13} /> {busy ? window.t('app_creating') : window.t('modal_create_task')}
           </button>
         </div>
       </div>

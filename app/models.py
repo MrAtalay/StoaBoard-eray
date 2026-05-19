@@ -8,21 +8,6 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _time_ago(dt):
-    if dt is None:
-        return ''
-    diff = _now() - dt
-    seconds = int(diff.total_seconds())
-    if seconds < 60:
-        return 'az önce'
-    if seconds < 3600:
-        return f'{seconds // 60} dk önce'
-    if seconds < 86400:
-        return f'{seconds // 3600} saat önce'
-    if seconds < 172800:
-        return 'dün'
-    return f'{seconds // 86400} gün önce'
-
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -323,7 +308,7 @@ class Comment(db.Model):
         return {
             'id': self.id,
             'author': self.user.slug if self.user else 'unknown',
-            'time': _time_ago(self.created_at),
+            'time': self.created_at.isoformat() if self.created_at else '',
             'text': self.text,
         }
 
@@ -346,7 +331,7 @@ class Notification(db.Model):
         return {
             'id': str(self.id),
             'unread': not self.read,
-            'time': _time_ago(self.created_at),
+            'time': self.created_at.isoformat() if self.created_at else '',
             'text': self.text,
             'task_id': self.task_id,
             'sender_slug': self.sender_slug,
@@ -367,10 +352,10 @@ class ActivityLog(db.Model):
     user = db.relationship('User')
 
     def to_dict(self):
-        who = self.user.name.split()[0] if self.user else 'Kullanıcı'
+        who = self.user.name.split()[0] if self.user else ''
         return {
             'who': who,
-            'time': _time_ago(self.created_at),
+            'time': self.created_at.isoformat() if self.created_at else '',
             'text': self.text,
         }
 
@@ -403,7 +388,7 @@ class WorkspaceJoinRequest(db.Model):
             'id': self.id,
             'user': self.user.to_dict() if self.user else None,
             'status': self.status,
-            'time': _time_ago(self.created_at),
+            'time': self.created_at.isoformat() if self.created_at else '',
         }
 
 
@@ -527,7 +512,7 @@ class Note(db.Model):
             collab_slugs = [u.slug for u in users]
         d = {
             'id': self.id,
-            'title': self.title or 'Başlıksız Not',
+            'title': self.title or '',
             'labels': self.labels or [],
             'visibility': self.visibility or 'private',
             'status': self.status or 'draft',
@@ -539,7 +524,7 @@ class Note(db.Model):
             'workspace_id': self.workspace_id,
             'created_at': self.created_at.isoformat() if self.created_at else '',
             'updated_at': self.updated_at.isoformat() if self.updated_at else '',
-            'updated_ago': _time_ago(self.updated_at),
+            'updated_ago': self.updated_at.isoformat() if self.updated_at else '',
         }
         if include_body:
             d['body'] = self.body or ''

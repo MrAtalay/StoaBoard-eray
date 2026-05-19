@@ -38,6 +38,7 @@ function App() {
   const [tasks, setTasks]                   = useS([]);
   const [currentProject, setCurrentProject] = useS(null);
   const [drawerTask, setDrawerTask]         = useS(null);
+  const [taskPageTask, setTaskPageTask]     = useS(null);
   const [modalOpen, setModalOpen]           = useS(false);
   const [modalCol, setModalCol]             = useS('todo');
   const [modalInitialDates, setModalInitialDates] = useS(null);
@@ -243,11 +244,11 @@ function App() {
       }).catch(() => {});
     });
     sock.on('join_request_approved', ({ workspace_id }) => {
-      window.showToast?.('Takıma katılım isteğiniz onaylandı!', 'success');
+      window.showToast?.(window.t('app_join_approved'), 'success');
       handleSwitchWorkspace(workspace_id);
     });
     sock.on('join_request_rejected', () => {
-      window.showToast?.('Takıma katılım isteğiniz reddedildi.', 'error');
+      window.showToast?.(window.t('app_join_rejected'), 'error');
     });
     sock.on('member_role_changed', (updatedMember) => {
       setMembers(prev => {
@@ -446,14 +447,14 @@ function App() {
 
   function messageToastPayload(msg, sender) {
     const MAX_LEN = 80;
-    const raw = msg.text || msg.file_name || 'Dosya';
+    const raw = msg.text || msg.file_name || window.t('app_msg_file');
     const truncated = raw.length > MAX_LEN;
     return {
       message: truncated ? raw.slice(0, MAX_LEN) + '…' : raw,
       meta: {
-        sender: sender?.name || msg.from || 'Yeni mesaj',
+        sender: sender?.name || msg.from || window.t('app_msg_new_message'),
         senderId: sender?.id || msg.from,
-        channel: msg.to ? 'Direkt mesaj' : 'Genel kanal',
+        channel: msg.to ? window.t('app_msg_direct') : window.t('app_msg_general'),
         time: msg.time || new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
         truncated,
         dmWith: msg.to ? (typeof msg.from === 'string' ? msg.from : null) : null,
@@ -518,7 +519,7 @@ function App() {
         if (data.workspaces)   setWorkspaces(data.workspaces);
         setNeedsWorkspace(false);
       })
-      .catch((e) => window.showToast?.('Veriler yüklenemedi: ' + e.message, 'error'));
+      .catch((e) => window.showToast?.(window.t('app_err_load') + e.message, 'error'));
   };
 
   // ── Workspace switching ───────────────────────────────────────────────────
@@ -534,7 +535,7 @@ function App() {
       if (data.online_users) _applyOnlineUsers(data.online_users);
       if (data.workspaces)   setWorkspaces(data.workspaces);
       setWsSwitcherOpen(false);
-    } catch (e) { window.showToast?.('Çalışma alanı değiştirilemedi: ' + e.message, 'error'); }
+    } catch (e) { window.showToast?.(window.t('app_err_switch_ws') + e.message, 'error'); }
   };
 
   const handleWsLogoChange = (logoUrl) => {
@@ -571,7 +572,7 @@ function App() {
     try {
       const created = await API.createTask(projectId, formData);
       setTasks(prev => [created, ...prev]);
-    } catch (e) { window.showToast?.('Görev oluşturulamadı: ' + e.message, 'error'); }
+    } catch (e) { window.showToast?.(window.t('app_err_create_task') + e.message, 'error'); }
   };
 
   const deleteTask = async (id) => {
@@ -609,7 +610,7 @@ function App() {
       window.DATA.PROJECTS = [...(window.DATA.PROJECTS || []), p];
       await switchProject(p.id);
       setProjectModal(false);
-    } catch (e) { window.showToast?.('Proje oluşturulamadı: ' + e.message, 'error'); }
+    } catch (e) { window.showToast?.(window.t('app_err_create_project') + e.message, 'error'); }
   };
 
   const openChat = (dmWithSlug, msgId) => {
@@ -686,7 +687,7 @@ function App() {
           }
         } catch (_) {}
       })
-      .catch((e) => window.showToast?.('Veri yüklenemedi: ' + e.message, 'error'));
+      .catch((e) => window.showToast?.(window.t('app_err_load') + e.message, 'error'));
   };
 
   const handleLogout = async () => {
@@ -702,6 +703,8 @@ function App() {
 
   const openDrawer = (task) => setDrawerTask(task);
   const closeDrawer = () => setDrawerTask(null);
+  const openTaskPage = (task) => { setTaskPageTask(task); setDrawerTask(null); };
+  const closeTaskPage = () => setTaskPageTask(null);
   const openModal = (colId, dates = null) => {
     if (!canManageTasks) return;
     setModalCol(colId || 'todo');
@@ -823,7 +826,7 @@ function App() {
           <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16, color:'var(--ink-muted)' }}>
             <Icon name="layoutBoard" size={48} strokeWidth={1} />
             <div style={{ fontSize:22, fontFamily:'var(--font-display)', color:'var(--ink)' }}>{window.t('nav_no_projects')}</div>
-            <div style={{ fontSize:14 }}>İlk projenizi oluşturun.</div>
+            <div style={{ fontSize:14 }}>{window.t('app_first_project')}</div>
             {canManageProjects && (
               <button className="btn btn-primary" onClick={() => setProjectModal(true)}>
                 <Icon name="plus" size={14} /> {window.t('nav_new_project')}
@@ -832,7 +835,23 @@ function App() {
           </div>
         ) : (
           <>
-            {view === 'board'     && <BoardView key={currentProject?.id || 'default'} tasks={tasks} onOpenTask={openDrawer} onMoveTask={moveTask} onDeleteTask={deleteTask} tweaks={tweaks} onOpenModal={openModal} onTitleChange={updateTitle} canManageTasks={canManageTasks} canManageProjects={canManageProjects} switching={projectSwitching} />}
+            {taskPageTask ? (
+              <TaskDrawer
+                pageMode={true}
+                open={true}
+                task={taskPageTask}
+                onClose={closeTaskPage}
+                onMoveTask={moveTask}
+                onTaskUpdate={(updated) => {
+                  setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t));
+                  setTaskPageTask(prev => prev && prev.id === updated.id ? { ...prev, ...updated } : prev);
+                }}
+                onDelete={(id) => { deleteTask(id); closeTaskPage(); }}
+                onCreateTask={(newTask) => setTasks(prev => [newTask, ...prev])}
+                canManageTasks={canManageTasks}
+              />
+            ) : null}
+            {!taskPageTask && view === 'board'     && <BoardView key={currentProject?.id || 'default'} tasks={tasks} onOpenTask={openDrawer} onMoveTask={moveTask} onDeleteTask={deleteTask} tweaks={tweaks} onOpenModal={openModal} onTitleChange={updateTitle} canManageTasks={canManageTasks} canManageProjects={canManageProjects} switching={projectSwitching} />}
             {view === 'notifications' && (
               <NotifPanel
                 fullPage
@@ -846,8 +865,8 @@ function App() {
                 setTweak={setTweak}
               />
             )}
-            {view === 'calendar'  && <CalendarView tasks={tasks} onOpenTask={openDrawer} onOpenModal={openModal} canCreateTasks={canManageTasks} />}
-            {view === 'dashboard' && <DashboardView tasks={tasks} onOpenTask={openDrawer} onView={setView} />}
+            {!taskPageTask && view === 'calendar'  && <CalendarView tasks={tasks} onOpenTask={openDrawer} onOpenModal={openModal} canCreateTasks={canManageTasks} />}
+            {!taskPageTask && view === 'dashboard' && <DashboardView tasks={tasks} onOpenTask={openDrawer} onView={setView} />}
             {view === 'notes'     && <NotesView
               socket={socket}
               tasks={tasks}
@@ -889,6 +908,7 @@ function App() {
         onDelete={deleteTask}
         onCreateTask={(newTask) => setTasks(prev => [newTask, ...prev])}
         canManageTasks={canManageTasks}
+        onOpenPage={openTaskPage}
       />
       <AddTaskModal open={canManageTasks && modalOpen} onClose={() => { setModalOpen(false); setModalInitialDates(null); }} defaultCol={modalCol} onCreate={createTask} initialDates={modalInitialDates} />
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onAction={handleCmd} />
@@ -989,17 +1009,17 @@ function NewProjectModal({ onClose, onCreate }) {
     <div className="modal-overlay" data-open="true" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
-          <div className="modal-title">Yeni Proje</div>
-          <div className="modal-sub">Projeniz için isim, renk ve ikon seçin.</div>
+          <div className="modal-title">{window.t('app_new_project')}</div>
+          <div className="modal-sub">{window.t('app_new_project_sub')}</div>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
             <div className="field">
-              <label>Proje Adı</label>
-              <input autoFocus placeholder="Örn: Web Sitesi, Mobil Uygulama..." value={name} onChange={e => setName(e.target.value)} />
+              <label>{window.t('app_project_name')}</label>
+              <input autoFocus placeholder={window.t('app_project_name_placeholder')} value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div className="field">
-              <label>Renk</label>
+              <label>{window.t('app_project_color')}</label>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap', padding:'2px 0' }}>
                 {colors.map(([label, val]) => (
                   <button key={val} type="button" title={label} onClick={() => setColor(val)}
@@ -1011,14 +1031,14 @@ function NewProjectModal({ onClose, onCreate }) {
               </div>
             </div>
             <div className="field">
-              <label>İkon</label>
+              <label>{window.t('app_project_icon')}</label>
               <ProjectIconPicker selected={icon} color={color} onChange={setIcon} />
             </div>
           </div>
           <div className="modal-foot">
-            <button type="button" className="btn btn-ghost" onClick={onClose}>İptal</button>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>{window.t('app_cancel')}</button>
             <button type="submit" className="btn btn-primary" disabled={!name.trim() || loading}>
-              {loading ? 'Oluşturuluyor…' : 'Proje Oluştur'}
+              {loading ? window.t('app_creating') : window.t('app_create_project')}
             </button>
           </div>
         </form>
@@ -1063,7 +1083,7 @@ function AddWorkspaceModal({ onClose, onDone, initialCode = '' }) {
         onDone(res.workspace_id);
       }
     } catch (err) {
-      setError(err.message || 'Geçersiz davet kodu');
+      setError(window.t?.('err_' + err.message) || err.message);
       setBusy(false);
     }
   };
@@ -1072,25 +1092,25 @@ function AddWorkspaceModal({ onClose, onDone, initialCode = '' }) {
     <div className="modal-overlay" data-open="true" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
         <div className="modal-head">
-          <div className="modal-title">Takım Ekle</div>
-          <div className="modal-sub">Yeni bir takım kur veya mevcut bir takıma katıl.</div>
+          <div className="modal-title">{window.t('app_add_workspace')}</div>
+          <div className="modal-sub">{window.t('app_add_workspace_sub')}</div>
         </div>
         <div className="modal-body" style={{ paddingTop: 0 }}>
           {pending ? (
             <div style={{ textAlign: 'center', padding: '24px 0' }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>İstek Gönderildi</div>
+              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{window.t('app_request_sent')}</div>
               <div style={{ fontSize: 13, color: 'var(--ink-muted)', marginBottom: 20, lineHeight: 1.5 }}>
-                Katılım isteğiniz takım sahibine iletildi.<br />
-                Onaylandığında otomatik olarak ekleneceğiz.
+                {window.t('app_request_sent_desc')}<br />
+                {window.t('app_request_sent_auto')}
               </div>
-              <button className="btn btn-primary" onClick={onClose}>Tamam</button>
+              <button className="btn btn-primary" onClick={onClose}>{window.t('app_ok')}</button>
             </div>
           ) : (
             <>
               <div className="modal-tabs" style={{ marginBottom: 20 }}>
-                <button className="modal-tab-btn" data-active={tab === 'create'} onClick={() => { setTab('create'); setError(''); }}>Takım Kur</button>
-                <button className="modal-tab-btn" data-active={tab === 'join'}   onClick={() => { setTab('join');   setError(''); }}>Takıma Katıl</button>
+                <button className="modal-tab-btn" data-active={tab === 'create'} onClick={() => { setTab('create'); setError(''); }}>{window.t('app_tab_create_ws')}</button>
+                <button className="modal-tab-btn" data-active={tab === 'join'}   onClick={() => { setTab('join');   setError(''); }}>{window.t('app_tab_join_ws')}</button>
               </div>
               {error && (
                 <div style={{ padding:'8px 12px', borderRadius:8, background:'oklch(58% 0.13 10 / 0.12)', color:'var(--status-rose)', fontSize:12, marginBottom:12 }}>
@@ -1100,27 +1120,27 @@ function AddWorkspaceModal({ onClose, onDone, initialCode = '' }) {
               {tab === 'create' ? (
                 <form onSubmit={handleCreate}>
                   <div className="field">
-                    <label>Takım Adı</label>
-                    <input autoFocus placeholder="Örn: Yeni Proje, Kişisel…" value={wsName} onChange={e => setWsName(e.target.value)} required />
+                    <label>{window.t('app_ws_name')}</label>
+                    <input autoFocus placeholder={window.t('app_ws_name_placeholder')} value={wsName} onChange={e => setWsName(e.target.value)} required />
                   </div>
                   <div className="modal-foot">
-                    <button type="button" className="btn btn-ghost" onClick={onClose}>İptal</button>
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>{window.t('app_cancel')}</button>
                     <button type="submit" className="btn btn-primary" disabled={busy || !wsName.trim()}>
-                      {busy ? 'Oluşturuluyor…' : 'Takımı Kur'}
+                      {busy ? window.t('app_creating') : window.t('app_create_ws')}
                     </button>
                   </div>
                 </form>
               ) : (
                 <form onSubmit={handleJoin}>
                   <div className="field">
-                    <label>Davet Kodu</label>
+                    <label>{window.t('app_invite_code')}</label>
                     <input autoFocus placeholder="ABCD1234" value={code} onChange={e => setCode(e.target.value.toUpperCase())} maxLength={8}
                       style={{ fontFamily:'var(--font-mono)', letterSpacing:'0.1em', fontSize:18, textAlign:'center' }} required />
                   </div>
                   <div className="modal-foot">
-                    <button type="button" className="btn btn-ghost" onClick={onClose}>İptal</button>
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>{window.t('app_cancel')}</button>
                     <button type="submit" className="btn btn-primary" disabled={busy || code.length < 6}>
-                      {busy ? 'Gönderiliyor…' : 'Katılım İsteği Gönder'}
+                      {busy ? window.t('app_sending') : window.t('app_send_join_request')}
                     </button>
                   </div>
                 </form>

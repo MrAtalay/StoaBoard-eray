@@ -55,7 +55,7 @@ function ToastContainer() {
               </div>
               <div className="toast-msg-text">
                 {toast.message}
-                {toast.meta.truncated && <span className="toast-see-more"> devamını gör →</span>}
+                {toast.meta.truncated && <span className="toast-see-more"> {window.t?.('shell_see_more')||'devamını gör'} →</span>}
               </div>
             </>
           ) : (
@@ -151,7 +151,7 @@ function Sidebar({
           className="sidebar-logo"
           onClick={collapsed ? onCollapseToggle : undefined}
           style={collapsed ? { cursor: 'pointer' } : undefined}
-          title={collapsed ? 'Genişlet' : undefined}
+          title={collapsed ? (window.t?.('shell_expand')||'Genişlet') : undefined}
         >
           <img src="/static/StoaBoard_symbol.png" width={18} height={18}
             style={{ objectFit: 'contain', filter: 'brightness(0) invert(1)', display: 'block' }}
@@ -159,7 +159,7 @@ function Sidebar({
           />
         </div>
         <div className="sidebar-logo-text">Stoa<em>Board</em></div>
-        <button className="sidebar-collapse-btn" onClick={onCollapseToggle} title={collapsed ? 'Genişlet' : 'Daralt'}>
+        <button className="sidebar-collapse-btn" onClick={onCollapseToggle} title={collapsed ? (window.t?.('shell_expand')||'Genişlet') : (window.t?.('shell_collapse')||'Daralt')}>
           <Icon name={collapsed ? 'chevronsRight' : 'chevronsLeft'} size={14} />
         </button>
       </div>
@@ -178,7 +178,7 @@ function Sidebar({
           </div>
           <div className="ws-info">
             <div className="ws-name">{DATA.WORKSPACE?.name || 'StoaBoard'}</div>
-            <div className="ws-sub">{DATA.MEMBERS.length} üye</div>
+            <div className="ws-sub">{DATA.MEMBERS.length} {window.t?.('shell_members') || 'üye'}</div>
           </div>
           <div className="ws-arrow">
             <Icon name={wsSwitcherOpen ? 'chevronUp' : 'chevronDown'} size={14} />
@@ -194,7 +194,7 @@ function Sidebar({
             overflow: 'hidden',
           }}>
             <div style={{ padding: '6px 10px 4px', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ink-faint)' }}>
-              Çalışma Alanları
+              {window.t?.('shell_workspaces')||'Çalışma Alanları'}
             </div>
             {(workspaces || []).map(ws => (
               <div key={ws.id}
@@ -234,7 +234,7 @@ function Sidebar({
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-dim)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
-                <Icon name="plus" size={13} /> Yeni Takım Oluştur / Katıl
+                <Icon name="plus" size={13} /> {window.t?.('shell_new_team')||'Yeni Takım Oluştur / Katıl'}
               </div>
             </div>
           </div>
@@ -243,7 +243,7 @@ function Sidebar({
 
       <div className="sidebar-search" onClick={openCmd}>
         <Icon name="search" size={14} />
-        <span className="sidebar-label">Ara veya komut...</span>
+        <span className="sidebar-label">{window.t?.('shell_search') || 'Ara veya komut...'}</span>
         <kbd className="sidebar-label">⌘K</kbd>
       </div>
 
@@ -345,9 +345,9 @@ function StatusProfileWidget({ me, myStatus, onStatusChange, collapsed }) {
   const popupRef = React.useRef(null);
 
   const statusOptions = [
-    { key: 'online', label: 'Çevrimiçi',      color: 'var(--status-green)' },
-    { key: 'away',   label: 'Uzakta',          color: 'oklch(75% 0.14 75)' },
-    { key: 'dnd',    label: 'Rahatsız Etme',   color: 'var(--status-rose)' },
+    { key: 'online', label: window.t?.('shell_status_online') || 'Çevrimiçi', color: 'var(--status-green)' },
+    { key: 'away',   label: window.t?.('shell_status_away')   || 'Uzakta',    color: 'oklch(75% 0.14 75)' },
+    { key: 'dnd',    label: window.t?.('shell_status_dnd')    || 'Rahatsız Etme', color: 'var(--status-rose)' },
   ];
   const current = statusOptions.find(s => s.key === myStatus) || statusOptions[0];
 
@@ -457,7 +457,7 @@ function Topbar({ view, onView, openCmd, openNotifs, openModal, activeCrumb, onC
 
   return (
     <div className="topbar">
-      <button className="mobile-menu-btn" onClick={onMobileMenuToggle} title="Menü">
+      <button className="mobile-menu-btn" onClick={onMobileMenuToggle} title={window.t?.('shell_menu')||'Menü'}>
         <Icon name="menu" size={18} />
       </button>
       <div className="topbar-crumbs">
@@ -476,15 +476,15 @@ function Topbar({ view, onView, openCmd, openNotifs, openModal, activeCrumb, onC
         {inviteCode && (
           <div className="topbar-invite" title="Davet kodu">
             <span className="topbar-invite-code">{showCode ? inviteCode : '•'.repeat(inviteCode.length)}</span>
-            <button className="icon-btn topbar-invite-eye" onClick={() => setShowCode(v => !v)} title={showCode ? 'Gizle' : 'Göster'}>
+            <button className="icon-btn topbar-invite-eye" onClick={() => setShowCode(v => !v)} title={showCode ? (window.t?.('shell_hide') || 'Gizle') : (window.t?.('shell_show') || 'Göster')}>
               <Icon name={showCode ? 'eyeOff' : 'eye'} size={13} />
             </button>
-            <button className="icon-btn topbar-invite-eye" onClick={handleCopyCode} title={copied ? 'Kopyalandı!' : 'Kopyala'}>
+            <button className="icon-btn topbar-invite-eye" onClick={handleCopyCode} title={copied ? (window.t?.('shell_copied') || 'Kopyalandı!') : (window.t?.('shell_copy') || 'Kopyala')}>
               <Icon name={copied ? 'check' : 'copy'} size={13} />
             </button>
           </div>
         )}
-        <button className="icon-btn" onClick={openCmd}    title="Komut paleti (⌘K)"><Icon name="search" size={16} /></button>
+        <button className="icon-btn" onClick={openCmd}    title={window.t?.('shell_cmd_title') || 'Komut paleti (⌘K)'}><Icon name="search" size={16} /></button>
         <button
           className="icon-btn"
           onClick={view === 'chat' ? undefined : onChatOpen}

@@ -8,9 +8,9 @@ function FilterBar({ activeLabels, activePriority, activeOverdue, activeMyTasks,
   const labelEntries = Object.entries(DATA.LABELS || {});
   const hasFilters = activeLabels.size > 0 || activePriority !== null || activeOverdue || activeMyTasks;
   const priorities = [
-    { id: 'high', label: 'Yüksek' },
-    { id: 'mid',  label: 'Orta'   },
-    { id: 'low',  label: 'Düşük'  },
+    { id: 'high', label: window.t('board_priority_high') },
+    { id: 'mid',  label: window.t('board_priority_mid')  },
+    { id: 'low',  label: window.t('board_priority_low')  },
   ];
 
   return (
@@ -42,17 +42,17 @@ function FilterBar({ activeLabels, activePriority, activeOverdue, activeMyTasks,
         <div className="filter-bar-divider" />
         <button className="filter-priority-chip" data-active={activeOverdue} onClick={onToggleOverdue}>
           <Icon name="calendar" size={11} />
-          Süresi geçmiş
+          {window.t('board_overdue')}
         </button>
         <div className="filter-bar-divider" />
         <button className="filter-priority-chip" data-active={activeMyTasks} onClick={onToggleMyTasks}>
           <Icon name="user" size={11} />
-          Bana atananlar
+          {window.t('board_my_tasks')}
         </button>
       </div>
       {hasFilters && (
         <button className="filter-clear-btn" onClick={onClear}>
-          <Icon name="x" size={11} /> Temizle
+          <Icon name="x" size={11} /> {window.t('board_clear')}
         </button>
       )}
     </div>
@@ -174,7 +174,7 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
         <div className="priority-pill">
           <span className="priority-dot" data-p={task.priority} />
           <span style={{ color: 'var(--ink-muted)' }}>
-            {task.priority === 'high' ? 'Yüksek' : task.priority === 'mid' ? 'Orta' : 'Düşük'}
+            {task.priority === 'high' ? window.t('board_priority_high') : task.priority === 'mid' ? window.t('board_priority_mid') : window.t('board_priority_low')}
           </span>
         </div>
         {(task.start || task.due) && (
@@ -208,7 +208,7 @@ function Card({ task, onOpen, onDragStart, onDragEnd, dragging, tweaks, onTitleC
       {creator && (
         <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
           <Icon name="user" size={9} />
-          <span>Oluşturan: {creator.name.split(' ')[0]}</span>
+          <span>{window.t('board_created_by')}: {creator.name.split(' ')[0]}</span>
         </div>
       )}
     </div>
@@ -320,9 +320,9 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
         )}
         <span className="col-count">{tasks.length}</span>
         <div className="col-actions">
-          {canManageTasks && <button onClick={() => onOpenModal(col.id)} title="Yeni görev"><Icon name="plus" size={14} /></button>}
+          {canManageTasks && <button onClick={() => onOpenModal(col.id)} title={window.t('board_new_task')}><Icon name="plus" size={14} /></button>}
           <div style={{ position: 'relative' }}>
-            <button ref={moreRef} title="Daha fazla" onClick={() => {
+            <button ref={moreRef} title={window.t('board_more')} onClick={() => {
               if (!menuOpen && moreRef.current) {
                 const r = moreRef.current.getBoundingClientRect();
                 setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
@@ -339,20 +339,20 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
                     <div className="col-menu-divider" />
                     <button className="col-menu-item" onClick={() => { setMenuOpen(false); onToggleDone?.(col); }}>
                       <Icon name={col.is_done ? 'minus' : 'check'} size={13} />
-                      {col.is_done ? 'Bitti işaretini kaldır' : 'Bitti kolonu olarak işaretle'}
+                      {col.is_done ? window.t('board_col_unmark_done') : window.t('board_col_mark_done')}
                     </button>
                     <button className="col-menu-item" onClick={() => { setMenuOpen(false); setRenaming(true); setRenameVal(col.title_tr || col.title || ''); }}>
-                      <Icon name="edit" size={13} /> Yeniden adlandır
+                      <Icon name="edit" size={13} /> {window.t('board_col_rename')}
                     </button>
                     {confirmDelete ? (
                       <div className="col-menu-item col-menu-item-danger" style={{ cursor: 'default', gap: 6 }}>
-                        <span style={{ flex: 1, fontSize: 12, color: 'var(--ink-muted)' }}>Emin misiniz?</span>
-                        <span className="col-menu-confirm-yes" onClick={() => { setConfirmDelete(false); setMenuOpen(false); onDeleteColumn?.(col.db_id, col.id); }}>Sil</span>
-                        <span className="col-menu-confirm-no" onClick={() => setConfirmDelete(false)}>İptal</span>
+                        <span style={{ flex: 1, fontSize: 12, color: 'var(--ink-muted)' }}>{window.t('board_col_confirm_delete')}</span>
+                        <span className="col-menu-confirm-yes" onClick={() => { setConfirmDelete(false); setMenuOpen(false); onDeleteColumn?.(col.db_id, col.id); }}>{window.t('board_col_delete_yes')}</span>
+                        <span className="col-menu-confirm-no" onClick={() => setConfirmDelete(false)}>{window.t('board_col_delete_no')}</span>
                       </div>
                     ) : (
                       <button className="col-menu-item col-menu-item-danger" onClick={() => setConfirmDelete(true)}>
-                        <Icon name="trash" size={13} /> Kolonu sil
+                        <Icon name="trash" size={13} /> {window.t('board_col_delete')}
                       </button>
                     )}
                   </>
@@ -385,7 +385,7 @@ function Column({ col, tasks, onOpenTask, onDropCard, onDragStart, onDragEnd, dr
         ))}
         {canManageTasks && (
           <button className="col-add" onClick={() => onOpenModal(col.id)}>
-            <Icon name="plus" size={13} /> Görev ekle
+            <Icon name="plus" size={13} /> {window.t('board_add_task')}
           </button>
         )}
       </div>
@@ -443,15 +443,15 @@ function TableView({ tasks, onOpenTask, onMoveTask, canManageTasks }) {
           <tr>
             <th style={{ width: 28 }} />
             <SortHead k="id" w={70}>ID</SortHead>
-            <SortHead k="title">Başlık</SortHead>
-            <SortHead k="col" w={110}>Durum</SortHead>
-            <th style={{ width: 130 }}>Etiketler</th>
-            <th style={{ width: 110 }}>Atanan</th>
-            <SortHead k="start" w={86}>Başla</SortHead>
-            <SortHead k="due" w={86}>Bitir</SortHead>
-            <th style={{ width: 56 }}>Gün</th>
-            <th style={{ width: 100 }}>İlerleme</th>
-            <SortHead k="priority" w={90}>Öncelik</SortHead>
+            <SortHead k="title">{window.t('list_title')}</SortHead>
+            <SortHead k="col" w={110}>{window.t('list_status')}</SortHead>
+            <th style={{ width: 130 }}>{window.t('list_labels')}</th>
+            <th style={{ width: 110 }}>{window.t('list_assignee')}</th>
+            <SortHead k="start" w={86}>{window.t('list_start')}</SortHead>
+            <SortHead k="due" w={86}>{window.t('list_due')}</SortHead>
+            <th style={{ width: 56 }}>{window.t('list_days')}</th>
+            <th style={{ width: 100 }}>{window.t('list_progress')}</th>
+            <SortHead k="priority" w={90}>{window.t('list_priority')}</SortHead>
             <th style={{ width: 40 }} title="Ekler"><Icon name="paperclip" size={11} /></th>
             <th style={{ width: 40 }} title="Yorumlar"><Icon name="msg" size={11} /></th>
             <th style={{ width: 40 }} title="Reaksiyon"><Icon name="smile" size={11} /></th>
@@ -511,7 +511,7 @@ function TableView({ tasks, onOpenTask, onMoveTask, canManageTasks }) {
                 <td>
                   <span className="priority-pill">
                     <span className="priority-dot" data-p={t.priority} />
-                    {t.priority === 'high' ? 'Yüksek' : t.priority === 'mid' ? 'Orta' : 'Düşük'}
+                    {t.priority === 'high' ? window.t('board_priority_high') : t.priority === 'mid' ? window.t('board_priority_mid') : window.t('board_priority_low')}
                   </span>
                 </td>
                 <td className="table-mono">{t.attachments || 0}</td>
@@ -524,7 +524,7 @@ function TableView({ tasks, onOpenTask, onMoveTask, canManageTasks }) {
         <tfoot>
           <tr>
             <td colSpan={2} />
-            <td>{sorted.length} görev</td>
+            <td>{sorted.length} {window.t('board_tasks_count')}</td>
             <td colSpan={4} />
             <td className="table-mono table-total">Σ {totals.days}</td>
             <td colSpan={3} />
@@ -537,7 +537,7 @@ function TableView({ tasks, onOpenTask, onMoveTask, canManageTasks }) {
       {sorted.length === 0 && (
         <div className="empty-state">
           <Icon name="list" size={28} strokeWidth={1.2} />
-          <div>Görev bulunamadı.</div>
+          <div>{window.t('board_no_tasks')}</div>
         </div>
       )}
     </div>
@@ -593,14 +593,14 @@ function TimelineView({ tasks, onOpenTask }) {
           {DATA.fmtDate(minDate.toISOString())} – {DATA.fmtDate(maxDate.toISOString())}
         </div>
         <div className="tl-zoom">
-          {[['day','Gün'],['week','Hafta'],['month','Ay'],['quarter','Çeyrek']].map(([k,l]) => (
+          {[['day', window.t('board_tl_day')],['week', window.t('board_tl_week')],['month', window.t('board_tl_month')],['quarter', window.t('board_tl_quarter')]].map(([k,l]) => (
             <button key={k} data-active={zoom === k} onClick={() => setZoom(k)}>{l}</button>
           ))}
         </div>
       </div>
 
       <div className="timeline-grid" style={{ '--tl-side': `${SIDE}px`, '--tl-cw': `${dayWidth}px` }}>
-        <div className="tl-corner">Görev</div>
+        <div className="tl-corner">{window.t('board_tl_task')}</div>
         <div className="tl-header" style={{ width: totalW }}>
           {days.map((d, i) => (
             <div key={i} className="tl-day" data-today={i === todayIdx} data-weekend={d.getDay() === 0 || d.getDay() === 6}>
@@ -673,8 +673,8 @@ function TimelineView({ tasks, onOpenTask }) {
       {groups.length === 0 && (
         <div className="empty-state">
           <Icon name="calendar" size={28} strokeWidth={1.2} />
-          <div>Tarihi olan görev yok.</div>
-          <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Görev tarihi eklediğinizde zaman çizelgesinde görünür.</div>
+          <div>{window.t('board_tl_empty')}</div>
+          <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>{window.t('board_tl_empty_sub')}</div>
         </div>
       )}
     </div>
@@ -997,10 +997,10 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
   };
 
   const subViews = [
-    { id: 'list',     icon: 'list',        label: 'Liste'    },
-    { id: 'kanban',   icon: 'layoutBoard', label: 'Kanban'   },
-    { id: 'table',    icon: 'table',       label: 'Tablo'    },
-    { id: 'timeline', icon: 'calendar',    label: 'Zaman'    },
+    { id: 'list',     icon: 'list',        label: window.t('board_view_list')     },
+    { id: 'kanban',   icon: 'layoutBoard', label: window.t('board_view_kanban')   },
+    { id: 'table',    icon: 'table',       label: window.t('board_view_table')    },
+    { id: 'timeline', icon: 'calendar',    label: window.t('board_view_timeline') },
   ];
 
   return (
@@ -1025,14 +1025,14 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
         onClick={() => setFilterOpen(v => !v)}
       >
         <Icon name="filter" size={13} />
-        Filtrele
+        {window.t('board_filter')}
         {activeFilterCount > 0 && <span className="filter-count">{activeFilterCount}</span>}
       </button>
       <div className="board-search-wrap">
         <Icon name="search" size={13} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
         <input
           className="board-search-input"
-          placeholder="Görev ara…"
+          placeholder={window.t('board_search_placeholder')}
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
         />
@@ -1045,7 +1045,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
       {switching && (
         <div style={{ fontSize: 12, color: 'var(--ink-faint)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <div style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'spin 0.7s linear infinite' }} />
-          Proje yükleniyor…
+          {window.t('board_loading_project')}
         </div>
       )}
     </div>
@@ -1095,7 +1095,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
             <input
               autoFocus
               className="add-column-input"
-              placeholder="Kolon başlığı yazın..."
+              placeholder={window.t('board_col_title_placeholder')}
               maxLength={COL_NAME_MAX}
               value={newColumnTitle}
               onChange={(e) => setNewColumnTitle(e.target.value)}
@@ -1113,14 +1113,14 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
           </div>
           <div className="add-column-actions">
             <button className="btn-save" onClick={handleAddColumn} disabled={addingColumnBusy || !newColumnTitle.trim()}>
-              {addingColumnBusy ? 'Ekleniyor…' : 'Ekle'}
+              {addingColumnBusy ? window.t('board_col_adding') : window.t('board_col_add')}
             </button>
-            <button className="btn-cancel" onClick={() => { setIsAddingColumn(false); setNewColumnTitle(''); }} disabled={addingColumnBusy}>İptal</button>
+            <button className="btn-cancel" onClick={() => { setIsAddingColumn(false); setNewColumnTitle(''); }} disabled={addingColumnBusy}>{window.t('app_cancel')}</button>
           </div>
         </div>
       ) : (
         <button className="add-column-btn" onClick={() => setIsAddingColumn(true)}>
-          <Icon name="plus" size={14} /> Kolon ekle
+          <Icon name="plus" size={14} /> {window.t('board_add_col')}
         </button>
       ))}
     </div>
@@ -1142,12 +1142,12 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
                 <thead>
                   <tr>
                     <th style={{ width: 36 }} />
-                    <th>Başlık</th>
-                    <th style={{ width: 130 }}>Etiketler</th>
-                    <th style={{ width: 100 }}>Atanan</th>
-                    <th style={{ width: 130 }}>Tarih aralığı</th>
-                    <th style={{ width: 110 }}>İlerleme</th>
-                    <th style={{ width: 100 }}>Aktivite</th>
+                    <th>{window.t('list_title')}</th>
+                    <th style={{ width: 130 }}>{window.t('list_labels')}</th>
+                    <th style={{ width: 100 }}>{window.t('list_assignee')}</th>
+                    <th style={{ width: 130 }}>{window.t('list_date_range')}</th>
+                    <th style={{ width: 110 }}>{window.t('list_progress')}</th>
+                    <th style={{ width: 100 }}>{window.t('list_activity')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1225,7 +1225,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
         {visibleTasks.length === 0 && (
           <div className="empty-state">
             <Icon name="list" size={28} strokeWidth={1.2} />
-            <div>Görev yok.</div>
+            <div>{window.t('board_no_tasks')}</div>
           </div>
         )}
       </div>
@@ -1254,7 +1254,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
         }}
       >
         <Icon name="trash" size={16} />
-        <span>{trashHover ? 'Bırak ve sil' : 'Silmek için buraya sürükle'}</span>
+        <span>{trashHover ? window.t('board_trash_drop') : window.t('board_trash_drag')}</span>
       </div>
     )}
     </>

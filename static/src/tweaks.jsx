@@ -16,16 +16,16 @@ function TweaksPanel({ tweaks, setTweak, visible }) {
         </div>
         <div className="tweaks-body">
           <div className="tweak-group">
-            <div className="tweak-label">Tema</div>
+            <div className="tweak-label">{window.t?.('tweak_theme')||'Tema'}</div>
             <div className="tweak-options">
-              {[['light','Açık'],['cream','Krem'],['dark','Koyu']].map(([k, label]) => (
+              {[['light',window.t?.('tweak_light')||'Açık'],['cream',window.t?.('tweak_cream')||'Krem'],['dark',window.t?.('tweak_dark')||'Koyu']].map(([k, label]) => (
                 <button key={k} className="tweak-opt" data-active={tweaks.theme === k} onClick={() => setTweak('theme', k)}>{label}</button>
               ))}
             </div>
           </div>
 
           <div className="tweak-group">
-            <div className="tweak-label">Vurgu rengi</div>
+            <div className="tweak-label">{window.t?.('tweak_accent')||'Vurgu rengi'}</div>
             <div className="swatch-row">
               {[
                 ['terracotta','oklch(55% 0.13 25)'],
@@ -40,7 +40,7 @@ function TweaksPanel({ tweaks, setTweak, visible }) {
           </div>
 
           <div className="tweak-group">
-            <div className="tweak-label">Tipografi</div>
+            <div className="tweak-label">{window.t?.('tweak_typography')||'Tipografi'}</div>
             <div className="tweak-options">
               {[['sans','Sans'],['fraunces','Fraunces']].map(([k, label]) => (
                 <button key={k} className="tweak-opt" data-active={tweaks.fontPair === k} onClick={() => setTweak('fontPair', k)}>{label}</button>
@@ -49,9 +49,9 @@ function TweaksPanel({ tweaks, setTweak, visible }) {
           </div>
 
           <div className="tweak-group">
-            <div className="tweak-label">Yoğunluk</div>
+            <div className="tweak-label">{window.t?.('tweak_density')||'Yoğunluk'}</div>
             <div className="tweak-options">
-              {[['airy','Ferah'],['balanced','Dengeli'],['compact','Kompakt']].map(([k, label]) => (
+              {[['airy',window.t?.('tweak_airy')||'Ferah'],['balanced',window.t?.('tweak_balanced')||'Dengeli'],['compact',window.t?.('tweak_compact')||'Kompakt']].map(([k, label]) => (
                 <button key={k} className="tweak-opt" data-active={tweaks.density === k} onClick={() => setTweak('density', k)}>{label}</button>
               ))}
             </div>
@@ -59,15 +59,15 @@ function TweaksPanel({ tweaks, setTweak, visible }) {
 
           <div className="tweak-group" style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
             <div className="tweak-toggle" onClick={() => setTweak('showProgress', !tweaks.showProgress)}>
-              <span>İlerleme çubukları</span>
+              <span>{window.t?.('tweak_progress')||'İlerleme çubukları'}</span>
               <div className="toggle" data-on={tweaks.showProgress} />
             </div>
             <div className="tweak-toggle" onClick={() => setTweak('showTags', !tweaks.showTags)}>
-              <span>Kart etiketleri</span>
+              <span>{window.t?.('tweak_tags')||'Kart etiketleri'}</span>
               <div className="toggle" data-on={tweaks.showTags} />
             </div>
             <div className="tweak-toggle" onClick={() => setTweak('sidebarCollapsed', !tweaks.sidebarCollapsed)}>
-              <span>Kenar çubuğu daraltılmış</span>
+              <span>{window.t?.('tweak_sidebar')||'Kenar çubuğu daraltılmış'}</span>
               <div className="toggle" data-on={tweaks.sidebarCollapsed} />
             </div>
           </div>

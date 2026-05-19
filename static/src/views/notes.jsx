@@ -10,17 +10,20 @@ const {
 } = React;
 
 // Tones reused from settings.jsx — kept local to avoid module reference issue.
-const NOTE_LABEL_TONES = [
-  { id: 'blue',   label: 'Mavi'       },
-  { id: 'rose',   label: 'Kırmızı'    },
-  { id: 'amber',  label: 'Sarı'       },
-  { id: 'green',  label: 'Yeşil'      },
-  { id: 'purple', label: 'Mor'        },
-  { id: 'teal',   label: 'Turkuaz'    },
-  { id: 'orange', label: 'Turuncu'    },
-  { id: 'cyan',   label: 'Camgöbeği' },
-  { id: 'pink',   label: 'Pembe'      },
-];
+const NOTE_LABEL_TONES = () => {
+  const _t = (k, fb) => window.t?.(k) || fb;
+  return [
+    { id: 'blue',   label: _t('notes_tone_blue',   'Mavi')       },
+    { id: 'rose',   label: _t('notes_tone_rose',   'Kırmızı')    },
+    { id: 'amber',  label: _t('notes_tone_amber',  'Sarı')       },
+    { id: 'green',  label: _t('notes_tone_green',  'Yeşil')      },
+    { id: 'purple', label: _t('notes_tone_purple', 'Mor')        },
+    { id: 'teal',   label: _t('notes_tone_teal',   'Turkuaz')    },
+    { id: 'orange', label: _t('notes_tone_orange', 'Turuncu')    },
+    { id: 'cyan',   label: _t('notes_tone_cyan',   'Camgöbeği') },
+    { id: 'pink',   label: _t('notes_tone_pink',   'Pembe')      },
+  ];
+};
 
 function noteSlugify(s) {
   return (s || '').toLowerCase()
@@ -73,7 +76,7 @@ function _mdInline(text) {
 
 function MarkdownRender({ body }) {
   if (!body || !body.trim()) {
-    return <div className="md-empty">Bu not henüz boş. Yazmaya başla veya editöre geç.</div>;
+    return <div className="md-empty">{window.t?.('notes_empty') || 'Bu not henüz boş. Yazmaya başla veya editöre geç.'}</div>;
   }
   const lines = body.replace(/\r\n/g, '\n').split('\n');
   const out = [];
@@ -312,19 +315,19 @@ function LabelPickerPopover({ value, onChange, onClose }) {
   };
 
   return (
-    <div ref={popRef} className="note-popover" role="dialog" aria-label="Etiket ekle">
-      <div className="note-popover-title">Etiket ekle</div>
+    <div ref={popRef} className="note-popover" role="dialog" aria-label={window.t?.('notes_add_label') || 'Etiket ekle'}>
+      <div className="note-popover-title">{window.t?.('notes_add_label') || 'Etiket ekle'}</div>
       <div className="note-popover-row">
         <input
           autoFocus
-          placeholder="Etiket adı"
+          placeholder={window.t?.('notes_label_name_ph') || 'Etiket adı'}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
         />
       </div>
       <div className="label-tone-row">
-        {NOTE_LABEL_TONES.map(t => (
+        {NOTE_LABEL_TONES().map(t => (
           <button key={t.id} type="button" title={t.label}
             className="label-tone-dot"
             data-tone={t.id}
@@ -479,7 +482,7 @@ function NoteCard({ note, author, onOpen, onTogglePin, onArchive, onDelete, canE
           )}
         </div>
       </div>
-      <h3 className="note-card-title">{note.title || 'Başlıksız Not'}</h3>
+      <h3 className="note-card-title">{note.title || window.t?.('notes_untitled') || 'Başlıksız Not'}</h3>
       {preview && <div className="note-card-preview">{preview}</div>}
       <div className="note-card-foot">
         {author ? (
@@ -490,7 +493,7 @@ function NoteCard({ note, author, onOpen, onTogglePin, onArchive, onDelete, canE
         ) : (
           <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>—</span>
         )}
-        <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>{note.updated_ago}</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>{fmtTimeAgo(note.updated_at)}</span>
         {note.visibility === 'private' && <span title="Sadece sen ve davet ettiklerin" style={{ fontSize: 10, color: 'var(--ink-faint)' }}>Özel</span>}
       </div>
     </div>
@@ -502,7 +505,7 @@ function NoteCard({ note, author, onOpen, onTogglePin, onArchive, onDelete, canE
 function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwner, onBack, onPatch, onDelete, onLinkTask, onUnlinkTask, onOpenTask, canEdit }) {
   const [title, setTitle]   = useNS(note.title || '');
   const [body, setBody]     = useNS(note.body || '');
-  const [savedAt, setSavedAt] = useNS(note.updated_ago || '');
+  const [savedAt, setSavedAt] = useNS(fmtTimeAgo(note.updated_at));
   const [saving, setSaving] = useNS(false);
   const [error, setError]   = useNS('');
   const [labelOpen, setLabelOpen] = useNS(false);
@@ -524,8 +527,8 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
       if (document.activeElement?.classList?.contains('md-textarea')) return;
       setBody(note.body || '');
     }
-    setSavedAt(note.updated_ago || '');
-  }, [note.id, note.updated_at, note.title, note.body, note.updated_ago]);
+    setSavedAt(fmtTimeAgo(note.updated_at));
+  }, [note.id, note.updated_at, note.title, note.body]);
 
   useNE(() => {
     setTitle(note.title || '');
@@ -552,7 +555,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
     try {
       const updated = await API.updateNote(note.id, fields);
       onPatch(updated);
-      setSavedAt(updated.updated_ago);
+      setSavedAt(fmtTimeAgo(updated.updated_at));
     } catch (e) {
       setError(e.message || 'Kaydedilemedi');
     } finally {
@@ -626,7 +629,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
   };
   const handleDelete = () => {
     if (!canEdit) return;
-    if (!window.confirm('Bu notu silmek istediğinden emin misin? Bu işlem geri alınamaz.')) return;
+    if (!window.confirm(window.t?.('notes_delete_confirm') || 'Bu notu silmek istediğinden emin misin? Bu işlem geri alınamaz.')) return;
     setMenuOpen(false);
     onDelete(note);
   };
@@ -646,7 +649,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
     <div className="note-detail">
       <div className="note-detail-head">
         <button type="button" className="note-back-btn" onClick={onBack}>
-          <Icon name="chevronLeft" size={14} /> Notlar
+          <Icon name="chevronLeft" size={14} /> {window.t?.('notes_back') || 'Notlar'}
         </button>
         <div className="note-status-pill">
           {saving ? <><Icon name="clock" size={11} /> Kaydediliyor…</>
@@ -669,13 +672,13 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
 
         {/* Collaborators avatar stack */}
         <div className="note-collab-wrap" ref={collabRef} style={{ position: 'relative' }}>
-          <button type="button" className="note-collab-trigger" onClick={() => setCollabOpen(v => !v)} title="Ortak yazarlar">
+          <button type="button" className="note-collab-trigger" onClick={() => setCollabOpen(v => !v)} title={window.t?.('notes_collaborators') || 'Ortak yazarlar'}>
             {collabMembers.length > 0 ? <AvatarStack members={collabMembers} max={3} /> : <Icon name="users" size={13} />}
             {canEdit && <Icon name="plus" size={11} style={{ marginLeft: 4 }} />}
           </button>
           {collabOpen && (
             <div className="note-popover" style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, left: 'auto', width: 240 }}>
-              <div className="note-popover-title">Ortak yazarlar</div>
+              <div className="note-popover-title">{window.t?.('notes_collaborators') || 'Ortak yazarlar'}</div>
               <div style={{ maxHeight: 220, overflowY: 'auto' }}>
                 {members.filter(m => m.id !== note.author).map(m => {
                   const on = (note.collaborators || []).includes(m.id);
@@ -755,9 +758,9 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
           />
         </div>
         <div className="note-meta-row">
-          <span>{author?.name || 'Bilinmiyor'}</span>
+          <span>{author?.name || window.t?.('unknown') || 'Bilinmiyor'}</span>
           <span className="sep">·</span>
-          <span>{note.updated_ago}</span>
+          <span>{fmtTimeAgo(note.updated_at)}</span>
         </div>
         <div className="note-labels-row">
           {labels.length === 0 && canEdit && (
@@ -959,7 +962,7 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
     if (creating) return;
     setCreating(true);
     try {
-      const note = await API.createNote({ title: 'Başlıksız Not', body: '', visibility: 'private', status: 'draft' });
+      const note = await API.createNote({ title: window.t?.('notes_untitled') || 'Başlıksız Not', body: '', visibility: 'private', status: 'draft' });
       // Dedupe — socket "note_created" echo may already have inserted this row
       setNotes(prev => {
         const exists = prev.some(n => n.id === note.id);
@@ -1116,7 +1119,7 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
     <div className="notes-view">
       <div className="notes-header">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <h1 className="notes-title">Notlar</h1>
+          <h1 className="notes-title">{window.t?.('notes_title') || 'Notlar'}</h1>
           {!loading && <span className="notes-count">{filtered.length}</span>}
         </div>
         <div className="notes-toolbar">
@@ -1124,31 +1127,31 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
             <Icon name="search" size={13} />
             <input
               type="search"
-              placeholder="Notlarda ara…"
+              placeholder={window.t?.('notes_search_ph') || 'Notlarda ara…'}
               value={q}
               onChange={(e) => setQ(e.target.value)}
               className="notes-search-input"
             />
           </div>
           <div className="notes-sort">
-            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sırala">
-              <option value="updated">Son güncelleme</option>
-              <option value="created">Oluşturulma</option>
-              <option value="title">Başlık (A-Z)</option>
-              <option value="author">Yazar</option>
+            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label={window.t?.('notes_sort') || 'Sırala'}>
+              <option value="updated">{window.t?.('notes_sort_updated') || 'Son güncelleme'}</option>
+              <option value="created">{window.t?.('notes_sort_created') || 'Oluşturulma'}</option>
+              <option value="title">{window.t?.('notes_sort_title') || 'Başlık (A-Z)'}</option>
+              <option value="author">{window.t?.('notes_sort_author') || 'Yazar'}</option>
             </select>
           </div>
           <button type="button" className="icon-btn"
             data-active={filtersOpen ? 'true' : 'false'}
             onClick={() => setFiltersOpen(v => !v)}
-            title="Filtre"
+            title={window.t?.('notes_filter') || 'Filtre'}
           ><Icon name="filter" size={14} /></button>
           <div className="notes-view-toggle">
-            <button type="button" data-active={viewMode === 'grid'}    onClick={() => setViewMode('grid')}    title="Izgara"><Icon name="layoutBoard" size={13} /></button>
-            <button type="button" data-active={viewMode === 'list'}    onClick={() => setViewMode('list')}    title="Liste"><Icon name="list" size={13} /></button>
+            <button type="button" data-active={viewMode === 'grid'}    onClick={() => setViewMode('grid')}    title={window.t?.('notes_view_grid') || 'Izgara'}><Icon name="layoutBoard" size={13} /></button>
+            <button type="button" data-active={viewMode === 'list'}    onClick={() => setViewMode('list')}    title={window.t?.('notes_view_list') || 'Liste'}><Icon name="list" size={13} /></button>
           </div>
           <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-            <Icon name="plus" size={13} /> {creating ? 'Oluşturuluyor…' : 'Yeni Not'}
+            <Icon name="plus" size={13} /> {creating ? (window.t?.('app_creating') || 'Oluşturuluyor…') : (window.t?.('notes_new') || 'Yeni Not')}
           </button>
         </div>
       </div>
@@ -1156,61 +1159,61 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
       {filtersOpen && (
         <div className="notes-filters">
           <label>
-            <span>Etiket</span>
+            <span>{window.t?.('notes_filter_label') || 'Etiket'}</span>
             <select value={filterLabel} onChange={(e) => setFilterLabel(e.target.value)}>
-              <option value="">Tümü</option>
+              <option value="">{window.t?.('notes_filter_all') || 'Tümü'}</option>
               {allLabelNames.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </label>
           <label>
-            <span>Yazar</span>
+            <span>{window.t?.('notes_filter_author') || 'Yazar'}</span>
             <select value={filterAuthor} onChange={(e) => setFilterAuthor(e.target.value)}>
-              <option value="">Tümü</option>
-              <option value="__me__">Sadece ben</option>
+              <option value="">{window.t?.('notes_filter_all') || 'Tümü'}</option>
+              <option value="__me__">{window.t?.('notes_filter_only_me') || 'Sadece ben'}</option>
               {(members || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </label>
           <label className="notes-filter-toggle">
             <input type="checkbox" checked={filterPinned} onChange={(e) => setFilterPinned(e.target.checked)} />
-            <span>Sadece sabitlenmiş</span>
+            <span>{window.t?.('notes_filter_pinned') || 'Sadece sabitlenmiş'}</span>
           </label>
           <label className="notes-filter-toggle">
             <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
-            <span>Arşivlenmiş olanları göster</span>
+            <span>{window.t?.('notes_filter_archived') || 'Arşivlenmiş olanları göster'}</span>
           </label>
           {(filterLabel || filterAuthor || filterPinned || showArchived) && (
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
               setFilterLabel(''); setFilterAuthor(''); setFilterPinned(false); setShowArchived(false);
-            }}>Temizle</button>
+            }}>{window.t?.('board_clear') || 'Temizle'}</button>
           )}
         </div>
       )}
 
       {loading ? (
-        <div style={{ padding: 60, textAlign: 'center', color: 'var(--ink-muted)' }}>Yükleniyor…</div>
+        <div style={{ padding: 60, textAlign: 'center', color: 'var(--ink-muted)' }}>{window.t?.('drawer_loading') || 'Yükleniyor…'}</div>
       ) : filtered.length === 0 ? (
         notes.length === 0 ? (
           <div className="notes-empty">
             <div className="notes-empty-icon"><Icon name="note" size={36} strokeWidth={1} /></div>
-            <div className="notes-empty-title">Henüz hiç not yok</div>
-            <div className="notes-empty-sub">Düşüncelerini, toplantı notlarını ve bağlantılı görevlerini buraya kaydet.</div>
+            <div className="notes-empty-title">{window.t?.('notes_no_notes') || 'Henüz hiç not yok'}</div>
+            <div className="notes-empty-sub">{window.t?.('notes_no_notes_sub') || 'Düşüncelerini, toplantı notlarını ve bağlantılı görevlerini buraya kaydet.'}</div>
             <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-              <Icon name="plus" size={13} /> İlk notunu oluştur
+              <Icon name="plus" size={13} /> {window.t?.('notes_create_first') || 'İlk notunu oluştur'}
             </button>
           </div>
         ) : (
           <div className="notes-empty">
-            <div className="notes-empty-title">Eşleşen not yok</div>
+            <div className="notes-empty-title">{window.t?.('notes_no_match') || 'Eşleşen not yok'}</div>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
               setQ(''); setFilterLabel(''); setFilterAuthor(''); setFilterPinned(false); setShowArchived(false);
-            }}>Filtreleri temizle</button>
+            }}>{window.t?.('notes_clear_filters') || 'Filtreleri temizle'}</button>
           </div>
         )
       ) : (
         <div className="notes-scroll">
           {pinned.length > 0 && (
             <div className="notes-section">
-              <div className="notes-section-head"><Icon name="pin" size={12} /> Sabitlenmiş</div>
+              <div className="notes-section-head"><Icon name="pin" size={12} /> {window.t?.('notes_pinned') || 'Sabitlenmiş'}</div>
               <div className={`notes-grid notes-grid-${viewMode}`}>
                 {pinned.map(n => {
                   const author = members.find(m => m.id === n.author);
@@ -1232,7 +1235,7 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
           )}
           {others.length > 0 && (
             <div className="notes-section">
-              {pinned.length > 0 && <div className="notes-section-head"><Icon name="note" size={12} /> Notlar</div>}
+              {pinned.length > 0 && <div className="notes-section-head"><Icon name="note" size={12} /> {window.t?.('notes_section_notes') || 'Notlar'}</div>}
               <div className={`notes-grid notes-grid-${viewMode}`}>
                 {others.map(n => {
                   const author = members.find(m => m.id === n.author);

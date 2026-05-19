@@ -64,12 +64,12 @@ function ListView({ tasks, onOpenTask, onMoveTask, canManageTasks = true }) {
             <thead>
               <tr>
                 <th style={{ width: 36 }}></th>
-                <th>Başlık</th>
-                <th style={{ width: 120 }}>Etiketler</th>
-                <th style={{ width: 110 }}>Öncelik</th>
-                <th style={{ width: 110 }}>Bitiş</th>
-                <th style={{ width: 120 }}>Atanan</th>
-                <th style={{ width: 90 }}>Alt görev</th>
+                <th>{window.t('list_title')}</th>
+                <th style={{ width: 120 }}>{window.t('list_labels')}</th>
+                <th style={{ width: 110 }}>{window.t('list_priority')}</th>
+                <th style={{ width: 110 }}>{window.t('list_due')}</th>
+                <th style={{ width: 120 }}>{window.t('list_assignee')}</th>
+                <th style={{ width: 90 }}>{window.t('list_subtasks')}</th>
               </tr>
             </thead>
             <tbody>
@@ -109,7 +109,7 @@ function ListView({ tasks, onOpenTask, onMoveTask, canManageTasks = true }) {
                       <span className="priority-pill">
                         <span className="priority-dot" data-p={t.priority} />
                         <span style={{ color: 'var(--ink-muted)' }}>
-                          {t.priority === 'high' ? 'Yüksek' : t.priority === 'mid' ? 'Orta' : 'Düşük'}
+                          {t.priority === 'high' ? window.t('board_priority_high') : t.priority === 'mid' ? window.t('board_priority_mid') : window.t('board_priority_low')}
                         </span>
                       </span>
                     </td>

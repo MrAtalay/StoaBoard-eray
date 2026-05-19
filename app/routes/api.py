@@ -1,6 +1,7 @@
 import re
 import os
 import uuid
+import json
 import secrets
 from sqlalchemy import or_, func
 from sqlalchemy.orm import joinedload, subqueryload
@@ -54,6 +55,11 @@ def _login_required(f):
             return jsonify({'error': 'Giriş yapmanız gerekiyor'}), 401
         return f(*args, **kwargs)
     return decorated
+
+
+def _nt(type, **params):
+    """Build a structured notification text as JSON for frontend i18n rendering."""
+    return json.dumps({'type': type, **params})
 
 
 def _log_activity(project_id, user, text):
@@ -345,7 +351,6 @@ def bootstrap():
 def _throughput_for_project(project_id):
     import re as _re
     from datetime import datetime, timedelta
-    TR_DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
     today = datetime.now().date()
     week_start = datetime.combine(today - timedelta(days=6), datetime.min.time())
 
@@ -365,22 +370,21 @@ def _throughput_for_project(project_id):
         ActivityLog.query
         .filter(
             ActivityLog.project_id == project_id,
-            ActivityLog.text.contains('kartını'),
-            ActivityLog.text.contains('taşıdı'),
+            ActivityLog.text.contains('task_moved'),
             ActivityLog.created_at >= week_start,
         )
         .with_entities(ActivityLog.created_at, ActivityLog.text)
         .all()
     )
 
-    # Parse <strong>COLUMN_TITLE</strong> from log text, bucket by day + category
-    _strong_re = _re.compile(r'<strong>(.*?)</strong>')
+    # Parse JSON log text to get column name, bucket by day + category
     daily = {}
     for log_at, log_text in logs:
-        m = _strong_re.search(log_text)
-        if not m:
-            continue
-        col_title = m.group(1).strip().lower()
+        try:
+            d = json.loads(log_text)
+            col_title = (d.get('col') or '').strip().lower()
+        except Exception:
+            col_title = ''
         cat = title_to_cat.get(col_title)
         if not cat:
             continue
@@ -394,7 +398,7 @@ def _throughput_for_project(project_id):
         day_str = str(d)
         bucket = daily.get(day_str, {'done': 0, 'review': 0, 'progress': 0})
         result.append({
-            'day': TR_DAYS[d.weekday()],
+            'date': day_str,
             'done': bucket['done'],
             'review': bucket['review'],
             'progress': bucket['progress'],
@@ -546,11 +550,11 @@ def join_workspace():
     data = request.get_json(silent=True) or {}
     code = (data.get('code') or '').strip().upper()
     if not code:
-        return jsonify({'error': 'Davet kodu zorunludur'}), 400
+        return jsonify({'error': 'invite_code_required'}), 400
 
     ws = Workspace.query.filter_by(invite_code=code).first()
     if not ws:
-        return jsonify({'error': 'Geçersiz davet kodu'}), 404
+        return jsonify({'error': 'invalid_invite_code'}), 404
 
     # Already a member of this workspace?
     existing = WorkspaceMember.query.filter_by(user_id=user.id, workspace_id=ws.id).first()
@@ -564,7 +568,7 @@ def join_workspace():
         user_id=user.id, workspace_id=ws.id, status='pending'
     ).first()
     if pending:
-        return jsonify({'ok': True, 'pending': True, 'message': 'Katılım isteğiniz bekleniyor.'})
+        return jsonify({'ok': True, 'pending': True, 'message': 'join_request_pending'})
 
     # Create join request (owner must approve)
     join_req = WorkspaceJoinRequest(workspace_id=ws.id, user_id=user.id)
@@ -576,7 +580,7 @@ def join_workspace():
     if owner:
         notif = Notification(
             user_id=owner.id,
-            text=f'<strong>{user.name}</strong> takıma katılmak istiyor.',
+            text=_nt('join_request', who=user.name),
             sender_slug=user.slug,
             workspace_id=ws.id,
         )
@@ -592,7 +596,7 @@ def join_workspace():
     except Exception:
         pass
 
-    return jsonify({'ok': True, 'pending': True, 'message': 'Katılım isteğiniz gönderildi. Oda sahibinin onayı bekleniyor.'})
+    return jsonify({'ok': True, 'pending': True, 'message': 'join_request_pending'})
 
 
 @api_bp.route('/workspaces/me/join-requests', methods=['GET'])
@@ -633,7 +637,7 @@ def approve_join_request(req_id):
 
     notif = Notification(
         user_id=join_req.user_id,
-        text=f'<strong>{join_req.workspace.name}</strong> takımına katılım isteğiniz onaylandı!',
+        text=_nt('join_approved', workspace=join_req.workspace.name),
         workspace_id=join_req.workspace_id,
     )
     db.session.add(notif)
@@ -668,7 +672,7 @@ def reject_join_request(req_id):
     join_req.status = 'rejected'
     notif = Notification(
         user_id=join_req.user_id,
-        text=f'<strong>{join_req.workspace.name}</strong> takımına katılım isteğiniz reddedildi.',
+        text=_nt('join_rejected', workspace=join_req.workspace.name),
         workspace_id=join_req.workspace_id,
     )
     db.session.add(notif)
@@ -1055,12 +1059,11 @@ def create_task(project_id):
         if assignee:
             db.session.add(TaskAssignee(task_id=task.id, user_id=assignee.id))
             if assignee.id != user.id:
-                notif_text = f'<strong>{title}</strong> görevi size atandı.'
-                notif = Notification(user_id=assignee.id, text=notif_text, sender_slug=user.slug, workspace_id=project.workspace_id)
+                notif = Notification(user_id=assignee.id, text=_nt('task_assigned', task=title, who=user.name), sender_slug=user.slug, workspace_id=project.workspace_id)
                 db.session.add(notif)
                 notifs_to_push.append((assignee.id, notif))
 
-    _log_activity(project_id, user, f'yeni kart oluşturdu: <em>{title}</em>')
+    _log_activity(project_id, user, _nt('task_created', title=title))
     db.session.flush()
 
     # task.id and notif.id are set after flush — attach task_id now
@@ -1122,7 +1125,7 @@ def update_task(task_id):
                 task.progress = 100
             _log_activity(
                 task.project_id, user,
-                f'<em>{task.title}</em> kartını <strong>{new_col.title_tr or new_col.title}</strong>\'ye taşıdı'
+                _nt('task_moved', task=task.title, col=new_col.title_tr or new_col.title)
             )
 
     if 'labels' in data:
@@ -1150,8 +1153,7 @@ def update_task(task_id):
         notifs_to_push = []
         for aid in new_assignee_ids - old_assignee_ids:
             if aid != user.id:  # kendine bildirim gitmesin
-                notif_text = f'<strong>{task.title}</strong> görevi size atandı.'
-                notif = Notification(user_id=aid, text=notif_text, task_id=task.id, sender_slug=user.slug, workspace_id=project.workspace_id)
+                notif = Notification(user_id=aid, text=_nt('task_assigned', task=task.title, who=user.name), task_id=task.id, sender_slug=user.slug, workspace_id=project.workspace_id)
                 db.session.add(notif)
                 notifs_to_push.append((aid, notif))
 
@@ -1293,8 +1295,7 @@ def add_comment(task_id):
     notifs_to_push = []
     for ta in task.assignees:
         if ta.user_id != user.id:
-            notif_text = f'<em>{user.name}</em> yorum yazdı: "{text[:60]}{"..." if len(text) > 60 else ""}"'
-            notif = Notification(user_id=ta.user_id, text=notif_text, task_id=task_id, sender_slug=user.slug, workspace_id=project.workspace_id)
+            notif = Notification(user_id=ta.user_id, text=_nt('comment_added', who=user.name, preview=text[:80]), task_id=task_id, sender_slug=user.slug, workspace_id=project.workspace_id)
             db.session.add(notif)
             notifs_to_push.append((ta.user_id, notif))
 
@@ -1360,7 +1361,7 @@ def create_column(project_id):
         is_done=bool(data.get('is_done', False)),
     )
     db.session.add(col)
-    _log_activity(project_id, user, f"'{title}' isimli yeni bir kolon ekledi.")
+    _log_activity(project_id, user, _nt('column_added', title=title))
     db.session.commit()
     return jsonify(col.to_dict()), 201
 
@@ -2177,7 +2178,7 @@ def create_channel():
                 continue
             notif = Notification(
                 user_id=uid,
-                text=f'<strong>{user.name}</strong> seni <strong>#{channel.name}</strong> kanalına ekledi',
+                text=_nt('channel_added', who=user.name, channel=channel.name),
                 sender_slug=user.slug,
                 workspace_id=ws_id,
                 chat_channel=channel.slug,
@@ -2303,7 +2304,7 @@ def add_channel_members(channel_id):
         for u in added:
             notif = Notification(
                 user_id=u.id,
-                text=f'<strong>{user.name}</strong> seni <strong>#{channel.name}</strong> kanalına ekledi',
+                text=_nt('channel_added', who=user.name, channel=channel.name),
                 sender_slug=user.slug,
                 workspace_id=channel.workspace_id,
                 chat_channel=channel.slug,
@@ -2468,7 +2469,7 @@ def create_chat_message():
     if receiver:
         notif = Notification(
             user_id=receiver.id,
-            text=f'<strong>{user.name}</strong> sana mesaj gönderdi: {text[:80]}',
+            text=_nt('dm_received', who=user.name, preview=(text or '')[:80]),
             sender_slug=user.slug,
             workspace_id=workspace_id,
         )
@@ -2491,7 +2492,7 @@ def create_chat_message():
                 preview = text[:80] + ('…' if len(text) > 80 else '')
                 m_notif = Notification(
                     user_id=mentioned.id,
-                    text=f'<strong>{user.name}</strong> senden bahsetti: {preview}',
+                    text=_nt('mention', who=user.name, preview=preview),
                     workspace_id=workspace_id,
                 )
                 db.session.add(m_notif)

@@ -26,10 +26,10 @@ function CommandPalette({ open, onClose, onAction }) {
         .filter(n => (n.title || '').toLowerCase().includes(ql) || (n.preview || '').toLowerCase().includes(ql))
         .slice(0, 6)
         .map(n => ({
-          label: n.title || 'Başlıksız Not',
+          label: n.title || (window.t?.('notes_untitled')||'Başlıksız Not'),
           icon: 'note',
           action: 'open:note:' + n.id,
-          group: 'Notlar',
+          group: window.t?.('notes_title')||'Notlar',
           sub: n.preview ? n.preview.slice(0, 60) : null,
         }));
       base = [...base, ...noteHits];
@@ -58,7 +58,7 @@ function CommandPalette({ open, onClose, onAction }) {
           <Icon name="search" size={16} />
           <input
             ref={inputRef}
-            placeholder="Komut, görev veya sayfa ara..."
+            placeholder={window.t?.('palette_ph') || 'Komut, görev veya sayfa ara...'}
             value={q}
             onChange={(e) => { setQ(e.target.value); setIdx(0); }}
             onKeyDown={onKey}
@@ -68,7 +68,7 @@ function CommandPalette({ open, onClose, onAction }) {
         <div className="palette-list">
           {Object.keys(grouped).length === 0 && (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-muted)', fontSize: 13 }}>
-              Sonuç yok. Başka bir ifade dene.
+              {window.t?.('palette_no_result')||'Sonuç yok. Başka bir ifade dene.'}
             </div>
           )}
           {Object.entries(grouped).map(([group, items]) => (
@@ -97,9 +97,9 @@ function CommandPalette({ open, onClose, onAction }) {
           ))}
         </div>
         <div className="palette-hint">
-          <span><kbd>↑</kbd><kbd>↓</kbd> gez</span>
-          <span><kbd>↵</kbd> seç</span>
-          <span><kbd>esc</kbd> kapat</span>
+          <span><kbd>↑</kbd><kbd>↓</kbd> {window.t?.('palette_navigate') || 'gez'}</span>
+          <span><kbd>↵</kbd> {window.t?.('palette_select') || 'seç'}</span>
+          <span><kbd>esc</kbd> {window.t?.('palette_close') || 'kapat'}</span>
         </div>
       </div>
     </div>

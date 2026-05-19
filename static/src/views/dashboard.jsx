@@ -42,20 +42,20 @@ function DashboardView({ tasks, onOpenTask, onView }) {
   const weeklyDone  = throughput.reduce((s, d) => s + d.done, 0);
   const highPriority = tasks.filter(t => t.priority === 'high' && !doneColIds.has(t.col)).length;
 
-  const currentFirstName = (window.CURRENT_USER?.name || DATA.MEMBERS[0]?.name || 'Kullanıcı').split(' ')[0];
+  const currentFirstName = (window.CURRENT_USER?.name || DATA.MEMBERS[0]?.name || window.t('dash_user')).split(' ')[0];
 
   const greeting = (() => {
     const h = new Date().getHours();
-    if (h >= 5  && h < 12) return 'Günaydın';
-    if (h >= 12 && h < 18) return 'İyi günler';
-    if (h >= 18 && h < 21) return 'İyi akşamlar';
-    return 'İyi geceler';
+    if (h >= 5  && h < 12) return window.t('dash_greeting_morning');
+    if (h >= 12 && h < 18) return window.t('dash_greeting_afternoon');
+    if (h >= 18 && h < 21) return window.t('dash_greeting_evening');
+    return window.t('dash_greeting_night');
   })();
 
   const SORT_OPTIONS = [
-    { key: 'open',  label: 'En fazla açık' },
-    { key: 'done',  label: 'En fazla tamamlanan' },
-    { key: 'alpha', label: 'Alfabetik' },
+    { key: 'open',  label: window.t('dash_sort_open') },
+    { key: 'done',  label: window.t('dash_sort_done') },
+    { key: 'alpha', label: window.t('dash_sort_alpha') },
   ];
   const peopleStats = DATA.MEMBERS.map(m => {
     const owned = tasks.filter(t => (t.assignees || []).includes(m.id));
@@ -74,46 +74,46 @@ function DashboardView({ tasks, onOpenTask, onView }) {
     <div className="dash">
       <h1 className="dash-h1">{greeting}, <em>{currentFirstName}</em>.</h1>
       <p className="dash-sub">
-        Takımında <strong style={{ color: 'var(--ink)' }}>{inProgress}</strong> kart aktif olarak ilerliyor
-        {overdue > 0 && <>; <strong style={{ color: 'var(--status-rose)' }}>{overdue}</strong> kart geçmiş son tarih — bugün mümkünse temizle.</>}
-        {overdue === 0 && ' — harika gidiyor!'}
+        {window.t('dash_sub_prefix')} <strong style={{ color: 'var(--ink)' }}>{inProgress}</strong> {window.t('dash_sub_active')}
+        {overdue > 0 && <>; <strong style={{ color: 'var(--status-rose)' }}>{overdue}</strong> {window.t('dash_sub_overdue')}</>}
+        {overdue === 0 && ` — ${window.t('dash_sub_great')}`}
       </p>
 
       <div className="dash-grid">
         <div className="stat-card">
-          <div className="stat-label">Aktif kartlar</div>
+          <div className="stat-label">{window.t('dash_stat_active')}</div>
           <div className="stat-value">{total - done}</div>
           <div className="stat-delta" data-up={weeklyDone > 0}>
             {weeklyDone > 0
-              ? <><Icon name="arrowUp" size={11} strokeWidth={2} /> bu hafta +{weeklyDone} tamamlandı</>
-              : <span style={{ color: 'var(--ink-dim)' }}>bu hafta veri yok</span>}
+              ? <><Icon name="arrowUp" size={11} strokeWidth={2} /> {window.t('dash_stat_weekly_done_prefix')}+{weeklyDone} {window.t('dash_stat_completed')}</>
+              : <span style={{ color: 'var(--ink-dim)' }}>{window.t('dash_stat_no_data')}</span>}
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Tamamlanan</div>
+          <div className="stat-label">{window.t('dash_stat_completed')}</div>
           <div className="stat-value">{done}</div>
           <div className="stat-delta" data-up={weeklyDone > 0}>
             {weeklyDone > 0
-              ? <><Icon name="check" size={11} strokeWidth={2} /> bu hafta {weeklyDone}</>
-              : <span style={{ color: 'var(--ink-dim)' }}>bu hafta veri yok</span>}
+              ? <><Icon name="check" size={11} strokeWidth={2} /> {window.t('dash_stat_weekly_done_prefix')}{weeklyDone}</>
+              : <span style={{ color: 'var(--ink-dim)' }}>{window.t('dash_stat_no_data')}</span>}
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Son tarih geçmiş</div>
+          <div className="stat-label">{window.t('dash_stat_overdue')}</div>
           <div className="stat-value" style={overdue > 0 ? { color: 'var(--status-rose)' } : {}}>{overdue}</div>
           <div className="stat-delta" data-down={overdue > 0}>
             {overdue > 0
-              ? <><Icon name="arrowUp" size={11} strokeWidth={2} /> dikkat — temizle</>
-              : <><Icon name="check" size={11} strokeWidth={2} /> hepsi zamanında</>}
+              ? <><Icon name="arrowUp" size={11} strokeWidth={2} /> {window.t('dash_stat_overdue_warn')}</>
+              : <><Icon name="check" size={11} strokeWidth={2} /> {window.t('dash_stat_on_time')}</>}
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Yüksek öncelikli</div>
+          <div className="stat-label">{window.t('dash_stat_high_priority')}</div>
           <div className="stat-value" style={highPriority > 0 ? { color: 'var(--status-rose)' } : {}}>{highPriority}</div>
           <div className="stat-delta" data-down={highPriority > 0}>
             {highPriority > 0
-              ? <><Icon name="arrowUp" size={11} strokeWidth={2} /> öncelikli görev var</>
-              : <><Icon name="check" size={11} strokeWidth={2} /> öncelikli görev yok</>}
+              ? <><Icon name="arrowUp" size={11} strokeWidth={2} /> {window.t('dash_stat_priority_exist')}</>
+              : <><Icon name="check" size={11} strokeWidth={2} /> {window.t('dash_stat_priority_none')}</>}
           </div>
         </div>
       </div>
@@ -123,42 +123,46 @@ function DashboardView({ tasks, onOpenTask, onView }) {
           <div className="panel-head">
             <div>
               <div className="panel-title">
-                {chartPeriod === 'week' ? 'Bu hafta ilerleme' : 'Bu ay ilerleme'}
+                {chartPeriod === 'week' ? window.t('dash_chart_week_title') : window.t('dash_chart_month_title')}
               </div>
               <div className="panel-sub">
                 {chartPeriod === 'week'
-                  ? 'Tamamlanan, incelemedeki ve devam eden kartlar'
-                  : 'Haftalık tamamlanan, incelemedeki ve devam eden kartlar'}
+                  ? window.t('dash_chart_week_sub')
+                  : window.t('dash_chart_month_sub')}
               </div>
             </div>
             <div style={{ marginLeft: 'auto' }}>
-              <button className="filter-chip" data-active={chartPeriod === 'week'} onClick={() => setChartPeriod('week')}>Hafta</button>
-              <button className="filter-chip" data-active={chartPeriod === 'month'} onClick={() => setChartPeriod('month')}>Ay</button>
+              <button className="filter-chip" data-active={chartPeriod === 'week'} onClick={() => setChartPeriod('week')}>{window.t('dash_week')}</button>
+              <button className="filter-chip" data-active={chartPeriod === 'month'} onClick={() => setChartPeriod('month')}>{window.t('dash_month')}</button>
             </div>
           </div>
           <div className="panel-body">
             {chartData.length === 0 || maxBar <= 1 ? (
               <div className="dash-empty-state">
                 <Icon name="chart" size={28} />
-                <div>Henüz ilerleme verisi yok</div>
-                <div style={{ fontSize: 12, color: 'var(--ink-dim)' }}>Görevleri tamamladıkça burada görünecek</div>
+                <div>{window.t('dash_chart_empty')}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-dim)' }}>{window.t('dash_chart_empty_sub')}</div>
               </div>
             ) : (
               <div className="chart">
                 {chartData.map(d => {
                   const totalD = d.done + d.review + d.progress;
                   const h = totalD ? (totalD / maxBar) * 160 : 0;
+                  const lang = localStorage.getItem('stoa.lang') || 'tr';
+                  const dayLabel = d.date
+                    ? new Date(d.date).toLocaleDateString(lang === 'en' ? 'en-GB' : 'tr-TR', { weekday: 'short' })
+                    : (d.day || '');
                   return (
-                    <div className="bar" key={d.day}>
+                    <div className="bar" key={d.date || d.day}>
                       <div className="bar-tooltip">
-                        {d.day}: <b>{d.done}</b> tamamlandı · <b>{d.review}</b> incele · <b>{d.progress}</b> devam
+                        {dayLabel}: <b>{d.done}</b> {window.t('dash_chart_done')} · <b>{d.review}</b> {window.t('dash_chart_review')} · <b>{d.progress}</b> {window.t('dash_chart_progress')}
                       </div>
                       <div className="bar-stack" style={{ height: h }}>
                         <div className="bar-seg" data-t="progress" style={{ height: `${totalD ? (d.progress/totalD)*100 : 0}%` }} />
                         <div className="bar-seg" data-t="review"   style={{ height: `${totalD ? (d.review/totalD)*100 : 0}%` }} />
                         <div className="bar-seg" data-t="done"     style={{ height: `${totalD ? (d.done/totalD)*100 : 0}%` }} />
                       </div>
-                      <div className="bar-label">{d.day}</div>
+                      <div className="bar-label">{dayLabel}</div>
                     </div>
                   );
                 })}
@@ -166,23 +170,23 @@ function DashboardView({ tasks, onOpenTask, onView }) {
             )}
           </div>
           <div className="legend">
-            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--status-green)' }} /> Tamamlandı</div>
-            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--status-amber)' }} /> İncelemede</div>
-            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--status-blue)' }} /> Devam eden</div>
+            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--status-green)' }} /> {window.t('dash_legend_done')}</div>
+            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--status-amber)' }} /> {window.t('dash_legend_review')}</div>
+            <div className="legend-item"><div className="legend-dot" style={{ background: 'var(--status-blue)' }} /> {window.t('dash_legend_progress')}</div>
           </div>
         </div>
 
         {/* Team load */}
         <div className="panel">
           <div className="panel-head">
-            <div className="panel-title">Takım yükü</div>
+            <div className="panel-title">{window.t('dash_team_load')}</div>
             <div className="team-sort-wrap" ref={teamSortRef}>
               <button className="icon-btn" style={{ marginLeft: 'auto' }} onClick={() => setTeamSortOpen(o => !o)}>
                 <Icon name="moreH" size={15} />
               </button>
               {teamSortOpen && (
                 <div className="team-sort-menu">
-                  <div className="team-sort-label">Sırala</div>
+                  <div className="team-sort-label">{window.t('dash_sort_label')}</div>
                   {SORT_OPTIONS.map(opt => (
                     <button
                       key={opt.key}
@@ -208,7 +212,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
                     <div className="person-role">{p.role}</div>
                   </div>
                   <div className="person-stat">
-                    <span style={{ color: 'var(--ink)' }}>{p.open}</span> açık · {p.done} tamamlandı
+                    <span style={{ color: 'var(--ink)' }}>{p.open}</span> {window.t('dash_person_open')} · {p.done} {window.t('dash_person_done')}
                   </div>
                 </div>
               ))}
@@ -221,8 +225,8 @@ function DashboardView({ tasks, onOpenTask, onView }) {
         {/* Upcoming deadlines */}
         <div className="panel">
           <div className="panel-head">
-            <div className="panel-title">Yaklaşan son tarihler</div>
-            <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => onView && onView('list')}>Tümünü gör <Icon name="arrowRight" size={12} /></button>
+            <div className="panel-title">{window.t('dash_upcoming')}</div>
+            <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => onView && onView('list')}>{window.t('dash_view_all')} <Icon name="arrowRight" size={12} /></button>
           </div>
           <div className="panel-body" style={{ padding: '0 0 12px' }}>
             {(() => {
@@ -234,7 +238,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
                 return (
                   <div className="dash-empty-state" style={{ padding: '24px 18px' }}>
                     <Icon name="calendar" size={24} />
-                    <div>Son tarihli görev yok</div>
+                    <div>{window.t('dash_no_deadlines')}</div>
                   </div>
                 );
               }
@@ -269,24 +273,24 @@ function DashboardView({ tasks, onOpenTask, onView }) {
 
         <div className="panel">
           <div className="panel-head">
-            <div className="panel-title">Takım hareketleri</div>
+            <div className="panel-title">{window.t('dash_activity')}</div>
           </div>
           <div className="panel-body">
             {(DATA.ACTIVITY || []).length === 0 ? (
               <div className="dash-empty-state">
                 <Icon name="users" size={24} />
-                <div>Henüz takım hareketi yok</div>
+                <div>{window.t('dash_no_activity')}</div>
               </div>
             ) : (DATA.ACTIVITY || []).map((a, i) => {
               const m = DATA.MEMBERS.find(m => m.name && m.name.startsWith(a.who));
               return (
                 <div className="activity-item" key={i}>
-                  <Avatar member={m || { initials: a.who[0], color: 'var(--ink-faint)' }} size="sm" />
+                  <Avatar member={m || { initials: (a.who || '?')[0], color: 'var(--ink-faint)' }} size="sm" />
                   <div className="activity-body">
                     <div className="activity-text">
-                      <strong>{a.who}</strong> <span dangerouslySetInnerHTML={{ __html: a.text }} />
+                      <strong>{a.who}</strong> <span dangerouslySetInnerHTML={{ __html: renderActivityText(a.text) }} />
                     </div>
-                    <div className="activity-time">{a.time}</div>
+                    <div className="activity-time">{fmtTimeAgo(a.time)}</div>
                   </div>
                 </div>
               );

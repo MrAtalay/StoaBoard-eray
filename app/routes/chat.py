@@ -1,4 +1,5 @@
 import re
+import json
 from flask import session, request
 from flask_socketio import emit, join_room, leave_room
 from app import socketio, db
@@ -170,7 +171,7 @@ def on_chat_message(data):
     if receiver:
         notif = Notification(
             user_id=receiver.id,
-            text=f'<strong>{user.name}</strong> sana mesaj gönderdi: {(text or "")[:80]}',
+            text=json.dumps({'type': 'dm_received', 'who': user.name, 'preview': (text or '')[:80]}),
             sender_slug=user.slug,
         )
         db.session.add(notif)
@@ -190,7 +191,7 @@ def on_chat_message(data):
                 preview = text[:80] + ('…' if len(text) > 80 else '')
                 m_notif = Notification(
                     user_id=mentioned.id,
-                    text=f'<strong>{user.name}</strong> senden bahsetti: {preview}',
+                    text=json.dumps({'type': 'mention', 'who': user.name, 'preview': preview}),
                     sender_slug=user.slug,
                     workspace_id=workspace_id,
                     chat_channel='dm' if receiver else 'general',

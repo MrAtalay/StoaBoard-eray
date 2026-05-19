@@ -2,7 +2,7 @@
 
 const { useState: useDrawerState, useEffect: useDrawerEffect, useRef: useDrawerRef } = React;
 
-function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, onCreateTask, canManageTasks = true }) {
+function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, onCreateTask, canManageTasks = true, pageMode = false, onOpenPage }) {
   const [detail, setDetail]             = useDrawerState(null);
   const [newComment, setNewComment]     = useDrawerState('');
   const [submitting, setSubmitting]     = useDrawerState(false);
@@ -15,7 +15,6 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
   const [assigneeOpen, setAssigneeOpen] = useDrawerState(false);
   const [confirmDelete, setConfirmDelete] = useDrawerState(false);
   const [mentionQuery, setMentionQuery] = useDrawerState(null);
-  const [fullscreen, setFullscreen]     = useDrawerState(false);
   const [duplicating, setDuplicating]   = useDrawerState(false);
   const [dueVal, setDueVal]             = useDrawerState('');
   const [startVal, setStartVal]         = useDrawerState('');
@@ -101,7 +100,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
     setDuplicating(true);
     try {
       const newTask = await API.createTask(task.project_id, {
-        title: task.title + ' (kopya)',
+        title: task.title + ' (' + (window.t('drawer_copy_suffix') || 'kopya') + ')',
         desc: task.desc,
         col: task.col,
         priority: task.priority,
@@ -114,7 +113,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
       if (onCreateTask) onCreateTask(newTask);
       onClose();
     } catch (e) {
-      window.showToast?.('Görev kopyalanamadı: ' + e.message, 'error');
+      window.showToast?.(window.t('drawer_err_duplicate') + e.message, 'error');
     } finally {
       setDuplicating(false);
     }
@@ -143,7 +142,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
       setMentionQuery(null);
       onTaskUpdate({ id: task.id, comments: (task.comments || 0) + 1 });
     } catch (e) {
-      window.showToast?.('Yorum gönderilemedi: ' + e.message, 'error');
+      window.showToast?.(window.t('drawer_err_comment') + e.message, 'error');
     } finally {
       setSubmitting(false);
     }
@@ -199,10 +198,329 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
     }
   };
 
+  const bodyContent = (
+    <>
+      <div className="doc-title" contentEditable={canManageTasks} suppressContentEditableWarning
+        onBlur={(e) => {
+          if (!canManageTasks) return;
+          const newTitle = e.target.textContent?.trim();
+          if (newTitle && newTitle !== task.title) {
+            API.updateTask(task.id, { title: newTitle })
+              .then(() => onTaskUpdate({ id: task.id, title: newTitle }))
+              .catch(console.error);
+          }
+        }}>
+        {task.title}
+      </div>
+
+      {/* Properties */}
+      <div className="props-grid">
+        <div className="prop-label"><Icon name="circleHalf" size={13} /> {window.t('drawer_status')}</div>
+        <div className="prop-value custom-dropdown" ref={statusRef}>
+          <button type="button" className="custom-dropdown-btn" disabled={!canManageTasks} onClick={() => canManageTasks && setStatusOpen(o => !o)}>
+            <span className="dropdown-label">{col.title_tr}</span>
+            <Icon name="chevronDown" size={12} />
+          </button>
+          {statusOpen && canManageTasks && (
+            <div className="custom-dropdown-menu">
+              {DATA.COLUMNS.map(c => (
+                <button key={c.id} type="button" className={"custom-dropdown-item" + (c.id === task.col ? ' active' : '')}
+                  onClick={() => { onMoveTask(task.id, c.id); setStatusOpen(false); }}>
+                  {c.title_tr}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="prop-label"><Icon name="flag" size={13} /> {window.t('drawer_priority')}</div>
+        <div className="prop-value custom-dropdown" ref={priorityRef}>
+          <button type="button" className="custom-dropdown-btn" disabled={!canManageTasks}
+            onClick={() => canManageTasks && setPriorityOpen(o => !o)}>
+            <span className="priority-dot" data-p={task.priority} />
+            <span className="dropdown-label">{task.priority === 'high' ? window.t('board_priority_high') : task.priority === 'mid' ? window.t('board_priority_mid') : window.t('board_priority_low')}</span>
+            {canManageTasks && <Icon name="chevronDown" size={12} />}
+          </button>
+          {priorityOpen && canManageTasks && (
+            <div className="custom-dropdown-menu">
+              {[['high', window.t('board_priority_high')],['mid', window.t('board_priority_mid')],['low', window.t('board_priority_low')]].map(([p, label]) => (
+                <button key={p} type="button" className={'custom-dropdown-item' + (task.priority === p ? ' active' : '')}
+                  onClick={() => { patchTask({ priority: p }); setPriorityOpen(false); }}>
+                  <span className="priority-dot" data-p={p} /> {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="prop-label"><Icon name="users" size={13} /> {window.t('drawer_assignee')}</div>
+        <div className="prop-value custom-dropdown" ref={assigneeRef}>
+          <button type="button" className="custom-dropdown-btn" disabled={!canManageTasks}
+            onClick={() => canManageTasks && setAssigneeOpen(o => !o)}>
+            {members.length > 0
+              ? <><AvatarStack members={members} size="sm" max={3} /><span style={{ color:'var(--ink-muted)', fontSize:12 }}>{members.map(m => m.name.split(' ')[0]).join(', ')}</span></>
+              : <span style={{ color:'var(--ink-muted)' }}>{window.t('drawer_assign_placeholder')}</span>
+            }
+            {canManageTasks && <Icon name="chevronDown" size={12} />}
+          </button>
+          {assigneeOpen && canManageTasks && (
+            <div className="custom-dropdown-menu" style={{ minWidth: 180 }}>
+              {DATA.MEMBERS.map(m => {
+                const assigned = (task.assignees || []).includes(m.id);
+                return (
+                  <button key={m.id} type="button" className="custom-dropdown-item"
+                    style={{ justifyContent: 'space-between' }}
+                    onClick={() => {
+                      const cur = task.assignees || [];
+                      const next = assigned ? cur.filter(a => a !== m.id) : [...cur, m.id];
+                      patchTask({ assignees: next });
+                    }}>
+                    <span style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <Avatar member={m} size="sm" /> {m.name.split(' ')[0]}
+                    </span>
+                    {assigned && <Icon name="check" size={12} strokeWidth={2.5} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="prop-label"><Icon name="calendar" size={13} /> {window.t('drawer_dates')}</div>
+        <div className="prop-value" style={{ gap: 4, flexDirection: 'column', alignItems: 'stretch' }}>
+          {canManageTasks ? (
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              <DatePicker value={startVal} onChange={(v) => { setStartVal(v || ''); patchTask({ start: v || null }); }} />
+              <span style={{ color:'var(--ink-muted)', fontSize:12, flexShrink:0 }}>–</span>
+              <DatePicker value={dueVal} onChange={(v) => { setDueVal(v || ''); patchTask({ due: v || null }); }} />
+            </div>
+          ) : (
+            <span style={{ fontSize:13, color: dueVal && DATA.isOverdue(dueVal, task.col) ? 'var(--status-rose)' : 'var(--ink)' }}>
+              {startVal && dueVal ? `${DATA.fmtDate(startVal)} – ${DATA.fmtDate(dueVal)}`
+                : dueVal ? DATA.fmtDate(dueVal)
+                : startVal ? DATA.fmtDate(startVal)
+                : '—'}
+            </span>
+          )}
+          {members.filter(m => assigneeDatesVal[m.id]?.start || assigneeDatesVal[m.id]?.end).map(m => {
+            const d = assigneeDatesVal[m.id] || {};
+            const patchAd = (field, val) => {
+              const next = { ...assigneeDatesVal, [m.id]: { ...(assigneeDatesVal[m.id] || {}), [field]: val || null } };
+              setAssigneeDatesVal(next);
+              patchTask({ assignee_dates: next });
+            };
+            return (
+              <div key={m.id} style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+                <div style={{ width:8, height:8, borderRadius:'50%', background:m.color, flexShrink:0 }} />
+                <span style={{ fontSize:11, color:'var(--ink-muted)', minWidth:44 }}>{m.name.split(' ')[0]}</span>
+                {canManageTasks ? (
+                  <div style={{ display:'flex', gap:4, flex:1 }}>
+                    <DatePicker value={d.start || ''} onChange={(v) => patchAd('start', v)} />
+                    <DatePicker value={d.end   || ''} onChange={(v) => patchAd('end',   v)} />
+                  </div>
+                ) : (
+                  <span style={{ fontSize:11, color:'var(--ink)' }}>
+                    {d.start && d.end ? `${DATA.fmtDate(d.start)} – ${DATA.fmtDate(d.end)}`
+                      : DATA.fmtDate(d.start || d.end)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="prop-label"><Icon name="tag" size={13} /> {window.t('drawer_labels')}</div>
+        <div className="prop-value" style={{ gap: 4, flexWrap: 'wrap' }} ref={labelRef}>
+          {(task.labels || []).map(l => {
+            const lab = DATA.LABELS[l];
+            return lab && (
+              <span key={l} className="tag" data-tone={lab.tone}
+                style={{ cursor: canManageTasks ? 'pointer' : 'default' }}
+                onClick={() => {
+                  if (!canManageTasks) return;
+                  patchTask({ labels: (task.labels || []).filter(x => x !== l) });
+                }}
+                title={canManageTasks ? window.t('drawer_label_remove_hint') : undefined}>
+                {lab.tr}
+              </span>
+            );
+          })}
+          {canManageTasks && (
+            <>
+              <button className="tag" style={{ cursor:'pointer', borderStyle:'dashed' }}
+                onClick={(e) => { e.stopPropagation(); setLabelOpen(o => !o); }}>
+                <Icon name="plus" size={10} strokeWidth={2} />
+              </button>
+              {labelOpen && (
+                <div className="custom-dropdown-menu" style={{ minWidth: 180 }}>
+                  {Object.entries(DATA.LABELS).map(([slug, lab]) => {
+                    const active = (task.labels || []).includes(slug);
+                    return (
+                      <button key={slug} type="button" className="custom-dropdown-item"
+                        style={{ justifyContent:'space-between' }}
+                        onClick={() => {
+                          const cur = task.labels || [];
+                          patchTask({ labels: active ? cur.filter(x => x !== slug) : [...cur, slug] });
+                        }}>
+                        <span className="tag" data-tone={lab.tone}>{lab.tr}</span>
+                        {active && <Icon name="check" size={12} strokeWidth={2.5} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Document content */}
+      {loadingDetail ? (
+        <div style={{ padding: '24px 0', color: 'var(--ink-muted)', fontSize: 13 }}>{window.t('drawer_loading')}</div>
+      ) : (
+        <div className="doc-content">
+          {doc.map((b, i) => (
+            <DrawerDocBlock key={i} block={b} subsDetail={subsDetail} onSubtaskToggle={handleSubtaskToggle} canManageTasks={canManageTasks} />
+          ))}
+        </div>
+      )}
+
+      {/* Linked notes */}
+      <div className="comments-section" style={{ marginBottom: 18 }}>
+        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', marginBottom: 6 }}>
+          {window.t('drawer_linked_notes')} <span style={{ color: 'var(--ink-muted)', fontSize: 13, fontFamily: 'var(--font-ui)' }}>· {linkedNotes.length}</span>
+        </h3>
+        {loadingLinkedNotes ? (
+          <div style={{ fontSize: 12, color: 'var(--ink-faint)', padding: '8px 0' }}>{window.t('drawer_loading')}</div>
+        ) : linkedNotes.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: 'var(--ink-faint)', padding: '8px 0' }}>{window.t('drawer_no_linked_notes')}</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {linkedNotes.map(n => {
+              const author = DATA.MEMBERS.find(m => m.id === n.author);
+              return (
+                <div key={n.id} className="note-linked-item"
+                  onClick={() => {
+                    onClose && onClose();
+                    if (window.__SWITCH_VIEW__) window.__SWITCH_VIEW__('notes');
+                    setTimeout(() => { window.__NOTES_OPEN__ && window.__NOTES_OPEN__(n.id); }, 30);
+                  }}>
+                  <Icon name="note" size={12} />
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title || window.t('drawer_untitled_note')}</span>
+                  {author && <span style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{author.name?.split(' ')[0]}</span>}
+                  <span style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{fmtTimeAgo(n.updated_ago)}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Comments */}
+      <div className="comments-section">
+        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', marginBottom: 6 }}>
+          {window.t('drawer_comments')} <span style={{ color: 'var(--ink-muted)', fontSize: 13, fontFamily: 'var(--font-ui)' }}>· {comments.length}</span>
+        </h3>
+        {comments.map((c, i) => {
+          const m = DATA.MEMBERS.find(mm => mm.id === c.author);
+          return (
+            <div className="comment-row" key={i}>
+              <Avatar member={m || { initials: '?', color: 'var(--ink-faint)' }} size="sm" />
+              <div className="comment-body">
+                <div className="comment-head">
+                  <span className="comment-name">{m?.name || c.author}</span>
+                  <span className="comment-time">{fmtTimeAgo(c.time)}</span>
+                </div>
+                <div className="comment-text">{c.text}</div>
+              </div>
+            </div>
+          );
+        })}
+        <div className="comment-compose">
+          <Avatar member={DATA.MEMBERS.find(m => m.id === window.CURRENT_USER?.id) || DATA.MEMBERS[0]} size="sm" />
+          <div className="comment-input-wrap">
+            {mentionMembers.length > 0 && (
+              <div className="mention-dropdown">
+                {mentionMembers.map(m => (
+                  <button key={m.id} className="mention-item"
+                    onMouseDown={(e) => { e.preventDefault(); insertMention(m); }}>
+                    <Avatar member={m} size="sm" />
+                    <span className="mention-name">{m.name}</span>
+                    <span className="mention-role">{m.role}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <textarea
+              ref={textareaRef}
+              placeholder={window.t('drawer_comment_placeholder')}
+              value={newComment}
+              onChange={handleCommentChange}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { setMentionQuery(null); return; }
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleCommentSubmit();
+              }}
+            />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 8 }}>
+          <button className="btn btn-ghost" onClick={onClose}>{window.t('app_cancel')}</button>
+          <button className="btn btn-primary" onClick={handleCommentSubmit} disabled={submitting || !newComment.trim()}>
+            {submitting ? window.t('drawer_sending') : window.t('drawer_send')}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
+  const deleteBtn = onDelete && canManageTasks && (
+    confirmDelete ? (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button className="btn btn-ghost" style={{ fontSize: 11, padding: '3px 8px', color: 'var(--status-rose)', borderColor: 'var(--status-rose)' }}
+          onClick={() => { onDelete(task.id); setConfirmDelete(false); }}>
+          {window.t('drawer_delete')}
+        </button>
+        <button className="icon-btn" title={window.t('drawer_cancel')} onClick={() => setConfirmDelete(false)}>
+          <Icon name="x" size={13} />
+        </button>
+      </div>
+    ) : (
+      <button className="icon-btn" title={window.t('drawer_delete')} onClick={() => setConfirmDelete(true)}>
+        <Icon name="trash" size={14} />
+      </button>
+    )
+  );
+
+  if (pageMode) {
+    return (
+      <div className="task-page">
+        <div className="task-page-head">
+          <button className="task-page-back" onClick={onClose}>
+            <Icon name="chevronLeft" size={14} />
+            {window.t('board_view_kanban') || 'Board'}
+          </button>
+          <div className="task-page-crumbs">
+            <Icon name="chevronRight" size={11} style={{ color: 'var(--ink-faint)' }} />
+            <span>{col.title_tr}</span>
+          </div>
+          <div className="task-page-head-actions">
+            <button className="icon-btn" title={window.t('drawer_duplicate')} onClick={handleDuplicate} disabled={duplicating}>
+              <Icon name="copy" size={15} />
+            </button>
+            {deleteBtn}
+          </div>
+        </div>
+        <div className="task-page-body">
+          {bodyContent}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
-      <div className="drawer-overlay" data-open={open} data-fullscreen={fullscreen} onClick={onClose} />
-      <div className="drawer" data-open={open} data-fullscreen={fullscreen}>
+      <div className="drawer-overlay" data-open={open} onClick={onClose} />
+      <div className="drawer" data-open={open}>
         <div className="drawer-head">
           <div className="drawer-crumbs">
             <span>StoaBoard Web</span>
@@ -210,326 +528,20 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
             <span style={{ color: 'var(--ink)' }}>{col.title_tr}</span>
           </div>
           <div className="drawer-head-actions">
-            <button className="icon-btn" title="Kopyala" onClick={handleDuplicate} disabled={duplicating}>
+            <button className="icon-btn" title={window.t('drawer_duplicate')} onClick={handleDuplicate} disabled={duplicating}>
               <Icon name="copy" size={15} />
             </button>
-            <button className="icon-btn drawer-fullscreen-btn" title={fullscreen ? 'Küçült' : 'Tam ekran'} onClick={() => setFullscreen(f => !f)}>
-              <Icon name={fullscreen ? 'minimize' : 'expand'} size={14} />
-            </button>
-            {onDelete && canManageTasks && (
-              confirmDelete ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <button className="btn btn-ghost" style={{ fontSize: 11, padding: '3px 8px', color: 'var(--status-rose)', borderColor: 'var(--status-rose)' }}
-                    onClick={() => { onDelete(task.id); setConfirmDelete(false); }}>
-                    Sil
-                  </button>
-                  <button className="icon-btn" title="Vazgeç" onClick={() => setConfirmDelete(false)}>
-                    <Icon name="x" size={13} />
-                  </button>
-                </div>
-              ) : (
-                <button className="icon-btn" title="Sil" onClick={() => setConfirmDelete(true)}>
-                  <Icon name="trash" size={14} />
-                </button>
-              )
+            {onOpenPage && (
+              <button className="icon-btn drawer-fullscreen-btn" title={window.t('drawer_fullscreen')} onClick={() => onOpenPage(task)}>
+                <Icon name="expand" size={14} />
+              </button>
             )}
-            <button className="icon-btn" title="Kapat" onClick={onClose}><Icon name="x" size={15} /></button>
+            {deleteBtn}
+            <button className="icon-btn" title={window.t('drawer_close')} onClick={onClose}><Icon name="x" size={15} /></button>
           </div>
         </div>
 
-        <div className="drawer-body">
-          <div className="doc-title" contentEditable={canManageTasks} suppressContentEditableWarning
-            onBlur={(e) => {
-              if (!canManageTasks) return;
-              const newTitle = e.target.textContent?.trim();
-              if (newTitle && newTitle !== task.title) {
-                API.updateTask(task.id, { title: newTitle })
-                  .then(() => onTaskUpdate({ id: task.id, title: newTitle }))
-                  .catch(console.error);
-              }
-            }}>
-            {task.title}
-          </div>
-
-          {/* Properties */}
-          <div className="props-grid">
-            <div className="prop-label"><Icon name="circleHalf" size={13} /> Durum</div>
-            <div className="prop-value custom-dropdown" ref={statusRef}>
-              <button type="button" className="custom-dropdown-btn" disabled={!canManageTasks} onClick={() => canManageTasks && setStatusOpen(o => !o)}>
-                <span className="dropdown-label">{col.title_tr}</span>
-                <Icon name="chevronDown" size={12} />
-              </button>
-              {statusOpen && canManageTasks && (
-                <div className="custom-dropdown-menu">
-                  {DATA.COLUMNS.map(c => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className={"custom-dropdown-item" + (c.id === task.col ? ' active' : '')}
-                      onClick={() => { onMoveTask(task.id, c.id); setStatusOpen(false); }}
-                    >
-                      {c.title_tr}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="prop-label"><Icon name="flag" size={13} /> Öncelik</div>
-            <div className="prop-value custom-dropdown" ref={priorityRef}>
-              <button type="button" className="custom-dropdown-btn" disabled={!canManageTasks}
-                onClick={() => canManageTasks && setPriorityOpen(o => !o)}>
-                <span className="priority-dot" data-p={task.priority} />
-                <span className="dropdown-label">{task.priority === 'high' ? 'Yüksek' : task.priority === 'mid' ? 'Orta' : 'Düşük'}</span>
-                {canManageTasks && <Icon name="chevronDown" size={12} />}
-              </button>
-              {priorityOpen && canManageTasks && (
-                <div className="custom-dropdown-menu">
-                  {[['high','Yüksek'],['mid','Orta'],['low','Düşük']].map(([p, label]) => (
-                    <button key={p} type="button"
-                      className={'custom-dropdown-item' + (task.priority === p ? ' active' : '')}
-                      onClick={() => { patchTask({ priority: p }); setPriorityOpen(false); }}>
-                      <span className="priority-dot" data-p={p} /> {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="prop-label"><Icon name="users" size={13} /> Atanan</div>
-            <div className="prop-value custom-dropdown" ref={assigneeRef}>
-              <button type="button" className="custom-dropdown-btn" disabled={!canManageTasks}
-                onClick={() => canManageTasks && setAssigneeOpen(o => !o)}>
-                {members.length > 0
-                  ? <><AvatarStack members={members} size="sm" max={3} /><span style={{ color:'var(--ink-muted)', fontSize:12 }}>{members.map(m => m.name.split(' ')[0]).join(', ')}</span></>
-                  : <span style={{ color:'var(--ink-muted)' }}>Ata…</span>
-                }
-                {canManageTasks && <Icon name="chevronDown" size={12} />}
-              </button>
-              {assigneeOpen && canManageTasks && (
-                <div className="custom-dropdown-menu" style={{ minWidth: 180 }}>
-                  {DATA.MEMBERS.map(m => {
-                    const assigned = (task.assignees || []).includes(m.id);
-                    return (
-                      <button key={m.id} type="button" className="custom-dropdown-item"
-                        style={{ justifyContent: 'space-between' }}
-                        onClick={() => {
-                          const cur = task.assignees || [];
-                          const next = assigned ? cur.filter(a => a !== m.id) : [...cur, m.id];
-                          patchTask({ assignees: next });
-                        }}>
-                        <span style={{ display:'flex', alignItems:'center', gap:6 }}>
-                          <Avatar member={m} size="sm" /> {m.name.split(' ')[0]}
-                        </span>
-                        {assigned && <Icon name="check" size={12} strokeWidth={2.5} />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="prop-label"><Icon name="calendar" size={13} /> Tarihler</div>
-            <div className="prop-value" style={{ gap: 4, flexDirection: 'column', alignItems: 'stretch' }}>
-              {canManageTasks ? (
-                <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-                  <DatePicker value={startVal} onChange={(v) => { setStartVal(v || ''); patchTask({ start: v || null }); }} />
-                  <span style={{ color:'var(--ink-muted)', fontSize:12, flexShrink:0 }}>–</span>
-                  <DatePicker value={dueVal} onChange={(v) => { setDueVal(v || ''); patchTask({ due: v || null }); }} />
-                </div>
-              ) : (
-                <span style={{ fontSize:13, color: dueVal && DATA.isOverdue(dueVal, task.col) ? 'var(--status-rose)' : 'var(--ink)' }}>
-                  {startVal && dueVal ? `${DATA.fmtDate(startVal)} – ${DATA.fmtDate(dueVal)}`
-                    : dueVal ? DATA.fmtDate(dueVal)
-                    : startVal ? DATA.fmtDate(startVal)
-                    : '—'}
-                </span>
-              )}
-              {/* Per-assignee date rows */}
-              {members.filter(m => assigneeDatesVal[m.id]?.start || assigneeDatesVal[m.id]?.end).map(m => {
-                const d = assigneeDatesVal[m.id] || {};
-                const patchAd = (field, val) => {
-                  const next = { ...assigneeDatesVal, [m.id]: { ...(assigneeDatesVal[m.id] || {}), [field]: val || null } };
-                  setAssigneeDatesVal(next);
-                  patchTask({ assignee_dates: next });
-                };
-                return (
-                  <div key={m.id} style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
-                    <div style={{ width:8, height:8, borderRadius:'50%', background:m.color, flexShrink:0 }} />
-                    <span style={{ fontSize:11, color:'var(--ink-muted)', minWidth:44 }}>{m.name.split(' ')[0]}</span>
-                    {canManageTasks ? (
-                      <div style={{ display:'flex', gap:4, flex:1 }}>
-                        <DatePicker value={d.start || ''} onChange={(v) => patchAd('start', v)} />
-                        <DatePicker value={d.end   || ''} onChange={(v) => patchAd('end',   v)} />
-                      </div>
-                    ) : (
-                      <span style={{ fontSize:11, color:'var(--ink)' }}>
-                        {d.start && d.end ? `${DATA.fmtDate(d.start)} – ${DATA.fmtDate(d.end)}`
-                          : DATA.fmtDate(d.start || d.end)}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="prop-label"><Icon name="tag" size={13} /> Etiketler</div>
-            <div className="prop-value" style={{ gap: 4, flexWrap: 'wrap' }} ref={labelRef}>
-              {(task.labels || []).map(l => {
-                const lab = DATA.LABELS[l];
-                return lab && (
-                  <span key={l} className="tag" data-tone={lab.tone}
-                    style={{ cursor: canManageTasks ? 'pointer' : 'default' }}
-                    onClick={() => {
-                      if (!canManageTasks) return;
-                      patchTask({ labels: (task.labels || []).filter(x => x !== l) });
-                    }}
-                    title={canManageTasks ? 'Kaldırmak için tıkla' : undefined}>
-                    {lab.tr}
-                  </span>
-                );
-              })}
-              {canManageTasks && (
-                <>
-                  <button className="tag" style={{ cursor:'pointer', borderStyle:'dashed' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setLabelOpen(o => !o);
-                    }}>
-                    <Icon name="plus" size={10} strokeWidth={2} />
-                  </button>
-                  {labelOpen && (
-                    <div className="custom-dropdown-menu" style={{ minWidth: 180 }}>
-                      {Object.entries(DATA.LABELS).map(([slug, lab]) => {
-                        const active = (task.labels || []).includes(slug);
-                        return (
-                          <button key={slug} type="button" className="custom-dropdown-item"
-                            style={{ justifyContent:'space-between' }}
-                            onClick={() => {
-                              const cur = task.labels || [];
-                              patchTask({ labels: active ? cur.filter(x => x !== slug) : [...cur, slug] });
-                            }}>
-                            <span className="tag" data-tone={lab.tone}>{lab.tr}</span>
-                            {active && <Icon name="check" size={12} strokeWidth={2.5} />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Document content */}
-          {loadingDetail ? (
-            <div style={{ padding: '24px 0', color: 'var(--ink-muted)', fontSize: 13 }}>Yükleniyor…</div>
-          ) : (
-            <div className="doc-content">
-              {doc.map((b, i) => (
-                <DrawerDocBlock
-                  key={i}
-                  block={b}
-                  subsDetail={subsDetail}
-                  onSubtaskToggle={handleSubtaskToggle}
-                  canManageTasks={canManageTasks}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Linked notes (two-way with Notes module) */}
-          <div className="comments-section" style={{ marginBottom: 18 }}>
-            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', marginBottom: 6 }}>
-              Bağlı Notlar <span style={{ color: 'var(--ink-muted)', fontSize: 13, fontFamily: 'var(--font-ui)' }}>· {linkedNotes.length}</span>
-            </h3>
-            {loadingLinkedNotes ? (
-              <div style={{ fontSize: 12, color: 'var(--ink-faint)', padding: '8px 0' }}>Yükleniyor…</div>
-            ) : linkedNotes.length === 0 ? (
-              <div style={{ fontSize: 12.5, color: 'var(--ink-faint)', padding: '8px 0' }}>
-                Bu göreve henüz not bağlanmadı. Notlar modülünden "Görev bağla" ile ekleyebilirsin.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {linkedNotes.map(n => {
-                  const author = DATA.MEMBERS.find(m => m.id === n.author);
-                  return (
-                    <div key={n.id} className="note-linked-item"
-                      onClick={() => {
-                        onClose && onClose();
-                        if (window.__SWITCH_VIEW__) window.__SWITCH_VIEW__('notes');
-                        setTimeout(() => { window.__NOTES_OPEN__ && window.__NOTES_OPEN__(n.id); }, 30);
-                      }}
-                    >
-                      <Icon name="note" size={12} />
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title || 'Başlıksız Not'}</span>
-                      {author && <span style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{author.name?.split(' ')[0]}</span>}
-                      <span style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{n.updated_ago}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Comments */}
-          <div className="comments-section">
-            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', marginBottom: 6 }}>
-              Yorumlar <span style={{ color: 'var(--ink-muted)', fontSize: 13, fontFamily: 'var(--font-ui)' }}>· {comments.length}</span>
-            </h3>
-            {comments.map((c, i) => {
-              const m = DATA.MEMBERS.find(mm => mm.id === c.author);
-              return (
-                <div className="comment-row" key={i}>
-                  <Avatar member={m || { initials: '?', color: 'var(--ink-faint)' }} size="sm" />
-                  <div className="comment-body">
-                    <div className="comment-head">
-                      <span className="comment-name">{m?.name || c.author}</span>
-                      <span className="comment-time">{c.time}</span>
-                    </div>
-                    <div className="comment-text">{c.text}</div>
-                  </div>
-                </div>
-              );
-            })}
-            <div className="comment-compose">
-              <Avatar member={DATA.MEMBERS.find(m => m.id === window.CURRENT_USER?.id) || DATA.MEMBERS[0]} size="sm" />
-              <div className="comment-input-wrap">
-                {mentionMembers.length > 0 && (
-                  <div className="mention-dropdown">
-                    {mentionMembers.map(m => (
-                      <button
-                        key={m.id}
-                        className="mention-item"
-                        onMouseDown={(e) => { e.preventDefault(); insertMention(m); }}
-                      >
-                        <Avatar member={m} size="sm" />
-                        <span className="mention-name">{m.name}</span>
-                        <span className="mention-role">{m.role}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <textarea
-                  ref={textareaRef}
-                  placeholder="Yorum yaz… @ ile bahset"
-                  value={newComment}
-                  onChange={handleCommentChange}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') { setMentionQuery(null); return; }
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleCommentSubmit();
-                  }}
-                />
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 8 }}>
-              <button className="btn btn-ghost" onClick={onClose}>İptal</button>
-              <button className="btn btn-primary" onClick={handleCommentSubmit} disabled={submitting || !newComment.trim()}>
-                {submitting ? 'Gönderiliyor…' : 'Gönder'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <div className="drawer-body">{bodyContent}</div>
       </div>
     </>
   );
@@ -601,11 +613,11 @@ function DrawerDocBlock({ block, subsDetail, onSubtaskToggle, canManageTasks = t
 function _basicDoc(task) {
   const doc = [];
   if (task?.desc) {
-    doc.push({ kind: 'h2', text: 'Açıklama' });
+    doc.push({ kind: 'h2', text: window.t?.('drawer_description') || 'Açıklama' });
     doc.push({ kind: 'p', text: task.desc });
   }
   if (!doc.length) {
-    doc.push({ kind: 'p', text: 'Bu kart için henüz detaylı açıklama eklenmedi.' });
+    doc.push({ kind: 'p', text: window.t?.('drawer_no_description') || 'Bu kart için henüz detaylı açıklama eklenmedi.' });
   }
   return doc;
 }

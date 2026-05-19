@@ -3,11 +3,8 @@ const { useState: useAuthState, useEffect: useAuthEffect, useRef: useAuthRef } =
 
 // ── Dil tanımları ─────────────────────────────────────────────────────────────
 const AUTH_LANGS = [
-  { code: 'tr', label: 'TR', flag: '🇹🇷', name: 'Türkçe' },
-  { code: 'en', label: 'EN', flag: '🇬🇧', name: 'English' },
-  { code: 'de', label: 'DE', flag: '🇩🇪', name: 'Deutsch' },
-  { code: 'es', label: 'ES', flag: '🇪🇸', name: 'Español' },
-  { code: 'ru', label: 'RU', flag: '🇷🇺', name: 'Русский' },
+  { code: 'tr', name: 'Türkçe', img: 'https://flagcdn.com/20x15/tr.png' },
+  { code: 'en', name: 'English', img: 'https://flagcdn.com/20x15/gb.png' },
 ];
 
 const AUTH_I18N = {
@@ -48,6 +45,13 @@ const AUTH_I18N = {
     invite_text: 'Takıma davet edildiniz.',
     invite_join_signup: 'Hesap oluşturarak', invite_join_signin: 'Giriş yaparak',
     invite_continue: 'katılmaya devam edin.',
+    hero_h1_before: 'Yarının projelerini, bugünün en ',
+    hero_h1_em: 'hafif',
+    hero_h1_after: ' araçlarıyla inşa edin.',
+    hero_p: 'Teknoloji dünyası artık ağır ve hantal sistemleri kaldırmıyor. StoaBoard, startup çevikliğini merkeze alarak tasarlandı; 15 saniyede kurulum, sıfır karmaşıklık ve tam senkronizasyon. Pano, liste ve takvim görünümleri arasında pürüzsüzce geçiş yaparken, sistemin ağırlığını değil, ekibinizin yaratıcılığını hissedeceksiniz. Gelecek burada başlıyor, hafiflikten güç alarak.',
+    stat_teams: 'aktif ekip',
+    stat_tasks: 'tamamlanan görev',
+    stat_setup: 'ortalama kurulum',
   },
   en: {
     greet_morning: 'Good morning, welcome back to StoaBoard.',
@@ -86,6 +90,13 @@ const AUTH_I18N = {
     invite_text: 'You have been invited to a team.',
     invite_join_signup: 'Sign up', invite_join_signin: 'Sign in',
     invite_continue: 'to continue joining.',
+    hero_h1_before: "Build tomorrow's projects with today's ",
+    hero_h1_em: 'lightest',
+    hero_h1_after: ' tools.',
+    hero_p: "The tech world no longer tolerates heavy, clunky systems. StoaBoard was designed with startup agility at its core — 15-second setup, zero complexity, and full synchronization. Seamlessly switch between board, list, and calendar views while feeling your team's creativity, not the system's weight. The future starts here, powered by lightness.",
+    stat_teams: 'active teams',
+    stat_tasks: 'completed tasks',
+    stat_setup: 'avg. setup',
   },
   de: {
     greet_morning: 'Guten Morgen, willkommen zurück bei StoaBoard.',
@@ -315,6 +326,7 @@ function AuthPage({ onSignIn }) {
     setLang(code);
     localStorage.setItem('stoa.lang', code);
     try { const tw = JSON.parse(localStorage.getItem('stoa.tweaks') || '{}'); localStorage.setItem('stoa.tweaks', JSON.stringify({ ...tw, locale: code })); } catch {}
+    location.reload();
   };
 
   useAuthEffect(() => {
@@ -442,12 +454,12 @@ function AuthPage({ onSignIn }) {
             <div className="auth-brand-text">Stoa<em>Board</em></div>
           </div>
           <div className="auth-hero">
-            <h1>Yarının projelerini, bugünün en <em>hafif</em> araçlarıyla inşa edin.</h1>
-            <p>Teknoloji dünyası artık ağır ve hantal sistemleri kaldırmıyor. StoaBoard, startup çevikliğini merkeze alarak tasarlandı; 15 saniyede kurulum, sıfır karmaşıklık ve tam senkronizasyon. Pano, liste ve takvim görünümleri arasında pürüzsüzce geçiş yaparken, sistemin ağırlığını değil, ekibinizin yaratıcılığını hissedeceksiniz. Gelecek burada başlıyor, hafiflikten güç alarak.</p>
+            <h1>{t('hero_h1_before')}<em>{t('hero_h1_em')}</em>{t('hero_h1_after')}</h1>
+            <p>{t('hero_p')}</p>
             <div className="stats-row">
-              <div><strong>1.200+</strong><span>aktif ekip</span></div>
-              <div><strong>38k+</strong><span>tamamlanan görev</span></div>
-              <div><strong>15sn</strong><span>ortalama kurulum</span></div>
+              <div><strong>1.200+</strong><span>{t('stat_teams')}</span></div>
+              <div><strong>38k+</strong><span>{t('stat_tasks')}</span></div>
+              <div><strong>15sn</strong><span>{t('stat_setup')}</span></div>
             </div>
           </div>
         </div>
@@ -455,8 +467,8 @@ function AuthPage({ onSignIn }) {
 
       <div className="auth-form-wrap" style={{ position: 'relative' }}>
         <div style={{ position: 'absolute', top: 14, right: 14, zIndex: 10 }} ref={langMenuRef}>
-          <button onClick={() => setLangMenuOpen(o => !o)} style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 11px', borderRadius:8, cursor:'pointer', background:'var(--bg)', color:'var(--ink)', border:'1px solid var(--line)', fontSize:12, fontWeight:600, transition:'all 0.15s', boxShadow:'0 1px 4px rgba(0,0,0,0.07)' }}>
-            <span>{AUTH_LANGS.find(l => l.code === lang)?.label || 'TR'}</span>
+          <button onClick={() => setLangMenuOpen(o => !o)} style={{ display:'flex', alignItems:'center', gap:4, padding:'5px 9px', borderRadius:8, cursor:'pointer', background:'var(--bg)', color:'var(--ink)', border:'1px solid var(--line)', fontSize:12, fontWeight:600, transition:'all 0.15s', boxShadow:'0 1px 4px rgba(0,0,0,0.07)' }}>
+            <img src={AUTH_LANGS.find(l => l.code === lang)?.img || 'https://flagcdn.com/20x15/tr.png'} width="20" height="15" style={{ borderRadius:2, display:'block' }} />
             <svg width="10" height="7" viewBox="0 0 10 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d={langMenuOpen ? 'M1 6L5 2L9 6' : 'M1 1L5 5L9 1'}/></svg>
           </button>
           {langMenuOpen && (
@@ -468,7 +480,7 @@ function AuthPage({ onSignIn }) {
                     color: lang === l.code ? 'var(--accent)' : 'var(--ink)',
                     fontWeight: lang === l.code ? 600 : 400, fontSize:13, border:'none',
                     borderBottom: i < AUTH_LANGS.length - 1 ? '1px solid var(--line)' : 'none' }}>
-                  <span style={{ fontSize:16 }}>{l.flag}</span>
+                  <img src={l.img} width="20" height="15" style={{ borderRadius:2, display:'block', flexShrink:0 }} />
                   <span style={{ flex:1 }}>{l.name}</span>
                   {lang === l.code && <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2 6L5 9L10 3"/></svg>}
                 </button>
@@ -856,7 +868,7 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
         onReady();
       }
     }
-    catch (err) { setError(err.message || 'Geçersiz davet kodu'); }
+    catch (err) { setError(window.t?.('err_' + err.message) || err.message); }
     finally { setBusy(false); }
   };
 

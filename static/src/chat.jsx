@@ -1,4 +1,4 @@
-// Team chat panel — real-time DM + group chat, file/image/video sharing
+﻿// Team chat panel — real-time DM + group chat, file/image/video sharing
 
 const { useState: useChatS, useEffect: useChatE, useRef: useChatRef, useCallback: useChatCb } = React;
 
@@ -43,7 +43,7 @@ function Lightbox({ src, kind = 'image', onClose }) {
             }} />
         }
       </div>
-      <button onClick={onClose} title="Kapat (ESC)" style={{
+      <button onClick={onClose} title={window.t?.('chat_close') || 'Kapat (ESC)'} style={{
         position: 'absolute', top: 18, right: 22, background: 'rgba(0, 0, 0, 0.55)',
         color: 'white', border: '1px solid rgba(255, 255, 255, 0.15)',
         width: 36, height: 36, borderRadius: 18, padding: 0, cursor: 'pointer',
@@ -86,7 +86,7 @@ function fmtMsgTime(msg) {
   if (raw) {
     try {
       const iso = (raw.endsWith('Z') || raw.includes('+')) ? raw : raw + 'Z';
-      return new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     } catch(e) {}
   }
   return msg.time || '';
@@ -105,13 +105,16 @@ function msgDateKey(msg) {
 // ── Date separator label ───────────────────────────────────────────────────
 function fmtDateSep(dateKey) {
   if (!dateKey) return '';
-  const TR_MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const lang = localStorage.getItem('stoa.lang') || 'tr';
+  const months = lang === 'en'
+    ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    : ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
   const today = new Date().toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  if (dateKey === today) return 'Bugün';
-  if (dateKey === yesterday) return 'Dün';
+  if (dateKey === today) return window.t?.('chat_today') || 'Bugün';
+  if (dateKey === yesterday) return window.t?.('chat_yesterday') || 'Dün';
   const d = new Date(dateKey + 'T00:00:00');
-  return `${d.getDate()} ${TR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 // ── Render message text with @mention chips + markdown (**bold**, *italic*, `code`) ─
 function _renderInline(text, keyBase = '') {
@@ -168,9 +171,12 @@ function fmtMsgDateTime(msg) {
     try {
       const iso = (raw.endsWith('Z') || raw.includes('+')) ? raw : raw + 'Z';
       const d = new Date(iso);
-      const TR_MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
-      const dateStr = `${d.getDate()} ${TR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-      const timeStr = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+      const lang = localStorage.getItem('stoa.lang') || 'tr';
+      const MONTHS = lang === 'en'
+        ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        : ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+      const dateStr = `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+      const timeStr = d.toLocaleTimeString(lang === 'en' ? 'en-GB' : 'tr-TR', { hour: '2-digit', minute: '2-digit' });
       return `${dateStr} · ${timeStr}`;
     } catch(e) {}
   }
@@ -184,9 +190,9 @@ function StatusDot({ status }) {
     dnd:     'var(--status-rose)',
     offline: 'var(--ink-faint)',
   };
-  const titles = { online: 'Çevrimiçi', away: 'Uzakta', dnd: 'Rahatsız Etme', offline: 'Çevrimdışı' };
+  const titles = { online: window.t?.('shell_status_online')||'Çevrimiçi', away: window.t?.('shell_status_away')||'Uzakta', dnd: window.t?.('shell_status_dnd')||'Rahatsız Etme', offline: window.t?.('shell_status_offline')||'Çevrimdışı' };
   return (
-    <span title={titles[status] || 'Çevrimdışı'} style={{
+    <span title={titles[status] || (window.t?.('shell_status_offline')||'Çevrimdışı')} style={{
       display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
       background: colors[status] || colors.offline,
       border: '1.5px solid var(--bg)',
@@ -198,11 +204,11 @@ function StatusDot({ status }) {
 // ── Message bubble content ────────────────────────────────────────────────
 function chatToastPayload(msg, sender) {
   return {
-    message: msg.text || msg.file_name || 'Dosya',
+    message: msg.text || msg.file_name || (window.t?.('chat_file')||'Dosya'),
     meta: {
-      sender: sender?.name || msg.from || 'Yeni mesaj',
-      channel: msg.to ? 'Direkt mesaj' : 'Genel kanal',
-      time: msg.time || new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+      sender: sender?.name || msg.from || (window.t?.('chat_new_msg')||'Yeni mesaj'),
+      channel: msg.to ? (window.t?.('chat_direct_messages')||'Direkt mesaj') : (window.t?.('chat_team_channels')||'Genel kanal'),
+      time: msg.time || new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
     },
   };
 }
@@ -217,7 +223,7 @@ function MsgContent({ msg, onImageClick }) {
     return (
       <div className="chat-media-wrap">
         <img
-          src={msg.file_url} alt={msg.file_name || 'Resim'}
+          src={msg.file_url} alt={msg.file_name || (window.t?.('chat_img_not_found')||'Görsel')}
           className="chat-media-img"
           onClick={() => openMedia('image', msg.file_url)}
           loading="lazy"
@@ -228,7 +234,7 @@ function MsgContent({ msg, onImageClick }) {
         />
         <div style={{ display: 'none', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 8, background: 'var(--bg-dim)', color: 'var(--ink-muted)', fontSize: 12 }}>
           <Icon name="eyeOff" size={14} />
-          <span>{msg.file_name || 'Görsel bulunamadı'}</span>
+          <span>{msg.file_name || (window.t?.('chat_img_not_found')||'Görsel bulunamadı')}</span>
         </div>
         {msg.text && <div className="chat-bubble-text">{msg.text}</div>}
         <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 3 }}>{fmtMsgDateTime(msg)}</div>
@@ -318,7 +324,7 @@ function CreateChannelModal({ open, onClose, onCreated, allMembers, me }) {
       onCreated(ch);
       onClose();
     } catch (e) {
-      window.showToast?.('Kanal oluşturulamadı: ' + e.message, 'error');
+      window.showToast?.((window.t?.('chat_create_failed')||'Kanal oluşturulamadı: ') + e.message, 'error');
       setSubmitting(false);
     }
   };
@@ -335,7 +341,7 @@ function CreateChannelModal({ open, onClose, onCreated, allMembers, me }) {
 
         <div className="stoa-channel-modal-body">
           <label className="stoa-field">
-            <span className="stoa-field-label">Kanal adı</span>
+            <span className="stoa-field-label">{window.t?.('chat_channel_name_label')||'Kanal adı'}</span>
             <div className="stoa-input-prefix">
               <span style={{ color: 'var(--ink-faint)' }}>#</span>
               <input
@@ -349,9 +355,9 @@ function CreateChannelModal({ open, onClose, onCreated, allMembers, me }) {
           </label>
 
           <label className="stoa-field">
-            <span className="stoa-field-label">Açıklama <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>(opsiyonel)</span></span>
+            <span className="stoa-field-label">{window.t?.('chat_channel_desc_label')||'Açıklama'} <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>{window.t?.('chat_channel_desc_opt')||'(opsiyonel)'}</span></span>
             <textarea
-              placeholder="Bu kanal ne için kullanılacak?"
+              placeholder={window.t?.('chat_desc_ph')||'Bu kanal ne için kullanılacak?'}
               value={description}
               onChange={e => setDescription(e.target.value)}
               rows={2}
@@ -360,20 +366,20 @@ function CreateChannelModal({ open, onClose, onCreated, allMembers, me }) {
           </label>
 
           <div className="stoa-field">
-            <span className="stoa-field-label">Kanal tipi</span>
+            <span className="stoa-field-label">{window.t?.('chat_channel_type')||'Kanal tipi'}</span>
             <div className="stoa-radio-group">
               <label className={`stoa-radio-card ${type === 'public' ? 'is-active' : ''}`} onClick={() => setType('public')}>
                 <Icon name="globe" size={16} />
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>Genel</div>
-                  <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Projedeki herkes katılır ve görür.</div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{window.t?.('chat_channel_public')||'Genel'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{window.t?.('chat_channel_public_join')||'Projedeki herkes katılır ve görür.'}</div>
                 </div>
               </label>
               <label className={`stoa-radio-card ${type === 'private' ? 'is-active' : ''}`} onClick={() => setType('private')}>
                 <Icon name="lock" size={16} />
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>Özel</div>
-                  <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Sadece davet edilenler erişir.</div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{window.t?.('chat_channel_private')||'Özel'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{window.t?.('chat_channel_private_join')||'Sadece davet edilenler erişir.'}</div>
                 </div>
               </label>
             </div>
@@ -382,10 +388,10 @@ function CreateChannelModal({ open, onClose, onCreated, allMembers, me }) {
           {type === 'private' && (
             <div className="stoa-field">
               <span className="stoa-field-label">
-                Üyeler <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>({selected.size} seçili)</span>
+                {window.t?.('chat_members')||'Üyeler'} <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>({selected.size} {window.t?.('chat_members_selected')||'seçili'})</span>
               </span>
               <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginBottom: 6 }}>
-                Bu kanalı sadece eklediğiniz kişiler görebilir.
+                {window.t?.('chat_private_members_note')||'Bu kanalı sadece eklediğiniz kişiler görebilir.'}
               </div>
               {selected.size > 0 && (
                 <div className="stoa-chip-row">
@@ -394,7 +400,7 @@ function CreateChannelModal({ open, onClose, onCreated, allMembers, me }) {
                     return (
                       <span key={slug} className="stoa-chip">
                         {m?.name || slug}
-                        <button onClick={() => toggleMember(slug)} title="Kaldır"><Icon name="x" size={10} /></button>
+                        <button onClick={() => toggleMember(slug)} title={window.t?.('chat_remove')||'Kaldır'}><Icon name="x" size={10} /></button>
                       </span>
                     );
                   })}
@@ -403,19 +409,19 @@ function CreateChannelModal({ open, onClose, onCreated, allMembers, me }) {
               <div className="stoa-member-search">
                 <Icon name="search" size={13} />
                 <input
-                  placeholder="Üye ara…"
+                  placeholder={window.t?.('chat_member_search')||'Üye ara…'}
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                 />
                 <div className="stoa-quick-actions">
-                  <button onClick={selectAll}>Tümünü seç</button>
-                  <button onClick={clearAll}>Temizle</button>
+                  <button onClick={selectAll}>{window.t?.('chat_select_all')||'Tümünü seç'}</button>
+                  <button onClick={clearAll}>{window.t?.('chat_clear')||'Temizle'}</button>
                 </div>
               </div>
               <div className="stoa-member-list">
                 {filtered.length === 0 ? (
                   <div style={{ padding: 16, fontSize: 12, color: 'var(--ink-faint)', textAlign: 'center' }}>
-                    Eşleşen üye yok.
+                    {window.t?.('chat_no_matching_members')||'Eşleşen üye yok.'}
                   </div>
                 ) : filtered.map(m => {
                   const checked = selected.has(m.id);
@@ -438,9 +444,9 @@ function CreateChannelModal({ open, onClose, onCreated, allMembers, me }) {
         </div>
 
         <div className="stoa-channel-modal-foot">
-          <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>İptal</button>
+          <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>{window.t?.('app_cancel') || 'İptal'}</button>
           <button className="btn btn-primary" onClick={submit} disabled={!canSubmit}>
-            {submitting ? 'Oluşturuluyor…' : 'Kanal Oluştur'}
+            {submitting ? (window.t?.('app_creating') || 'Oluşturuluyor…') : (window.t?.('chat_create_channel') || 'Kanal Oluştur')}
           </button>
         </div>
       </div>
@@ -453,9 +459,9 @@ function CreateChannelModal({ open, onClose, onCreated, allMembers, me }) {
 function RoleBadge({ role }) {
   if (!role) return null;
   const meta = {
-    owner:  { label: 'Sahip',    bg: 'oklch(60% 0.18 295 / 0.18)', fg: 'oklch(40% 0.15 295)', icon: 'gem' },
-    admin:  { label: 'Yönetici', bg: 'oklch(60% 0.15 230 / 0.18)', fg: 'oklch(40% 0.14 230)', icon: 'shield' },
-    member: { label: 'Üye',      bg: 'oklch(85% 0.01 240 / 0.50)', fg: 'oklch(45% 0.02 240)', icon: null },
+    owner:  { label: window.t?.('chat_role_owner')||'Sahip',    bg: 'oklch(60% 0.18 295 / 0.18)', fg: 'oklch(40% 0.15 295)', icon: 'gem' },
+    admin:  { label: window.t?.('chat_role_admin')||'Yönetici', bg: 'oklch(60% 0.15 230 / 0.18)', fg: 'oklch(40% 0.14 230)', icon: 'shield' },
+    member: { label: window.t?.('chat_role_member')||'Üye',      bg: 'oklch(85% 0.01 240 / 0.50)', fg: 'oklch(45% 0.02 240)', icon: null },
   }[role] || null;
   if (!meta) return null;
   return (
@@ -503,10 +509,10 @@ function AddMemberModal({ open, onClose, channel, onAdded, allMembers, me }) {
     try {
       const res = await window.API.addChannelMembers(channel.channel_id, Array.from(selected));
       onAdded(res.channel);
-      window.showToast?.(`${res.added.length} üye eklendi`, 'success');
+      window.showToast?.(`${res.added.length} ${window.t?.('chat_added_members')||'üye eklendi'}`, 'success');
       onClose();
     } catch (e) {
-      window.showToast?.('Üye eklenemedi: ' + e.message, 'error');
+      window.showToast?.((window.t?.('chat_add_member_failed')||'Üye eklenemedi: ') + e.message, 'error');
       setSubmitting(false);
     }
   };
@@ -516,7 +522,7 @@ function AddMemberModal({ open, onClose, channel, onAdded, allMembers, me }) {
       <div className="stoa-channel-modal" onClick={e => e.stopPropagation()} style={{ width: 'min(440px, 100%)' }}>
         <div className="stoa-channel-modal-head">
           <div style={{ fontSize: 15, fontWeight: 600 }}>
-            <span style={{ color: 'var(--ink-muted)', fontWeight: 400 }}>#{channel.name}</span> kanalına üye ekle
+            <span style={{ color: 'var(--ink-muted)', fontWeight: 400 }}>#{channel.name}</span> {window.t?.('chat_add_members_title')||'kanalına üye ekle'}
           </div>
           <button className="icon-btn" onClick={onClose} title="Kapat" style={{ padding: 4 }}>
             <Icon name="x" size={14} />
@@ -525,17 +531,17 @@ function AddMemberModal({ open, onClose, channel, onAdded, allMembers, me }) {
         <div className="stoa-channel-modal-body">
           {candidates.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-faint)', fontSize: 12 }}>
-              Bu workspace'teki tüm üyeler zaten kanalda.
+              {window.t?.('chat_all_in_channel')||'Bu workspace\'teki tüm üyeler zaten kanalda.'}
             </div>
           ) : (
             <>
               <div className="stoa-member-search">
                 <Icon name="search" size={13} />
-                <input placeholder="Üye ara…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
+                <input placeholder={window.t?.('chat_member_search')||'Üye ara…'} value={search} onChange={e => setSearch(e.target.value)} autoFocus />
               </div>
               <div className="stoa-member-list">
                 {filtered.length === 0 ? (
-                  <div style={{ padding: 16, fontSize: 12, color: 'var(--ink-faint)', textAlign: 'center' }}>Eşleşen üye yok.</div>
+                  <div style={{ padding: 16, fontSize: 12, color: 'var(--ink-faint)', textAlign: 'center' }}>{window.t?.('chat_no_matching_members')||'Eşleşen üye yok.'}</div>
                 ) : filtered.map(m => {
                   const checked = selected.has(m.id);
                   return (
@@ -556,9 +562,9 @@ function AddMemberModal({ open, onClose, channel, onAdded, allMembers, me }) {
           )}
         </div>
         <div className="stoa-channel-modal-foot">
-          <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>İptal</button>
+          <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>{window.t?.('app_cancel') || 'İptal'}</button>
           <button className="btn btn-primary" onClick={submit} disabled={selected.size === 0 || submitting}>
-            {submitting ? 'Ekleniyor…' : `Ekle (${selected.size})`}
+            {submitting ? (window.t?.('chat_adding') || 'Ekleniyor…') : `${window.t?.('chat_add') || 'Ekle'} (${selected.size})`}
           </button>
         </div>
       </div>
@@ -604,7 +610,7 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
 
   const saveBasic = async () => {
     if (submitting) return;
-    if (!name.trim()) { window.showToast?.('Kanal adı boş olamaz', 'error'); return; }
+    if (!name.trim()) { window.showToast?.(window.t?.('chat_name_empty')||'Kanal adı boş olamaz', 'error'); return; }
     setSubmitting(true);
     try {
       const updated = await window.API.updateChannel(channel.channel_id, {
@@ -612,7 +618,7 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
         description: description.trim(),
       });
       onUpdated(updated);
-      window.showToast?.('Kanal güncellendi', 'success');
+      window.showToast?.(window.t?.('chat_channel_updated')||'Kanal güncellendi', 'success');
     } catch (e) {
       window.showToast?.(e.message, 'error');
     } finally { setSubmitting(false); }
@@ -622,29 +628,29 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
     if (!isOwner || isDefault || submitting) return;
     const newType = type === 'public' ? 'private' : 'public';
     const confirmText = newType === 'public'
-      ? `#${channel.name} kanalını GENEL yap? Tüm workspace üyeleri otomatik eklenir.`
-      : `#${channel.name} kanalını ÖZEL yap? Yeni üyeler sadece davetle katılabilir.`;
+      ? `#${channel.name} ${window.t?.('chat_make_public_confirm')||'kanalını GENEL yap? Tüm workspace üyeleri otomatik eklenir.'}`
+      : `#${channel.name} ${window.t?.('chat_make_private_confirm')||'kanalını ÖZEL yap? Yeni üyeler sadece davetle katılabilir.'}`;
     if (!confirm(confirmText)) return;
     setSubmitting(true);
     try {
       const updated = await window.API.updateChannel(channel.channel_id, { type: newType });
       setType(newType);
       onUpdated(updated);
-      window.showToast?.('Kanal tipi değiştirildi', 'success');
+      window.showToast?.(window.t?.('chat_type_changed')||'Kanal tipi değiştirildi', 'success');
     } catch (e) {
       window.showToast?.(e.message, 'error');
     } finally { setSubmitting(false); }
   };
 
   const leaveChannel = async () => {
-    if (isDefault) { window.showToast?.('Varsayılan kanaldan ayrılamazsınız', 'error'); return; }
-    if (!confirm(`#${channel.name} kanalından ayrılmak istediğinden emin misin?`)) return;
+    if (isDefault) { window.showToast?.(window.t?.('chat_leave_default_err')||'Varsayılan kanaldan ayrılamazsınız', 'error'); return; }
+    if (!confirm(`#${channel.name} ${window.t?.('chat_leave_confirm')||'kanalından ayrılmak istediğinden emin misin?'}`)) return;
     setSubmitting(true);
     try {
       const mySlug = window.CURRENT_USER?.slug || window.CURRENT_USER?.id || me;
       await window.API.removeChannelMember(channel.channel_id, mySlug);
       onDeleted({ slug: channel.slug || channel.id, leftSelf: true });
-      window.showToast?.(`#${channel.name} kanalından ayrıldın`, 'info');
+      window.showToast?.(`#${channel.name} ${window.t?.('chat_left_channel')||'kanalından ayrıldın'}`, 'info');
       onClose();
     } catch (e) {
       window.showToast?.(e.message, 'error');
@@ -655,14 +661,14 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
   const deleteChannel = async () => {
     if (!isOwner || isDefault) return;
     if (deleteTypeInput !== channel.name) {
-      window.showToast?.('Onaylamak için kanal adını tam olarak yazın', 'error');
+      window.showToast?.(window.t?.('chat_confirm_name')||'Onaylamak için kanal adını tam olarak yazın', 'error');
       return;
     }
     setSubmitting(true);
     try {
       await window.API.deleteChannel(channel.channel_id);
       onDeleted({ slug: channel.slug || channel.id });
-      window.showToast?.('Kanal silindi', 'info');
+      window.showToast?.(window.t?.('chat_channel_deleted')||'Kanal silindi', 'info');
       onClose();
     } catch (e) {
       window.showToast?.(e.message, 'error');
@@ -676,7 +682,7 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
         <div className="stoa-channel-modal-head">
           <div style={{ fontSize: 15, fontWeight: 600 }}>
             {isDefault ? <span style={{ color: 'var(--ink-muted)', fontWeight: 400 }}>#</span> : <Icon name={type === 'private' ? 'lock' : 'hash'} size={13} style={{ marginRight: 4 }} />}
-            {channel.name} ayarları
+            {channel.name} {window.t?.('chat_channel_settings_title')||'ayarları'}
           </div>
           <button className="icon-btn" onClick={onClose} title="Kapat" style={{ padding: 4 }}>
             <Icon name="x" size={14} />
@@ -684,43 +690,43 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
         </div>
         <div className="stoa-channel-modal-body">
           <label className="stoa-field">
-            <span className="stoa-field-label">Kanal adı</span>
+            <span className="stoa-field-label">{window.t?.('chat_channel_name')||'Kanal adı'}</span>
             <div className="stoa-input-prefix">
               <span style={{ color: 'var(--ink-faint)' }}>#</span>
               <input value={name} onChange={e => setName(e.target.value)} disabled={!canManage} maxLength={60} />
             </div>
           </label>
           <label className="stoa-field">
-            <span className="stoa-field-label">Açıklama</span>
+            <span className="stoa-field-label">{window.t?.('chat_description')||'Açıklama'}</span>
             <textarea value={description} onChange={e => setDescription(e.target.value)} disabled={!canManage} rows={2} maxLength={280} />
           </label>
           {canManage && (
             <button className="btn btn-secondary" onClick={saveBasic} disabled={submitting} style={{ alignSelf: 'flex-start' }}>
-              Bilgileri kaydet
+              {window.t?.('chat_save_info')||'Bilgileri kaydet'}
             </button>
           )}
 
           {isOwner && !isDefault && (
             <div className="stoa-field" style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
-              <span className="stoa-field-label">Kanal tipi</span>
+              <span className="stoa-field-label">{window.t?.('chat_channel_type')||'Kanal tipi'}</span>
               <div className="stoa-radio-group">
                 <div className={`stoa-radio-card ${type === 'public' ? 'is-active' : ''}`}>
                   <Icon name="globe" size={16} />
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>Genel</div>
-                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Tüm workspace üyeleri.</div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{window.t?.('chat_channel_public')||'Genel'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{window.t?.('chat_channel_public_desc')||'Tüm workspace üyeleri.'}</div>
                   </div>
                 </div>
                 <div className={`stoa-radio-card ${type === 'private' ? 'is-active' : ''}`}>
                   <Icon name="lock" size={16} />
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>Özel</div>
-                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Sadece davetli üyeler.</div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{window.t?.('chat_channel_private')||'Özel'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{window.t?.('chat_channel_private_desc')||'Sadece davetli üyeler.'}</div>
                   </div>
                 </div>
               </div>
               <button className="btn btn-secondary" onClick={flipType} disabled={submitting} style={{ alignSelf: 'flex-start', marginTop: 6 }}>
-                {type === 'public' ? '🔒 Özele dönüştür' : '🌐 Genele dönüştür'}
+                {type === 'public' ? `🔒 ${window.t?.('chat_make_private')||'Özele dönüştür'}` : `🌐 ${window.t?.('chat_make_public')||'Genele dönüştür'}`}
               </button>
             </div>
           )}
@@ -728,7 +734,7 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
           {!isDefault && (
             <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <button className="btn btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={leaveChannel} disabled={submitting}>
-                Kanaldan ayrıl
+                {window.t?.('chat_leave')||'Kanaldan ayrıl'}
               </button>
               {isOwner && (
                 !confirmDelete ? (
@@ -736,11 +742,11 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
                     className="btn"
                     style={{ alignSelf: 'flex-start', background: 'oklch(95% 0.04 25 / 0.5)', color: 'var(--status-rose)' }}
                     onClick={() => setConfirmDelete(true)}
-                  >Kanalı sil</button>
+                  >{window.t?.('chat_delete_channel')||'Kanalı sil'}</button>
                 ) : (
                   <div style={{ padding: 12, border: '1px solid var(--status-rose)', borderRadius: 10, background: 'oklch(95% 0.04 25 / 0.35)' }}>
                     <div style={{ fontSize: 12, color: 'var(--ink)', marginBottom: 6 }}>
-                      Silmeyi onaylamak için kanal adını yazın: <strong>{channel.name}</strong>
+                      {window.t?.('chat_confirm_delete')||'Silmeyi onaylamak için kanal adını yazın:'} <strong>{channel.name}</strong>
                     </div>
                     <input
                       value={deleteTypeInput}
@@ -749,13 +755,13 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
                       style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, marginBottom: 8, background: 'var(--bg)' }}
                     />
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary" onClick={() => setConfirmDelete(false)} disabled={submitting}>İptal</button>
+                      <button className="btn btn-secondary" onClick={() => setConfirmDelete(false)} disabled={submitting}>{window.t?.('app_cancel') || 'İptal'}</button>
                       <button
                         className="btn"
                         style={{ background: 'var(--status-rose)', color: 'white' }}
                         onClick={deleteChannel}
                         disabled={submitting || deleteTypeInput !== channel.name}
-                      >Kalıcı olarak sil</button>
+                      >{window.t?.('chat_perm_delete') || 'Kalıcı olarak sil'}</button>
                     </div>
                   </div>
                 )
@@ -780,8 +786,8 @@ function PinnedBanner({ pinned, allMembers, onJump, onUnpin, onClose }) {
   const top = ordered[0];
   const sender = allMembers.find(m => m.id === top.from);
   const preview = top.deleted
-    ? 'Bu mesaj silindi'
-    : (top.text || (top.file_url ? `📎 ${top.file_name || 'Dosya'}` : ''));
+    ? (window.t?.('chat_deleted_msg')||'Bu mesaj silindi')
+    : (top.text || (top.file_url ? `📎 ${top.file_name || (window.t?.('chat_file')||'Dosya')}` : ''));
 
   return (
     <div className="chat-pinned-banner" style={{
@@ -800,7 +806,7 @@ function PinnedBanner({ pinned, allMembers, onJump, onUnpin, onClose }) {
         <Icon name="pin" size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.3 }}>
           <div style={{ fontWeight: 600, color: 'var(--ink)', fontSize: 11 }}>
-            Sabitli mesaj{ordered.length > 1 ? ` (${ordered.length})` : ''} · {sender?.name || top.from}
+            {window.t?.('chat_pinned_msg')||'Sabitli mesaj'}{ordered.length > 1 ? ` (${ordered.length})` : ''} · {sender?.name || top.from}
           </div>
           <div style={{
             color: 'var(--ink-muted)',
@@ -810,7 +816,7 @@ function PinnedBanner({ pinned, allMembers, onJump, onUnpin, onClose }) {
         {ordered.length > 1 && (
           <button
             className="icon-btn"
-            title={expanded ? 'Daralt' : 'Tümünü gör'}
+            title={expanded ? (window.t?.('chat_collapse')||'Daralt') : (window.t?.('chat_see_all')||'Tümünü gör')}
             onClick={(e) => { e.stopPropagation(); setExpanded(x => !x); }}
             style={{ padding: 3, color: 'var(--ink-muted)' }}
           >
@@ -819,7 +825,7 @@ function PinnedBanner({ pinned, allMembers, onJump, onUnpin, onClose }) {
         )}
         <button
           className="icon-btn"
-          title="Sabitlemeyi kaldır"
+          title={window.t?.('chat_unpin')||'Sabitlemeyi kaldır'}
           onClick={(e) => { e.stopPropagation(); onUnpin(top); }}
           style={{ padding: 3, color: 'var(--ink-muted)' }}
         >
@@ -828,7 +834,7 @@ function PinnedBanner({ pinned, allMembers, onJump, onUnpin, onClose }) {
       </div>
       {expanded && ordered.slice(1).map(msg => {
         const s = allMembers.find(m => m.id === msg.from);
-        const p = msg.deleted ? 'Bu mesaj silindi' : (msg.text || (msg.file_url ? `📎 ${msg.file_name || 'Dosya'}` : ''));
+        const p = msg.deleted ? (window.t?.('chat_deleted_msg')||'Bu mesaj silindi') : (msg.text || (msg.file_url ? `📎 ${msg.file_name || (window.t?.('chat_file')||'Dosya')}` : ''));
         return (
           <div key={msg.id}
             onClick={() => onJump(msg.id)}
@@ -841,7 +847,7 @@ function PinnedBanner({ pinned, allMembers, onJump, onUnpin, onClose }) {
           >
             <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{s?.name || msg.from}:</span>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{p}</span>
-            <button className="icon-btn" title="Kaldır" onClick={(e) => { e.stopPropagation(); onUnpin(msg); }} style={{ padding: 2 }}>
+            <button className="icon-btn" title={window.t?.('chat_remove')||'Kaldır'} onClick={(e) => { e.stopPropagation(); onUnpin(msg); }} style={{ padding: 2 }}>
               <Icon name="x" size={10} />
             </button>
           </div>
@@ -1160,7 +1166,7 @@ function CustomVideoPlayer({ src, poster, autoPlay = false, fullscreenContainer 
             {fmtTime(progress)} / {fmtTime(duration)}
           </span>
           <div style={{ flex: 1 }} />
-          <button onClick={toggleMute} className="icon-btn" style={{ color: 'white', padding: 2 }} aria-label={muted ? 'Sesi aç' : 'Sustur'} title={muted ? 'Sesi aç (M)' : 'Sustur (M)'}>
+          <button onClick={toggleMute} className="icon-btn" style={{ color: 'white', padding: 2 }} aria-label={muted ? (window.t?.('chat_video_unmute')||'Sesi aç') : (window.t?.('chat_video_mute')||'Sustur')} title={muted ? `${window.t?.('chat_video_unmute')||'Sesi aç'} (M)` : `${window.t?.('chat_video_mute')||'Sustur'} (M)`}>
             {muted || volume === 0
               ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
               : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>}
@@ -1273,7 +1279,7 @@ function VideoThumb({ src, size = 'square', onClick }) {
 // ── Media Gallery Tab ─────────────────────────────────────────────────────
 function MediaList({ media, allMembers, onImageClick }) {
   if (media.length === 0) return (
-    <div className="chat-empty" style={{ padding: 24 }}>Henüz paylaşılan medya yok.</div>
+    <div className="chat-empty" style={{ padding: 24 }}>{window.t?.('chat_media_empty')||'Henüz paylaşılan medya yok.'}</div>
   );
   const images = media.filter(m => m.file_type === 'image');
   const videos = media.filter(m => m.file_type === 'video');
@@ -1283,7 +1289,7 @@ function MediaList({ media, allMembers, onImageClick }) {
       {images.length > 0 && (
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-            Fotoğraflar ({images.length})
+            {window.t?.('chat_media_photos')||'Fotoğraflar'} ({images.length})
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
             {images.map(m => (
@@ -1308,7 +1314,7 @@ function MediaList({ media, allMembers, onImageClick }) {
       {videos.length > 0 && (
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-            Videolar ({videos.length})
+            {window.t?.('chat_media_videos')||'Videolar'} ({videos.length})
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
             {videos.map(m => (
@@ -1325,7 +1331,7 @@ function MediaList({ media, allMembers, onImageClick }) {
       {files.length > 0 && (
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-            Dosyalar ({files.length})
+            {window.t?.('chat_media_files')||'Dosyalar'} ({files.length})
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {files.map(m => {
@@ -1386,7 +1392,7 @@ function MediaGallery({ allMembers, onImageClick }) {
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
         {loading
-          ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32, color: 'var(--ink-faint)', fontSize: 13 }}>Yükleniyor…</div>
+          ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32, color: 'var(--ink-faint)', fontSize: 13 }}>{window.t?.('chat_loading')||'Yükleniyor…'}</div>
           : <MediaList media={media} allMembers={allMembers} onImageClick={onImageClick} />
         }
       </div>
@@ -1488,14 +1494,14 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     if (id === 'general') return;
     const ch = _findCh(id);
     if (!ch) return;
-    if (!confirm(`#${ch.name} kanalını silmek istediğinden emin misin?`)) return;
+    if (!confirm(`#${ch.name} ${window.t?.('chat_remove_channel_confirm')||'kanalını silmek istediğinden emin misin?'}`)) return;
     try {
       await window.API.deleteChannel(ch.channel_id || ch.id);
       const next = channels.filter(c => (c.slug || c.id) !== id);
       setChannels(next);
       window.DATA.CHANNELS = next;
       if (activeChannel === id) setActiveChannel('general');
-      window.showToast?.(`#${ch.name} kanalı silindi`, 'info');
+      window.showToast?.(`#${ch.name} ${window.t?.('chat_channel_removed')||'kanalı silindi'}`, 'info');
     } catch (e) {
       window.showToast?.('Kanal silinemedi: ' + e.message, 'error');
     }
@@ -1771,7 +1777,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
         window.DATA.CHANNELS = next;
         return next;
       });
-      window.showToast?.(`#${ch.name} kanalına eklendin`, 'info');
+      window.showToast?.(`#${ch.name} ${window.t?.('chat_channel_added')||'kanalına eklendin'}`, 'info');
     };
     const onChannelUpdated = (ch) => {
       const slug = ch.slug || ch.id;
@@ -1801,7 +1807,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
           return next;
         });
         if (activeChannel === slug) setActiveChannel('general');
-        window.showToast?.(`#${payload.name || slug} kanalından çıkarıldın`, 'info');
+        window.showToast?.(`#${payload.name || slug} ${window.t?.('chat_channel_kicked')||'kanalından çıkarıldın'}`, 'info');
         return;
       }
       onChannelUpdated(payload);
@@ -1883,7 +1889,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
       setMessages(prev => prev.map(m => m.id === tempId ? saved : m));
     } catch (err) {
       setMessages(prev => prev.filter(m => m.id !== tempId));
-      console.error('Mesaj gönderilemedi:', err.message);
+      console.error((window.t?.('chat_send_failed')||'Mesaj gönderilemedi:'), err.message);
     }
   };
 
@@ -1898,10 +1904,10 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
       fd.append('file', file);
       const res = await fetch('/api/chat/upload', { method: 'POST', body: fd });
       const data = await res.json();
-      if (!res.ok) { window.showToast?.(data.error || 'Yükleme başarısız', 'error'); return; }
+      if (!res.ok) { window.showToast?.(data.error || (window.t?.('chat_upload_failed')||'Yükleme başarısız'), 'error'); return; }
       setPendingFile({ url: data.url, type: data.type, name: data.name, size: data.size });
     } catch (err) {
-      window.showToast?.('Yükleme sırasında hata: ' + err.message, 'error');
+      window.showToast?.((window.t?.('chat_upload_error')||'Yükleme sırasında hata: ') + err.message, 'error');
     } finally {
       setUploading(false);
       inputRef.current?.focus();
@@ -2046,7 +2052,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     } catch (e) {
       // Roll back
       setMessages(prev => prev.map(m => String(m.id) === id ? { ...m, pinned: wasPinned } : m));
-      window.showToast?.('Sabitleme başarısız: ' + e.message, 'error');
+      window.showToast?.((window.t?.('chat_pin_failed')||'Sabitleme başarısız: ') + e.message, 'error');
     }
   };
 
@@ -2155,7 +2161,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
           setActiveChannel(slug);
           setDmWith(null);
           setTab('general');
-          window.showToast?.(`#${ch.name} kanalı oluşturuldu`, 'success');
+          window.showToast?.(`#${ch.name} ${window.t?.('chat_channel_created')||'kanalı oluşturuldu'}`, 'success');
         }}
         allMembers={allMembers}
         me={me}
@@ -2207,7 +2213,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               setMemberRowMenu(null);
               openDm(target.id);
             }}>
-              <Icon name="msg" size={13} style={{ color: 'var(--ink-muted)' }} /> Mesaj gönder
+              <Icon name="msg" size={13} style={{ color: 'var(--ink-muted)' }} /> {window.t?.('chat_send_msg')||'Mesaj gönder'}
             </button>
             {memberRowMenu.canChangeRole && (
               <>
@@ -2219,25 +2225,25 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                     try {
                       const updated = await window.API.updateChannelMemberRole(currentChannelDetail.channel_id, cm.user_id, nextRole);
                       setCurrentChannelDetail(updated);
-                      window.showToast?.(`${memberRowMenu.member.name} rolü: ${nextRole === 'admin' ? 'Yönetici' : 'Üye'}`, 'success');
+                      window.showToast?.(`${memberRowMenu.member.name} ${window.t?.('chat_role_changed')||'rolü: '}${nextRole === 'admin' ? (window.t?.('chat_role_admin')||'Yönetici') : (window.t?.('chat_role_member')||'Üye')}`, 'success');
                     } catch (e) { window.showToast?.(e.message, 'error'); }
                   }}>
                   <Icon name="shield" size={13} style={{ color: 'var(--ink-muted)' }} />
-                  {memberRowMenu.cm.role === 'admin' ? 'Yöneticiyi geri al' : 'Yönetici yap'}
+                  {memberRowMenu.cm.role === 'admin' ? (window.t?.('chat_revoke_admin')||'Yöneticiyi geri al') : (window.t?.('chat_make_admin')||'Yönetici yap')}
                 </button>
                 <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
                   onClick={async () => {
                     const cm = memberRowMenu.cm;
                     setMemberRowMenu(null);
-                    if (!confirm(`${memberRowMenu.member.name} kanal sahipliğini devralsın mı? Sen yönetici olursun.`)) return;
+                    if (!confirm(`${memberRowMenu.member.name} ${window.t?.('chat_transfer_confirm')||'kanal sahipliğini devralsın mı? Sen yönetici olursun.'}`)) return;
                     try {
                       const updated = await window.API.updateChannelMemberRole(currentChannelDetail.channel_id, cm.user_id, 'owner');
                       setCurrentChannelDetail(updated);
-                      window.showToast?.('Sahiplik devredildi', 'success');
+                      window.showToast?.(window.t?.('chat_transferred')||'Sahiplik devredildi', 'success');
                     } catch (e) { window.showToast?.(e.message, 'error'); }
                   }}>
                   <Icon name="gem" size={13} style={{ color: 'var(--ink-muted)' }} />
-                  Sahiplik devret
+                  {window.t?.('chat_transfer_ownership')||'Sahiplik devret'}
                 </button>
               </>
             )}
@@ -2247,15 +2253,15 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   const cm = memberRowMenu.cm;
                   const name = memberRowMenu.member.name;
                   setMemberRowMenu(null);
-                  if (!confirm(`${name} kanaldan çıkarılsın mı?`)) return;
+                  if (!confirm(`${name} ${window.t?.('chat_kick_confirm')||'kanaldan çıkarılsın mı?'}`)) return;
                   try {
                     await window.API.removeChannelMember(currentChannelDetail.channel_id, cm.user_id);
                     const refreshed = await window.API.getChannel(currentChannelDetail.channel_id);
                     setCurrentChannelDetail(refreshed);
-                    window.showToast?.(`${name} kanaldan çıkarıldı`, 'info');
+                    window.showToast?.(`${name} ${window.t?.('chat_member_kicked')||'kanaldan çıkarıldı'}`, 'info');
                   } catch (e) { window.showToast?.(e.message, 'error'); }
                 }}>
-                <Icon name="x" size={13} /> Kanaldan çıkar
+                <Icon name="x" size={13} /> {window.t?.('chat_kick_member')||'Kanaldan çıkar'}
               </button>
             )}
           </div>
@@ -2277,66 +2283,65 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
             <button className="chat-menu-item"
               onClick={() => toggleStar(deleteMenu.msg)}>
               <Icon name="star" size={13} style={{ color: deleteMenu.starred ? 'var(--status-yellow)' : 'var(--ink-muted)' }} />
-              {deleteMenu.starred ? 'Yıldızı kaldır' : 'Yıldızla'}
+              {deleteMenu.starred ? (window.t?.('chat_unstar')||'Yıldızı kaldır') : (window.t?.('chat_star')||'Yıldızla')}
             </button>
             <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
               onClick={() => togglePin(deleteMenu.msg)}>
               <Icon name="pin" size={13} style={{ color: deleteMenu.pinned ? 'var(--accent)' : 'var(--ink-muted)' }} />
-              {deleteMenu.pinned ? 'Sabitlemeyi kaldır' : 'Kanala sabitle'}
+              {deleteMenu.pinned ? (window.t?.('chat_pinned_remove')||'Sabitlemeyi kaldır') : (window.t?.('chat_pin')||'Kanala sabitle')}
             </button>
             <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
               onClick={() => replyToMessage(deleteMenu.msg)}>
               <Icon name="arrowUpRight" size={13} style={{ transform: 'scaleX(-1)', color: 'var(--ink-muted)' }} />
-              Cevapla
+              {window.t?.('chat_reply')||'Cevapla'}
             </button>
             <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
               onClick={async () => {
                 const text = deleteMenu.msg.text || deleteMenu.msg.file_url || '';
                 try {
                   await navigator.clipboard?.writeText(text);
-                  window.showToast?.('Mesaj kopyalandı', 'success');
+                  window.showToast?.(window.t?.('chat_msg_copied')||'Mesaj kopyalandı', 'success');
                 } catch {
-                  window.showToast?.('Kopyalama başarısız', 'error');
+                  window.showToast?.(window.t?.('chat_copy_failed')||'Kopyalama başarısız', 'error');
                 }
                 setDeleteMenu(null);
               }}>
               <Icon name="copy" size={13} style={{ color: 'var(--ink-muted)' }} />
-              Kopyala
+              {window.t?.('chat_copy')||'Kopyala'}
             </button>
             {deleteMenu.isMine && !deleteMenu.msg.file_url && (
               <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
                 onClick={() => {
                   setDeleteMenu(null);
                   const current = deleteMenu.msg.text || '';
-                  const updated = window.prompt('Mesajı düzenle:', current);
+                  const updated = window.prompt(window.t?.('chat_edit_msg')||'Mesajı düzenle:', current);
                   if (updated == null || updated.trim() === '' || updated === current) return;
-                  // Optimistic — backend edit endpoint not yet wired; show toast and skip
-                  window.showToast?.('Mesaj düzenleme yakında — şimdilik silip yeniden gönderebilirsin', 'info');
+                  window.showToast?.(window.t?.('chat_edit_soon')||'Mesaj düzenleme yakında — şimdilik silip yeniden gönderebilirsin', 'info');
                 }}>
                 <Icon name="edit" size={13} style={{ color: 'var(--ink-muted)' }} />
-                Düzenle
+                {window.t?.('chat_edit')||'Düzenle'}
               </button>
             )}
             <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
               onClick={() => handleDeleteMessage(deleteMenu.msgId, 'self')}
             >
-              <Icon name="eyeOff" size={13} style={{ color: 'var(--ink-muted)' }} /> Benden sil
+              <Icon name="eyeOff" size={13} style={{ color: 'var(--ink-muted)' }} /> {window.t?.('chat_delete_self')||'Benden sil'}
             </button>
             {deleteMenu.isMine && (
               <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)', color: 'var(--status-rose)' }}
                 onClick={() => handleDeleteMessage(deleteMenu.msgId, 'all')}
               >
-                <Icon name="trash" size={13} /> Herkesten sil
+                <Icon name="trash" size={13} /> {window.t?.('chat_delete_all')||'Herkesten sil'}
               </button>
             )}
             {!deleteMenu.isMine && (
               <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
                 onClick={() => {
                   setDeleteMenu(null);
-                  window.showToast?.('Mesaj raporlandı, ekibimiz inceleyecek.', 'info');
+                  window.showToast?.(window.t?.('chat_reported')||'Mesaj raporlandı, ekibimiz inceleyecek.', 'info');
                 }}>
                 <Icon name="alertTriangle" size={13} style={{ color: 'var(--status-yellow)' }} />
-                Şikayet et
+                {window.t?.('chat_report')||'Şikayet et'}
               </button>
             )}
           </div>
@@ -2400,7 +2405,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               <div className="chat-fp-search">
                 <Icon name="search" size={13} />
                 <input
-                  placeholder="Sohbet ara..."
+                  placeholder={window.t?.('chat_search_ph') || 'Sohbet ara...'}
                   value={leftSearch}
                   onChange={e => setLeftSearch(e.target.value)}
                 />
@@ -2412,10 +2417,10 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               </div>
               <div className="chat-fp-list-tabs">
                 <button data-active={leftListTab === 'channels'} onClick={() => setLeftListTab('channels')}>
-                  <Icon name="hash" size={11} /> Takım kanalları
+                  <Icon name="hash" size={11} /> {window.t?.('chat_team_channels') || 'Takım kanalları'}
                 </button>
                 <button data-active={leftListTab === 'dms'} onClick={() => setLeftListTab('dms')}>
-                  <Icon name="msg" size={11} /> Direkt mesajlar
+                  <Icon name="msg" size={11} /> {window.t?.('chat_direct_messages') || 'Direkt mesajlar'}
                 </button>
               </div>
               <div className="chat-fp-list-sub" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2463,12 +2468,12 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                               ? (() => {
                                   const last = messages[messages.length - 1];
                                   const sender = allMembers.find(m => m.id === last.from);
-                                  const preview = last.text || last.file_name || 'Dosya';
+                                  const preview = last.text || last.file_name || (window.t?.('chat_file')||'Dosya');
                                   return `${(sender?.name || last.from || '').split(' ')[0]}: ${preview}`;
                                 })()
                               : (isPrivate
-                                  ? `${ch.member_count || 0} üye`
-                                  : (isDefault ? 'Henüz mesaj yok' : 'Mesaj henüz yok'))}
+                                  ? `${ch.member_count || 0} ${window.t?.('chat_members_count')||'üye'}`
+                                  : (isDefault ? (window.t?.('chat_no_msg_yet')||'Henüz mesaj yok') : (window.t?.('chat_msg_none_yet')||'Mesaj henüz yok')))}
                           </div>
                         </div>
                         <div className="chat-fp-row-right">
@@ -2483,7 +2488,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                           {canDelete && (
                             <button
                               className="chat-fp-row-del"
-                              title="Kanalı sil"
+                              title={window.t?.('chat_delete_channel_title')||'Kanalı sil'}
                               onClick={(e) => { e.stopPropagation(); removeChannel(slug); }}
                             >
                               <Icon name="x" size={10} />
@@ -2514,7 +2519,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                       <div className="chat-fp-row-body">
                         <div className="chat-fp-row-name">{m.name}</div>
                         <div className="chat-fp-row-preview">
-                          {typingUsers.has(m.id) ? <em>yazıyor…</em> : _statusLabel(mStatus)}
+                          {typingUsers.has(m.id) ? <em>{window.t?.('chat_typing')||'yazıyor…'}</em> : _statusLabel(mStatus)}
                         </div>
                       </div>
                       <div className="chat-fp-row-right">
@@ -2526,7 +2531,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               )}
               {leftListTab === 'dms' && visibleMembers.length === 0 && (
                 <div className="chat-empty" style={{ padding: 24 }}>
-                  {leftSearch ? 'Sonuç yok.' : 'Henüz başka üye yok.'}
+                  {leftSearch ? (window.t?.('chat_no_result')||'Sonuç yok.') : (window.t?.('chat_no_members_yet')||'Henüz başka üye yok.')}
                 </div>
               )}
             </div>
@@ -2559,7 +2564,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                       {currentChannelDetail && (
                         <button
                           className="icon-btn"
-                          title="Kanal ayarları"
+                          title={window.t?.('chat_channel_settings_btn')||'Kanal ayarları'}
                           onClick={() => setChannelSettingsOpen(true)}
                           style={{ padding: 2, color: 'var(--ink-faint)' }}
                         >
@@ -2568,7 +2573,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                       )}
                     </div>
                     <div className="chat-fp-conv-sub">
-                      {DATA.WORKSPACE?.name || 'Atlas'} · {currentChannelDetail?.member_count ?? allMembers.length} üye
+                      {DATA.WORKSPACE?.name || 'Atlas'} · {currentChannelDetail?.member_count ?? allMembers.length} {window.t?.('chat_members_count')||'üye'}
                       {currentChannelDetail?.description ? ` · ${currentChannelDetail.description}` : ''}
                     </div>
                   </div>
@@ -2598,7 +2603,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                     {headerSearch && (
                       <div className="chat-fp-header-search-hits">
                         {headerHits.length === 0
-                          ? <div style={{ padding: 12, fontSize: 12, color: 'var(--ink-faint)' }}>Sonuç yok.</div>
+                          ? <div style={{ padding: 12, fontSize: 12, color: 'var(--ink-faint)' }}>{window.t?.('chat_no_result_search')||'Sonuç yok.'}</div>
                           : headerHits.slice(0, 8).map(m => {
                               const sender = allMembers.find(u => u.id === m.from);
                               return (
@@ -2625,7 +2630,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               </div>
               <button
                 className="icon-btn"
-                title={rightPanelOpen ? 'Detayları gizle' : 'Detayları göster'}
+                title={rightPanelOpen ? (window.t?.('chat_hide_details')||'Detayları gizle') : (window.t?.('chat_show_details')||'Detayları göster')}
                 onClick={() => setRightPanelOpen(o => !o)}
               >
                 <Icon name={rightPanelOpen ? 'sidebarOut' : 'sidebarIn'} size={14} />
@@ -2646,7 +2651,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               )}
               {messages.length === 0 && (
                 <div className="chat-empty">
-                  {dmWith ? `${dmUser?.name || dmWith} ile sohbet başlat.` : 'Genel kanala ilk mesajı gönder.'}
+                  {dmWith ? `${dmUser?.name || dmWith} ${window.t?.('chat_dm_start')||'ile sohbet başlat.'}` : (window.t?.('chat_general_first')||'Genel kanala ilk mesajı gönder.')}
                 </div>
               )}
               {messages.map((msg, i) => {
@@ -2707,14 +2712,14 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                                 <Icon name="arrowUpRight" size={14} style={{ transform: 'scaleX(-1)' }} />
                               </button>
                               <button
-                                title={isStarred ? 'Yıldızı kaldır' : 'Yıldızla'}
+                                title={isStarred ? (window.t?.('chat_unstar')||'Yıldızı kaldır') : (window.t?.('chat_star')||'Yıldızla')}
                                 data-active={isStarred}
                                 onClick={() => toggleStar(msg)}
                               >
                                 <Icon name="star" size={14} />
                               </button>
                               <button
-                                title={msg.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
+                                title={msg.pinned ? (window.t?.('chat_pinned_remove')||'Sabitlemeyi kaldır') : (window.t?.('chat_pin')||'Sabitle')}
                                 data-active={!!msg.pinned}
                                 onClick={() => togglePin(msg)}
                               >
@@ -2751,7 +2756,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                       {!showSender && <div className="chat-msg-time">{fmtMsgTime(msg)}</div>}
                       {isMine && dmWith && msg.id === lastReadSentId && (
                         <div className="chat-read-receipt">
-                          <span className="chat-read-label">Görüldü</span>
+                          <span className="chat-read-label">{window.t?.('chat_seen')||'Görüldü'}</span>
                         </div>
                       )}
                     </div>
@@ -2816,16 +2821,16 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               <textarea
                 ref={inputRef}
                 className="chat-fp-input"
-                placeholder={pendingFile ? 'Açıklama ekle (isteğe bağlı)…' : (dmWith ? `${dmUser?.name || dmWith}'e mesaj yaz...` : '#genel kanala yaz...')}
+                placeholder={pendingFile ? (window.t?.('chat_desc_ph')||'Açıklama ekle (isteğe bağlı)…') : (dmWith ? `${window.t?.('chat_write_dm')||'Message'} ${dmUser?.name || dmWith}...` : (window.t?.('chat_write_general')||'#genel kanala yaz...'))}
                 value={text}
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
                 rows={1}
               />
               <div className="chat-fp-composer-row">
-                <button title="Kalın (Ctrl+B) — önce metin seçin veya tıklayıp yazın" data-fmt-active={activeFmtKey === 'bold'} onClick={() => wrapSelection('**', '**', '', 'bold')} className="chat-fmt-btn" style={{ fontWeight: 700 }}>B</button>
-                <button title="İtalik (Ctrl+I) — önce metin seçin veya tıklayıp yazın" data-fmt-active={activeFmtKey === 'italic'} onClick={() => wrapSelection('*', '*', '', 'italic')} className="chat-fmt-btn" style={{ fontStyle: 'italic' }}>I</button>
-                <button title="Kod (Ctrl+E) — önce metin seçin veya tıklayıp yazın" data-fmt-active={activeFmtKey === 'code'} onClick={() => wrapSelection('`', '`', '', 'code')} className="chat-fmt-btn"><Icon name="code" size={12} /></button>
+                <button title={window.t?.('chat_fmt_bold')||'Kalın (Ctrl+B)'} data-fmt-active={activeFmtKey === 'bold'} onClick={() => wrapSelection('**', '**', '', 'bold')} className="chat-fmt-btn" style={{ fontWeight: 700 }}>B</button>
+                <button title={window.t?.('chat_fmt_italic')||'İtalik (Ctrl+I)'} data-fmt-active={activeFmtKey === 'italic'} onClick={() => wrapSelection('*', '*', '', 'italic')} className="chat-fmt-btn" style={{ fontStyle: 'italic' }}>I</button>
+                <button title={window.t?.('chat_fmt_code')||'Kod (Ctrl+E)'} data-fmt-active={activeFmtKey === 'code'} onClick={() => wrapSelection('`', '`', '', 'code')} className="chat-fmt-btn"><Icon name="code" size={12} /></button>
                 <span className="chat-fp-composer-sep" />
                 <button title="Dosya ekle" disabled={uploading} onClick={() => fileRef.current?.click()}>
                   {uploading ? <span style={{ fontSize: 11 }}>⏳</span> : <Icon name="paperclip" size={14} />}
@@ -2848,7 +2853,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                 </button>
                 <div style={{ flex: 1 }} />
                 <button className="btn btn-primary chat-fp-send" onClick={sendMessage} disabled={!text.trim() && !pendingFile}>
-                  <Icon name="send" size={13} /> Gönder
+                  <Icon name="send" size={13} /> {window.t?.('chat_send')||'Gönder'}
                 </button>
               </div>
             </div>
@@ -2858,13 +2863,13 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
           {rightPanelOpen && (
             <aside className="chat-fp-right">
               <div className="chat-fp-right-head">
-                <div className="chat-fp-right-title">Kanal detayları</div>
+                <div className="chat-fp-right-title">{window.t?.('chat_channel_details')||'Kanal detayları'}</div>
                 <div className="chat-fp-right-tabs">
                   {[
-                    ['members', 'Üyeler',    'users'],
-                    ['media',   'Medya',     'paperclip'],
-                    ['starred', 'Yıldızlı',  'star'],
-                    ['pinned',  'Sabitli',   'pin'],
+                    ['members', window.t?.('chat_members')||'Üyeler',    'users'],
+                    ['media',   window.t?.('chat_media')||'Medya',        'paperclip'],
+                    ['starred', window.t?.('chat_starred_tab')||'Yıldızlı','star'],
+                    ['pinned',  window.t?.('chat_pinned_tab')||'Sabitli', 'pin'],
                   ].map(([id, lbl, ic]) => (
                     <button key={id} data-active={rightTab === id} onClick={() => setRightTab(id)}>
                       <Icon name={ic} size={11} /> {lbl}
@@ -2886,19 +2891,19 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   return (
                     <div className="chat-fp-members">
                       <div className="chat-fp-section-title">
-                        Üyeler <span>{memberCount}</span>
+                        {window.t?.('chat_members')||'Üyeler'} <span>{memberCount}</span>
                         {canManage && (
                           <button
                             className="icon-btn"
                             style={{ marginLeft: 'auto', padding: 4, color: 'var(--accent)' }}
-                            title="Üye Ekle"
+                            title={window.t?.('chat_add_member')||'Üye Ekle'}
                             onClick={() => setAddMemberOpen(true)}
                           ><Icon name="plus" size={12} /></button>
                         )}
                       </div>
                       {isPrivate && (
                         <div style={{ fontSize: 11, color: 'var(--ink-faint)', padding: '0 0 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <Icon name="lock" size={10} /> Özel kanal · sadece davetli üyeler
+                          <Icon name="lock" size={10} /> {window.t?.('chat_private_label')||'Özel kanal · sadece davetli üyeler'}
                         </div>
                       )}
                       {(fallback ? allMembers.map(m => ({ user_id: m.id, name: m.name, role: m.id === me ? 'member' : 'member' })) : channelMembers).map(cm => {
@@ -2917,7 +2922,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
                                 {m.name}
-                                {isSelf && <span style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 400 }}>(siz)</span>}
+                                {isSelf && <span style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 400 }}>({window.t?.('chat_you')||'siz'})</span>}
                                 <RoleBadge role={cm.role} />
                               </div>
                               <div style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{m.role || _statusLabel(mStatus)}</div>
@@ -2959,13 +2964,13 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                       });
                   return (
                     <div className="chat-fp-pinned">
-                      <div className="chat-fp-section-title">Yıldızlanmış <span>{list.length}</span></div>
+                      <div className="chat-fp-section-title">{window.t?.('chat_starred_count')||'Yıldızlanmış'} <span>{list.length}</span></div>
                       <div className="chat-scope-toggle">
-                        <button data-active={starredScope === 'channel'} onClick={() => setStarredScope('channel')}>Bu kanal</button>
-                        <button data-active={starredScope === 'all'} onClick={() => setStarredScope('all')}>Tüm kanallar</button>
+                        <button data-active={starredScope === 'channel'} onClick={() => setStarredScope('channel')}>{window.t?.('chat_this_channel')||'Bu kanal'}</button>
+                        <button data-active={starredScope === 'all'} onClick={() => setStarredScope('all')}>{window.t?.('chat_all_channels')||'Tüm kanallar'}</button>
                       </div>
                       {list.length === 0 ? (
-                        <div className="chat-empty" style={{ padding: 16 }}>Henüz yıldızlanmış mesaj yok.</div>
+                        <div className="chat-empty" style={{ padding: 16 }}>{window.t?.('chat_no_starred')||'Henüz yıldızlanmış mesaj yok.'}</div>
                       ) : (
                         list.map(msg => {
                           const sender = allMembers.find(m => m.id === msg.from);
@@ -2980,19 +2985,19 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                                   <span
                                     className="chat-channel-chip"
                                     data-active={msgCh === activeChannel}
-                                    title={`#${chMeta.name} kanalına git`}
+                                    title={`#${chMeta.name} ${window.t?.('chat_go_to_channel')||'kanalına git'}`}
                                     onClick={(e) => { e.stopPropagation(); setDmWith(null); setTab('general'); setActiveChannel(msgCh); }}
                                   >#{chMeta.name}</span>
                                 )}
                                 <span className="chat-fp-pinned-time">{fmtMsgDateTime(msg)}</span>
-                                <button onClick={(e) => { e.stopPropagation(); toggleStar(msg); }} className="icon-btn" style={{ padding: 2, marginLeft: 'auto' }} title="Kaldır">
+                                <button onClick={(e) => { e.stopPropagation(); toggleStar(msg); }} className="icon-btn" style={{ padding: 2, marginLeft: 'auto' }} title={window.t?.('chat_remove')||'Kaldır'}>
                                   <Icon name="x" size={11} />
                                 </button>
                               </div>
                               <div className="chat-fp-pinned-body">
                                 {msg.deleted
-                                  ? <em style={{ color: 'var(--ink-faint)' }}>Bu mesaj silindi</em>
-                                  : msg.file_url ? <span>📎 {msg.file_name || 'Dosya'}</span> : msg.text}
+                                  ? <em style={{ color: 'var(--ink-faint)' }}>{window.t?.('chat_deleted_msg')||'Bu mesaj silindi'}</em>
+                                  : msg.file_url ? <span>📎 {msg.file_name || (window.t?.('chat_file')||'Dosya')}</span> : msg.text}
                               </div>
                             </div>
                           );
@@ -3008,16 +3013,16 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   return (
                     <div className="chat-fp-pinned">
                       <div className="chat-fp-section-title">
-                        {pinnedScope === 'all' && !dmWith ? 'Tüm sabitliler' : 'Kanala sabitli'} <span>{list.length}</span>
+                        {pinnedScope === 'all' && !dmWith ? (window.t?.('chat_all_pinned')||'Tüm sabitliler') : (window.t?.('chat_channel_pinned')||'Kanala sabitli')} <span>{list.length}</span>
                       </div>
                       {!dmWith && (
                         <div className="chat-scope-toggle">
-                          <button data-active={pinnedScope === 'channel'} onClick={() => setPinnedScope('channel')}>Bu kanal</button>
-                          <button data-active={pinnedScope === 'all'} onClick={() => setPinnedScope('all')}>Tüm kanallar</button>
+                          <button data-active={pinnedScope === 'channel'} onClick={() => setPinnedScope('channel')}>{window.t?.('chat_this_channel')||'Bu kanal'}</button>
+                          <button data-active={pinnedScope === 'all'} onClick={() => setPinnedScope('all')}>{window.t?.('chat_all_channels')||'Tüm kanallar'}</button>
                         </div>
                       )}
                       {list.length === 0 ? (
-                        <div className="chat-empty" style={{ padding: 16 }}>Henüz sabitlenmiş mesaj yok.<br /><span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Bir mesajda ⋯ menüsünden "Kanala sabitle" seçeneğini kullanın.</span></div>
+                        <div className="chat-empty" style={{ padding: 16 }}>{window.t?.('chat_no_pinned')||'Henüz sabitlenmiş mesaj yok.'}<br /><span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>{window.t?.('chat_pinned_hint')||'Bir mesajda ⋯ menüsünden "Kanala sabitle" seçeneğini kullanın.'}</span></div>
                       ) : (
                         list.map(msg => {
                           const sender = allMembers.find(m => m.id === msg.from);
@@ -3032,19 +3037,19 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                                   <span
                                     className="chat-channel-chip"
                                     data-active={msgCh === activeChannel}
-                                    title={`#${chMeta.name} kanalına git`}
+                                    title={`#${chMeta.name} ${window.t?.('chat_go_to_channel')||'kanalına git'}`}
                                     onClick={(e) => { e.stopPropagation(); setDmWith(null); setTab('general'); setActiveChannel(msgCh); }}
                                   >#{chMeta.name}</span>
                                 )}
                                 <span className="chat-fp-pinned-time">{fmtMsgDateTime(msg)}</span>
-                                <button onClick={(e) => { e.stopPropagation(); togglePin(msg); }} className="icon-btn" style={{ padding: 2, marginLeft: 'auto' }} title="Kaldır">
+                                <button onClick={(e) => { e.stopPropagation(); togglePin(msg); }} className="icon-btn" style={{ padding: 2, marginLeft: 'auto' }} title={window.t?.('chat_remove')||'Kaldır'}>
                                   <Icon name="x" size={11} />
                                 </button>
                               </div>
                               <div className="chat-fp-pinned-body">
                                 {msg.deleted
-                                  ? <em style={{ color: 'var(--ink-faint)' }}>Bu mesaj silindi</em>
-                                  : msg.file_url ? <span>📎 {msg.file_name || 'Dosya'}</span> : msg.text}
+                                  ? <em style={{ color: 'var(--ink-faint)' }}>{window.t?.('chat_deleted_msg')||'Bu mesaj silindi'}</em>
+                                  : msg.file_url ? <span>📎 {msg.file_name || (window.t?.('chat_file')||'Dosya')}</span> : msg.text}
                               </div>
                             </div>
                           );
@@ -3084,20 +3089,20 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               <button
                 className="icon-btn"
                 style={{ flexShrink: 0, color: mutedUsers.has(dmWith) ? 'var(--status-rose)' : 'var(--ink-muted)' }}
-                title={mutedUsers.has(dmWith) ? 'Bildirimleri aç' : 'Bildirimleri sustur'}
+                title={mutedUsers.has(dmWith) ? (window.t?.('chat_unmute')||'Bildirimleri aç') : (window.t?.('chat_mute')||'Bildirimleri sustur')}
                 onClick={() => toggleMute(dmWith)}
               >
                 <Icon name={mutedUsers.has(dmWith) ? 'bellOff' : 'bell'} size={14} />
               </button>
             </>
           ) : (
-            <span className="chat-head-title" style={{ flex: 1 }}>Sohbetler</span>
+            <span className="chat-head-title" style={{ flex: 1 }}>{window.t?.('chat_conversations')||'Sohbetler'}</span>
           )}
           {onExpand && (
             <button
               className="icon-btn"
               style={{ flexShrink: 0 }}
-              title="Tam ekranda aç"
+              title={window.t?.('chat_expand')||'Tam ekranda aç'}
               onClick={onExpand}
             >
               <Icon name="expand" size={13} />
@@ -3118,7 +3123,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               const mediaCount = (unreadCounts || {}).media || 0;
               return (<>
                 <button data-active={tab === 'general'} onClick={() => setTab('general')}>
-                  <Icon name="users" size={13} /> Genel
+                  <Icon name="users" size={13} /> {window.t?.('chat_tab_general')||'Genel'}
                   {generalCount > 0 && (
                     <span className="chat-tab-count" style={{ background: 'var(--status-rose)' }}>
                       {fmtBadge(generalCount)}
@@ -3126,15 +3131,15 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   )}
                 </button>
                 <button data-active={tab === 'dm'} onClick={() => setTab('dm')}>
-                  <Icon name="msg" size={13} /> Direkt
+                  <Icon name="msg" size={13} /> {window.t?.('chat_tab_dm')||'Direkt'}
                   {totalDm > 0 && <span className="chat-tab-count" style={{ background: 'var(--status-rose)' }}>{fmtBadge(totalDm)}</span>}
                 </button>
                 <button data-active={tab === 'media'} onClick={() => setTab('media')}>
-                  <Icon name="paperclip" size={13} /> Medya
+                  <Icon name="paperclip" size={13} /> {window.t?.('chat_tab_media')||'Medya'}
                   {mediaCount > 0 && <span className="chat-tab-count" style={{ background: 'var(--status-rose)' }}>{fmtBadge(mediaCount)}</span>}
                 </button>
                 <button data-active={tab === 'starred'} onClick={() => setTab('starred')}>
-                  <Icon name="star" size={13} /> Yıldız
+                  <Icon name="star" size={13} /> {window.t?.('chat_tab_starred')||'Yıldız'}
                   {starredMsgs.size > 0 && <span className="chat-tab-count">{starredMsgs.size}</span>}
                 </button>
               </>);
@@ -3148,14 +3153,14 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
         ) : !dmWith && tab === 'starred' ? (
           <div className="chat-starred-list">
             <div className="chat-scope-toggle" style={{ margin: '8px 12px' }}>
-              <button data-active={starredScope === 'channel'} onClick={() => setStarredScope('channel')}>Bu kanal</button>
-              <button data-active={starredScope === 'all'} onClick={() => setStarredScope('all')}>Tüm kanallar</button>
+              <button data-active={starredScope === 'channel'} onClick={() => setStarredScope('channel')}>{window.t?.('chat_this_channel')||'Bu kanal'}</button>
+              <button data-active={starredScope === 'all'} onClick={() => setStarredScope('all')}>{window.t?.('chat_all_channels')||'Tüm kanallar'}</button>
             </div>
             {(() => {
               const list = starredScope === 'all'
                 ? [...starredData].reverse()
                 : [...starredData].reverse().filter(m => !m.to && (m.channel || 'general') === (activeChannel || 'general'));
-              if (list.length === 0) return <div className="chat-empty">Henüz yıldızlanmış mesaj yok.</div>;
+              if (list.length === 0) return <div className="chat-empty">{window.t?.('chat_no_starred')||'Henüz yıldızlanmış mesaj yok.'}</div>;
               return list.map(msg => {
                 const sender = allMembers.find(m => m.id === msg.from);
                 const isMine = msg.from === me;
@@ -3165,12 +3170,12 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   <div key={msg.id} className="chat-starred-item" onClick={() => scrollToMessage(msg)} style={{ cursor: 'pointer' }}>
                     <div className="chat-starred-meta">
                       <Avatar member={sender} size="sm" />
-                      <span className="chat-starred-name">{isMine ? 'Sen' : (sender?.name || msg.from)}</span>
+                      <span className="chat-starred-name">{isMine ? (window.t?.('chat_you_me')||'Sen') : (sender?.name || msg.from)}</span>
                       {chMeta && (
                         <span
                           className="chat-channel-chip"
                           data-active={msgCh === activeChannel}
-                          title={`#${chMeta.name} kanalına git`}
+                          title={`#${chMeta.name} ${window.t?.('chat_go_to_channel')||'kanalına git'}`}
                           onClick={(e) => { e.stopPropagation(); setDmWith(null); setTab('general'); setActiveChannel(msgCh); }}
                         >#{chMeta.name}</span>
                       )}
@@ -3182,9 +3187,9 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                     </div>
                     <div className="chat-starred-body">
                       {msg.deleted
-                        ? <em style={{ color: 'var(--ink-faint)', fontSize: 12 }}>Bu mesaj silindi</em>
+                        ? <em style={{ color: 'var(--ink-faint)', fontSize: 12 }}>{window.t?.('chat_deleted_msg')||'Bu mesaj silindi'}</em>
                         : msg.file_url
-                          ? <span style={{ color: 'var(--ink-muted)', fontSize: 12 }}>📎 {msg.file_name || 'Dosya'}</span>
+                          ? <span style={{ color: 'var(--ink-muted)', fontSize: 12 }}>📎 {msg.file_name || (window.t?.('chat_file')||'Dosya')}</span>
                           : <span>{msg.text}</span>}
                     </div>
                   </div>
@@ -3196,7 +3201,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
           /* DM member list */
           <div className="chat-member-list">
             {members.length === 0 ? (
-              <div className="chat-empty">Henüz başka üye yok.</div>
+              <div className="chat-empty">{window.t?.('chat_no_members_yet')||'Henüz başka üye yok.'}</div>
             ) : members.map(m => {
               const mStatus = statuses.get(m.id) || (online.has(m.id) ? 'online' : 'offline');
               const dmUnread = (unreadCounts || {})[`dm_${m.id}`] || 0;
@@ -3245,7 +3250,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               )}
               {messages.length === 0 && (
                 <div className="chat-empty">
-                  {dmWith ? `${dmUser?.name || dmWith} ile sohbet başlat.` : 'Genel kanala ilk mesajı gönder.'}
+                  {dmWith ? `${dmUser?.name || dmWith} ${window.t?.('chat_dm_start')||'ile sohbet başlat.'}` : (window.t?.('chat_general_first')||'Genel kanala ilk mesajı gönder.')}
                 </div>
               )}
               {messages.map((msg, i) => {
@@ -3332,7 +3337,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                       <div className="chat-msg-time">{fmtMsgTime(msg)}</div>
                       {isMine && dmWith && msg.id === lastReadSentId && (
                         <div className="chat-read-receipt">
-                          <span className="chat-read-label">Görüldü</span>
+                          <span className="chat-read-label">{window.t?.('chat_seen')||'Görüldü'}</span>
                         </div>
                       )}
                     </div>
@@ -3413,7 +3418,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                 accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" />
               <button
                 className="icon-btn"
-                title="Dosya / Fotoğraf / Video ekle"
+                title={window.t?.('chat_attach')||'Dosya / Fotoğraf / Video ekle'}
                 onClick={() => fileRef.current?.click()}
                 disabled={uploading}
                 style={{ flexShrink: 0, color: uploading ? 'var(--accent)' : 'var(--ink-muted)' }}
@@ -3423,7 +3428,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               <textarea
                 ref={inputRef}
                 className="chat-input"
-                placeholder={pendingFile ? 'Açıklama ekle (isteğe bağlı)…' : (dmWith ? `${dmUser?.name || dmWith}'e mesaj yaz...` : 'Genel kanala yaz...')}
+                placeholder={pendingFile ? (window.t?.('chat_desc_ph')||'Açıklama ekle (isteğe bağlı)…') : (dmWith ? `${window.t?.('chat_write_dm')||'Message'} ${dmUser?.name || dmWith}...` : (window.t?.('chat_write_general')||'Genel kanala yaz...'))}
                 value={text}
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
@@ -3448,7 +3453,8 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
 }
 
 function _statusLabel(status) {
-  return { online: 'Çevrimiçi', away: 'Uzakta', dnd: 'Rahatsız Etme', offline: 'Çevrimdışı' }[status] || 'Çevrimdışı';
+  const m = { online: window.t?.('shell_status_online')||'Çevrimiçi', away: window.t?.('shell_status_away')||'Uzakta', dnd: window.t?.('shell_status_dnd')||'Rahatsız Etme', offline: window.t?.('shell_status_offline')||'Çevrimdışı' };
+  return m[status] || m.offline;
 }
 
 window.ChatPanel = ChatPanel;

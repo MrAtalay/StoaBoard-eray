@@ -1,18 +1,22 @@
 // Settings view — profile, appearance, workspace (invite code + roles + members)
 
-const LABEL_TONES = [
-  { id: 'rose',   label: 'Kırmızı'    },
-  { id: 'blue',   label: 'Mavi'       },
-  { id: 'amber',  label: 'Sarı'       },
-  { id: 'green',  label: 'Yeşil'      },
-  { id: 'purple', label: 'Mor'        },
-  { id: 'teal',   label: 'Turkuaz'    },
-  { id: 'orange', label: 'Turuncu'    },
-  { id: 'cyan',   label: 'Camgöbeği' },
-  { id: 'pink',   label: 'Pembe'      },
-];
+const LABEL_TONES = () => {
+  const _t = (k, fb) => window.t?.(k) || fb;
+  return [
+    { id: 'rose',   label: _t('notes_color_red','Kırmızı')    },
+    { id: 'blue',   label: _t('notes_color_blue','Mavi')       },
+    { id: 'amber',  label: _t('notes_color_yellow','Sarı')     },
+    { id: 'green',  label: _t('notes_color_green','Yeşil')     },
+    { id: 'purple', label: _t('notes_color_purple','Mor')      },
+    { id: 'teal',   label: _t('notes_color_teal','Turkuaz')    },
+    { id: 'orange', label: _t('notes_color_orange','Turuncu')  },
+    { id: 'cyan',   label: _t('notes_color_cyan','Camgöbeği') },
+    { id: 'pink',   label: _t('notes_color_pink','Pembe')      },
+  ];
+};
 
 function LabelsSection({ canManage }) {
+  const _t = (k, fb) => window.t?.(k) || fb;
   const projectId = window.CURRENT_PROJECT_ID;
   const [labels, setLabels] = React.useState(() => ({ ...DATA.LABELS }));
   const [newName, setNewName] = React.useState('');
@@ -38,7 +42,7 @@ function LabelsSection({ canManage }) {
       delete next[slug];
       setLabels(next);
       DATA.LABELS = next;
-    } catch (e) { window.showToast?.('Etiket silinemedi: ' + e.message, 'error'); }
+    } catch (e) { window.showToast?.(_t('set_lbl_err_delete','Etiket silinemedi: ') + e.message, 'error'); }
   };
 
   const handleStartEdit = (slug, label) => {
@@ -57,7 +61,7 @@ function LabelsSection({ canManage }) {
       setLabels(next);
       DATA.LABELS = next;
       setEditingSlug(null);
-    } catch (e) { window.showToast?.('Etiket güncellenemedi: ' + e.message, 'error'); }
+    } catch (e) { window.showToast?.(_t('set_lbl_err_update','Etiket güncellenemedi: ') + e.message, 'error'); }
     finally { setEditBusy(false); }
   };
 
@@ -65,8 +69,8 @@ function LabelsSection({ canManage }) {
     const name = newName.trim();
     if (!name || !projectId) return;
     const slug = toSlug(name);
-    if (!slug) { setError('Geçerli bir isim girin'); return; }
-    if (labels[slug]) { setError('Bu etiket zaten mevcut'); return; }
+    if (!slug) { setError(_t('set_lbl_err_invalid','Geçerli bir isim girin')); return; }
+    if (labels[slug]) { setError(_t('set_lbl_err_exists','Bu etiket zaten mevcut')); return; }
     setAdding(true);
     setError('');
     try {
@@ -82,12 +86,12 @@ function LabelsSection({ canManage }) {
   return (
     <div className="settings-section">
       <div>
-        <h3>Etiketler</h3>
-        <p className="desc">Görevleri kategorize etmek için etiketleri yönetin.</p>
+        <h3>{_t('set_lbl_title','Etiketler')}</h3>
+        <p className="desc">{_t('set_lbl_desc','Görevleri kategorize etmek için etiketleri yönetin.')}</p>
       </div>
       <div className="settings-card" style={{ padding: 0, overflow: 'hidden' }}>
         {Object.keys(labels).length === 0 && (
-          <div style={{ padding: '18px 20px', fontSize: 13, color: 'var(--ink-muted)' }}>Henüz etiket yok.</div>
+          <div style={{ padding: '18px 20px', fontSize: 13, color: 'var(--ink-muted)' }}>{_t('set_lbl_none','Henüz etiket yok.')}</div>
         )}
         {Object.entries(labels).map(([slug, label], i, arr) => (
           <div key={slug} style={{ borderBottom: i < arr.length - 1 || canManage ? '1px solid var(--line)' : 'none' }}>
@@ -103,7 +107,7 @@ function LabelsSection({ canManage }) {
                   />
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {LABEL_TONES.map(t => (
+                  {LABEL_TONES().map(t => (
                     <button
                       key={t.id}
                       title={t.label}
@@ -116,9 +120,9 @@ function LabelsSection({ canManage }) {
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={handleSaveEdit} disabled={editBusy || !editName.trim()}>
-                    {editBusy ? '…' : 'Kaydet'}
+                    {editBusy ? '…' : _t('set_lbl_save','Kaydet')}
                   </button>
-                  <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setEditingSlug(null)}>İptal</button>
+                  <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setEditingSlug(null)}>{_t('set_lbl_cancel','İptal')}</button>
                 </div>
               </div>
             ) : (
@@ -127,10 +131,10 @@ function LabelsSection({ canManage }) {
                 <span className="label-row-slug">{slug}</span>
                 {canManage && (
                   <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-                    <button className="icon-btn" title="Düzenle" onClick={() => handleStartEdit(slug, label)}>
+                    <button className="icon-btn" title={_t('set_lbl_edit','Düzenle')} onClick={() => handleStartEdit(slug, label)}>
                       <Icon name="edit" size={13} />
                     </button>
-                    <button className="icon-btn label-row-del" title="Sil" onClick={() => handleDelete(slug)}>
+                    <button className="icon-btn label-row-del" title={_t('set_lbl_delete','Sil')} onClick={() => handleDelete(slug)}>
                       <Icon name="trash" size={13} />
                     </button>
                   </div>
@@ -143,13 +147,13 @@ function LabelsSection({ canManage }) {
           <div className="label-add-row">
             <input
               className="label-add-input"
-              placeholder="Yeni etiket adı…"
+              placeholder={_t('set_lbl_new_ph','Yeni etiket adı…')}
               value={newName}
               onChange={e => { setNewName(e.target.value); setError(''); }}
               onKeyDown={e => e.key === 'Enter' && handleAdd()}
             />
             <div className="label-tone-row">
-              {LABEL_TONES.map(t => (
+              {LABEL_TONES().map(t => (
                 <button
                   key={t.id}
                   title={t.label}
@@ -162,7 +166,7 @@ function LabelsSection({ canManage }) {
             </div>
             <button className="btn btn-primary" style={{ fontSize: 13, whiteSpace: 'nowrap' }}
               onClick={handleAdd} disabled={adding || !newName.trim() || !projectId}>
-              {adding ? '…' : '+ Ekle'}
+              {adding ? '…' : _t('set_lbl_add','+ Ekle')}
             </button>
           </div>
         )}
@@ -170,7 +174,7 @@ function LabelsSection({ canManage }) {
           <div style={{ padding: '0 20px 14px', fontSize: 12, color: 'var(--status-rose)' }}>{error}</div>
         )}
         {!projectId && canManage && (
-          <div style={{ padding: '0 20px 14px', fontSize: 12, color: 'var(--ink-muted)' }}>Etiket yönetimi için bir proje açın.</div>
+          <div style={{ padding: '0 20px 14px', fontSize: 12, color: 'var(--ink-muted)' }}>{_t('set_lbl_no_project','Etiket yönetimi için bir proje açın.')}</div>
         )}
       </div>
     </div>
@@ -270,12 +274,12 @@ function RoleDropdown({ value, roles, onChange, disabled }) {
   );
 }
 
-const PERM_LABELS = {
-  manage_tasks:    'Görevleri yönet',
-  manage_projects: 'Projeleri yönet',
-  manage_members:  'Üyeleri yönet',
+const PERM_LABELS_KEYS = {
+  manage_tasks:    ['set_rol_perm_tasks',    'Görevleri yönet'],
+  manage_projects: ['set_rol_perm_projects', 'Projeleri yönet'],
+  manage_members:  ['set_rol_perm_members',  'Üyeleri yönet'],
 };
-const ALL_PERMS = Object.keys(PERM_LABELS);
+const ALL_PERMS = Object.keys(PERM_LABELS_KEYS);
 
 const ROLE_COLORS = [
   'oklch(52% 0.15 270)', 'oklch(55% 0.09 150)', 'oklch(55% 0.13 25)',
@@ -283,6 +287,7 @@ const ROLE_COLORS = [
 ];
 
 function JoinRequestsSection() {
+  const _t = (k, fb) => window.t?.(k) || fb;
   const [requests, setRequests] = React.useState([]);
   const [loading, setLoading]   = React.useState(true);
 
@@ -323,14 +328,14 @@ function JoinRequestsSection() {
   return (
     <div className="settings-section">
       <div>
-        <h3>Katılım İstekleri {requests.length > 0 && <span style={{ fontSize: 12, fontWeight: 400, background: 'var(--status-rose)', color: 'white', borderRadius: 99, padding: '1px 7px', marginLeft: 6 }}>{requests.length}</span>}</h3>
-        <p className="desc">Takıma katılmak isteyen kullanıcıları onaylayın veya reddedin.</p>
+        <h3>{_t('set_jrq_title','Katılım İstekleri')} {requests.length > 0 && <span style={{ fontSize: 12, fontWeight: 400, background: 'var(--status-rose)', color: 'white', borderRadius: 99, padding: '1px 7px', marginLeft: 6 }}>{requests.length}</span>}</h3>
+        <p className="desc">{_t('set_jrq_desc','Takıma katılmak isteyen kullanıcıları onaylayın veya reddedin.')}</p>
       </div>
       <div className="settings-card settings-panel" style={{ padding: 0, overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: '16px 20px', color: 'var(--ink-faint)', fontSize: 13 }}>Yükleniyor…</div>
+          <div style={{ padding: '16px 20px', color: 'var(--ink-faint)', fontSize: 13 }}>{_t('set_jrq_loading','Yükleniyor…')}</div>
         ) : requests.length === 0 ? (
-          <div style={{ padding: '16px 20px', color: 'var(--ink-muted)', fontSize: 13 }}>Bekleyen katılım isteği yok.</div>
+          <div style={{ padding: '16px 20px', color: 'var(--ink-muted)', fontSize: 13 }}>{_t('set_jrq_none','Bekleyen katılım isteği yok.')}</div>
         ) : requests.map((req, i) => (
           <div key={req.id} style={{
             display: 'flex', alignItems: 'center', gap: 12,
@@ -347,14 +352,14 @@ function JoinRequestsSection() {
               style={{ fontSize: 12, padding: '4px 14px' }}
               onClick={() => handleApprove(req.id)}
             >
-              Onayla
+              {_t('set_jrq_approve','Onayla')}
             </button>
             <button
               className="btn btn-ghost"
               style={{ fontSize: 12, padding: '4px 14px', color: 'var(--status-rose)' }}
               onClick={() => handleReject(req.id)}
             >
-              Reddet
+              {_t('set_jrq_reject','Reddet')}
             </button>
           </div>
         ))}
@@ -751,8 +756,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {/* ── Profile ── */}
       <div className="settings-section" data-nav-id="profile">
         <div>
-          <h3>Profil</h3>
-          <p className="desc">Takım üyelerinin sizi nasıl göreceği.</p>
+          <h3>{_t('set_pro_title','Profil')}</h3>
+          <p className="desc">{_t('set_pro_desc','Takım üyelerinin sizi nasıl göreceği.')}</p>
         </div>
         <div className="settings-card">
           <div style={{ display:'flex', gap:16, alignItems:'center', marginBottom:18 }}>
@@ -769,34 +774,34 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
               <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={uploadAvatar} />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-ghost" style={{ fontSize: 12 }} disabled={avatarBusy} onClick={() => avatarInputRef.current?.click()}>
-                  <Icon name="upload" size={12} /> {avatarBusy ? 'Yükleniyor…' : 'Fotoğraf Yükle'}
+                  <Icon name="upload" size={12} /> {avatarBusy ? _t('set_pro_uploading','Yükleniyor…') : _t('set_pro_upload_photo','Fotoğraf Yükle')}
                 </button>
                 {avatarUrl && (
                   <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--status-rose)' }} disabled={avatarBusy} onClick={removeAvatar}>
-                    Kaldır
+                    {_t('set_pro_remove','Kaldır')}
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>PNG, JPG, WEBP — maks. 5 MB</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{_t('set_pro_photo_hint','PNG, JPG, WEBP — maks. 5 MB')}</div>
             </div>
           </div>
           <div className="field-row">
             <div className="field">
-              <label>Ad Soyad</label>
+              <label>{_t('set_pro_name','Ad Soyad')}</label>
               <input value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div className="field">
-              <label>E-posta (değiştirmek için girin)</label>
+              <label>{_t('set_pro_email','E-posta (değiştirmek için girin)')}</label>
               <input type="email" value={email} placeholder={me.email || 'eposta@ornek.com'} onChange={e => setEmail(e.target.value)} />
             </div>
           </div>
           <div className="field" style={{ marginTop:12 }}>
-            <label>Başlık / Rol</label>
+            <label>{_t('set_pro_title_role','Başlık / Rol')}</label>
             <input value={role} onChange={e => setRole(e.target.value)} placeholder="Founder · Product Manager" />
           </div>
           <div style={{ marginTop:14 }}>
             <button className="btn btn-primary" onClick={saveProfile} disabled={busy}>
-              {busy ? 'Kaydediliyor…' : saved ? '✓ Kaydedildi' : 'Kaydet'}
+              {busy ? _t('set_pro_saving','Kaydediliyor…') : saved ? _t('set_pro_saved','✓ Kaydedildi') : _t('set_pro_save','Kaydet')}
             </button>
           </div>
         </div>
@@ -805,22 +810,22 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {/* ── Appearance ── */}
       <div className="settings-section" data-nav-id="appearance">
         <div>
-          <h3>Görünüm</h3>
-          <p className="desc">Tema, renk ve tipografi tercihlerin.</p>
+          <h3>{_t('set_app_title','Görünüm')}</h3>
+          <p className="desc">{_t('set_app_desc','Tema, renk ve tipografi tercihlerin.')}</p>
         </div>
         <div className="settings-card settings-panel">
           <div className="tweak-group">
-            <div className="tweak-label">Tema</div>
+            <div className="tweak-label">{_t('set_app_theme','Tema')}</div>
             <div className="tweak-options">
               {['light','cream','dark'].map(t => (
                 <button key={t} className="tweak-opt" data-active={tweaks.theme===t} onClick={() => setTweak('theme',t)}>
-                  {t==='light' ? 'Açık' : t==='cream' ? 'Krem' : 'Koyu'}
+                  {t==='light' ? _t('set_app_light','Açık') : t==='cream' ? _t('set_app_cream','Krem') : _t('set_app_dark','Koyu')}
                 </button>
               ))}
             </div>
           </div>
           <div className="tweak-group">
-            <div className="tweak-label">Vurgu rengi</div>
+            <div className="tweak-label">{_t('set_app_accent','Vurgu rengi')}</div>
             <div className="swatch-row">
               {[['terracotta','oklch(55% 0.13 25)'],['sage','oklch(55% 0.09 150)'],['slate','oklch(50% 0.04 250)'],['indigo','oklch(52% 0.15 270)'],['plum','oklch(50% 0.14 340)']].map(([k,v]) => (
                 <button key={k} className="swatch" data-active={tweaks.accent===k} style={{ background:v }} onClick={() => setTweak('accent',k)} />
@@ -828,11 +833,11 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
             </div>
           </div>
           <div className="tweak-group">
-            <div className="tweak-label">Yoğunluk</div>
+            <div className="tweak-label">{_t('set_app_density','Yoğunluk')}</div>
             <div className="tweak-options">
               {['airy','balanced','compact'].map(d => (
                 <button key={d} className="tweak-opt" data-active={tweaks.density===d} onClick={() => setTweak('density',d)}>
-                  {d==='airy' ? 'Ferah' : d==='balanced' ? 'Dengeli' : 'Kompakt'}
+                  {d==='airy' ? _t('set_app_spacious','Ferah') : d==='balanced' ? _t('set_app_balanced','Dengeli') : _t('set_app_compact','Kompakt')}
                 </button>
               ))}
             </div>
@@ -845,8 +850,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {isOwner && (
         <div className="settings-section" data-nav-id="workspace">
           <div>
-            <h3>Çalışma Alanı</h3>
-            <p className="desc">Takımınızın logo veya fotoğrafını yükleyin.</p>
+            <h3>{_t('set_ws_title','Çalışma Alanı')}</h3>
+            <p className="desc">{_t('set_ws_desc','Takımınızın logo veya fotoğrafını yükleyin.')}</p>
           </div>
           <div className="settings-card">
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -862,12 +867,12 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                 }
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: 14, fontWeight: 500 }}>{ws.name || 'Çalışma Alanı'}</div>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{ws.name || _t('set_ws_title','Çalışma Alanı')}</div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
                   <input ref={logoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={uploadLogo} />
                   <button className="btn btn-ghost" style={{ fontSize: 12 }} disabled={logoBusy}
                     onClick={() => logoInputRef.current?.click()}>
-                    <Icon name="upload" size={12} /> {logoBusy ? 'Yükleniyor…' : 'Logo Yükle'}
+                    <Icon name="upload" size={12} /> {logoBusy ? _t('set_ws_uploading','Yükleniyor…') : _t('set_ws_upload_logo','Logo Yükle')}
                   </button>
                   {logoUrl && (
                     <button className="btn btn-ghost" style={{ fontSize: 12, color: 'var(--status-rose)' }}
@@ -879,25 +884,25 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                           if (onWsLogoChange) onWsLogoChange(null);
                         } catch(err) { window.showToast?.(err.message, 'error'); }
                       }}>
-                      Kaldır
+                      {_t('set_ws_remove','Kaldır')}
                     </button>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>PNG, JPG, WEBP — maks. 5 MB</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{_t('set_ws_photo_hint','PNG, JPG, WEBP — maks. 5 MB')}</div>
               </div>
             </div>
             <div className="field" style={{ borderTop: '1px solid var(--line)', marginTop: 16, paddingTop: 16 }}>
-              <label>Takım Adı</label>
+              <label>{_t('set_ws_team_name','Takım Adı')}</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <input
                   value={wsName}
                   onChange={e => setWsName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') saveWsName(); }}
-                  placeholder={ws.name || 'Takım adı…'}
+                  placeholder={ws.name || _t('set_ws_team_placeholder','Takım adı…')}
                   style={{ flex: 1, minWidth: 140 }}
                 />
                 <button className="btn btn-primary" style={{ fontSize: 12, flexShrink: 0, marginBottom: 0 }} disabled={wsNameBusy || !wsName.trim() || wsName.trim() === ws.name} onClick={saveWsName}>
-                  {wsNameBusy ? 'Kaydediliyor…' : wsNameSaved ? '✓ Kaydedildi' : 'Kaydet'}
+                  {wsNameBusy ? _t('set_ws_saving','Kaydediliyor…') : wsNameSaved ? _t('set_ws_saved','✓ Kaydedildi') : _t('set_ws_save','Kaydet')}
                 </button>
               </div>
             </div>
@@ -912,8 +917,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {isOwner && (
         <div className="settings-section" data-nav-id="invite">
           <div>
-            <h3>Davet Kodu</h3>
-            <p className="desc">Bu kodu paylaşarak takıma üye ekleyin.</p>
+            <h3>{_t('set_inv_title','Davet Kodu')}</h3>
+            <p className="desc">{_t('set_inv_desc','Bu kodu paylaşarak takıma üye ekleyin.')}</p>
           </div>
           <div className="settings-card settings-panel">
             {inviteCode ? (
@@ -923,7 +928,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                     {inviteCode}
                   </span>
                   <button className="btn btn-ghost" onClick={copyCode} style={{ fontSize:12, padding:'5px 10px', flexShrink:0 }}>
-                    {codeCopied ? '✓ Kopyalandı' : 'Kopyala'}
+                    {codeCopied ? _t('set_inv_copied','Kopyalandı') : _t('set_inv_copy','Kopyala')}
                   </button>
                 </div>
                 <div style={{ display:'flex', gap:16, alignItems:'flex-start', marginBottom:12, flexWrap:'wrap' }}>
@@ -933,42 +938,42 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                       alt="QR Kod"
                       style={{ width:140, height:140, borderRadius:8, border:'1px solid var(--line)', display:'block' }}
                     />
-                    <span style={{ fontSize:11, color:'var(--ink-faint)' }}>QR ile katıl</span>
+                    <span style={{ fontSize:11, color:'var(--ink-faint)' }}>{_t('set_inv_qr','QR ile katıl')}</span>
                   </div>
                   <div style={{ flex:1, minWidth:160 }}>
                     <div style={{ fontSize:12, color:'var(--ink-muted)', lineHeight:1.6, marginBottom:10 }}>
-                      Kameranızı bu koda tutun veya kodu paylaşarak takıma üye ekleyin.
+                      {_t('set_inv_qr_desc','Kameranızı bu koda tutun veya kodu paylaşarak takıma üye ekleyin.')}
                     </div>
                     <button className="btn btn-ghost" style={{ fontSize:12, padding:'5px 10px' }} onClick={() => {
                       const joinUrl = `${window.location.origin}/?join=${inviteCode}`;
                       navigator.clipboard.writeText(joinUrl).catch(() => {});
-                      window.showToast?.('Katılım linki kopyalandı!', 'success');
+                      window.showToast?.(window.t?.('app_link_copied') || 'Katılım linki kopyalandı!', 'success');
                     }}>
-                      <Icon name="link" size={13} /> Linki Kopyala
+                      <Icon name="link" size={13} /> {_t('set_inv_copy_link','Linki Kopyala')}
                     </button>
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                   {confirmRegen ? (
                     <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--line)', fontSize:13 }}>
-                      <span style={{ color:'var(--ink-muted)' }}>Mevcut kod geçersiz olacak.</span>
-                      <button className="btn btn-primary" style={{ fontSize:12, padding:'4px 10px' }} onClick={regenCode} disabled={codeLoading}>Yenile</button>
-                      <button className="btn btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} onClick={() => setConfirmRegen(false)}>İptal</button>
+                      <span style={{ color:'var(--ink-muted)' }}>{_t('set_inv_regen_warn','Mevcut kod geçersiz olacak.')}</span>
+                      <button className="btn btn-primary" style={{ fontSize:12, padding:'4px 10px' }} onClick={regenCode} disabled={codeLoading}>{_t('set_inv_regen','Yenile')}</button>
+                      <button className="btn btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} onClick={() => setConfirmRegen(false)}>{_t('set_inv_cancel','İptal')}</button>
                     </div>
                   ) : (
                     <button className="btn btn-ghost" onClick={() => setConfirmRegen(true)} disabled={codeLoading}>
-                      <Icon name="refresh" size={13} /> Yenile
+                      <Icon name="refresh" size={13} /> {_t('set_inv_regen','Yenile')}
                     </button>
                   )}
                   {confirmDelete ? (
                     <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--line)', fontSize:13 }}>
-                      <span style={{ color:'var(--status-rose)' }}>Kod silinecek, üye eklenemez.</span>
-                      <button className="btn btn-ghost" style={{ fontSize:12, padding:'4px 10px', color:'var(--status-rose)' }} onClick={deleteCode} disabled={codeLoading}>Sil</button>
-                      <button className="btn btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} onClick={() => setConfirmDelete(false)}>İptal</button>
+                      <span style={{ color:'var(--status-rose)' }}>{_t('set_inv_delete_warn','Kod silinecek, üye eklenemez.')}</span>
+                      <button className="btn btn-ghost" style={{ fontSize:12, padding:'4px 10px', color:'var(--status-rose)' }} onClick={deleteCode} disabled={codeLoading}>{_t('set_inv_delete','Sil')}</button>
+                      <button className="btn btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} onClick={() => setConfirmDelete(false)}>{_t('set_inv_cancel','İptal')}</button>
                     </div>
                   ) : (
                     <button className="btn btn-ghost" onClick={() => setConfirmDelete(true)} disabled={codeLoading} style={{ color:'var(--status-rose)' }}>
-                      <Icon name="trash" size={13} /> Kodu Sil
+                      <Icon name="trash" size={13} /> {_t('set_inv_delete_title','Kodu Sil')}
                     </button>
                   )}
                 </div>
@@ -976,10 +981,10 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                 <div style={{ fontSize:13, color:'var(--ink-muted)', padding:'12px 14px', background:'var(--bg-subtle)', borderRadius:8 }}>
-                  Davet kodu yok — şu an kimse davet edilemiyor.
+                  {_t('set_inv_no_code','Davet kodu yok — şu an kimse davet edilemiyor.')}
                 </div>
                 <button className="btn btn-primary" onClick={enableCode} disabled={codeLoading}>
-                  <Icon name="plus" size={13} /> Davet Kodu Oluştur
+                  <Icon name="plus" size={13} /> {_t('set_inv_create','Davet Kodu Oluştur')}
                 </button>
               </div>
             )}
@@ -991,8 +996,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {isOwner && (
         <div className="settings-section" data-nav-id="roles">
           <div>
-            <h3>Roller</h3>
-            <p className="desc">Özel roller ve izinler tanımlayın.</p>
+            <h3>{_t('set_rol_title','Roller')}</h3>
+            <p className="desc">{_t('set_rol_desc','Özel roller ve izinler tanımlayın.')}</p>
           </div>
           <div className="settings-card settings-panel">
             {/* Role list */}
@@ -1001,29 +1006,29 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                 <div key={r.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'var(--bg-raised)', border:'1px solid var(--line)', borderRadius:9 }}>
                   <span style={{ width:10, height:10, borderRadius:'50%', background:r.color, flexShrink:0 }} />
                   <span style={{ fontWeight:500, fontSize:13, flex:1 }}>{r.name}</span>
-                  {r.is_default && <span style={{ fontSize:10, padding:'2px 6px', background:'var(--accent-soft)', color:'var(--accent-ink)', borderRadius:4 }}>Varsayılan</span>}
+                  {r.is_default && <span style={{ fontSize:10, padding:'2px 6px', background:'var(--accent-soft)', color:'var(--accent-ink)', borderRadius:4 }}>{_t('set_rol_default','Varsayılan')}</span>}
                   <div style={{ display:'flex', gap:4 }}>
-                    <button className="icon-btn" title="Düzenle" onClick={() => openRoleForm(r)}><Icon name="edit" size={13} /></button>
+                    <button className="icon-btn" title={_t('set_rol_edit','Düzenle')} onClick={() => openRoleForm(r)}><Icon name="edit" size={13} /></button>
                     {confirmDeleteRoleId === r.id ? (
                       <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11 }}>
-                        <button className="col-menu-confirm-yes" onClick={() => deleteRoleById(r.id)}>Sil</button>
-                        <button className="col-menu-confirm-no" onClick={() => setConfirmDeleteRoleId(null)}>İptal</button>
+                        <button className="col-menu-confirm-yes" onClick={() => deleteRoleById(r.id)}>{_t('set_rol_delete','Sil')}</button>
+                        <button className="col-menu-confirm-no" onClick={() => setConfirmDeleteRoleId(null)}>{_t('set_rol_cancel','İptal')}</button>
                       </div>
                     ) : (
-                      <button className="icon-btn" title="Sil" onClick={() => setConfirmDeleteRoleId(r.id)} style={{ color:'var(--status-rose)' }}><Icon name="trash" size={13} /></button>
+                      <button className="icon-btn" title={_t('set_rol_delete','Sil')} onClick={() => setConfirmDeleteRoleId(r.id)} style={{ color:'var(--status-rose)' }}><Icon name="trash" size={13} /></button>
                     )}
                   </div>
                 </div>
               ))}
               {roles.length === 0 && (
-                <div style={{ fontSize:13, color:'var(--ink-muted)', padding:'10px 0' }}>Henüz özel rol yok.</div>
+                <div style={{ fontSize:13, color:'var(--ink-muted)', padding:'10px 0' }}></div>
               )}
             </div>
 
             {/* Add role button */}
             {!roleForm && (
               <button className="btn btn-ghost" onClick={() => openRoleForm(null)}>
-                <Icon name="plus" size={13} /> Yeni Rol
+                <Icon name="plus" size={13} /> {_t('set_rol_new','Yeni Rol')}
               </button>
             )}
 
@@ -1031,14 +1036,14 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
             {roleForm !== null && (
               <form onSubmit={saveRole} style={{ marginTop:8, padding:'16px', background:'var(--bg-subtle)', borderRadius:10, border:'1px solid var(--line)' }}>
                 <div style={{ fontWeight:500, fontSize:13, marginBottom:12, color:'var(--ink)' }}>
-                  {roleForm.id ? 'Rolü Düzenle' : 'Yeni Rol'}
+                  {roleForm.id ? _t('set_rol_edit_title','Rolü Düzenle') : _t('set_rol_new','Yeni Rol')}
                 </div>
                 <div className="field" style={{ marginBottom:10 }}>
-                  <label>Rol Adı</label>
-                  <input autoFocus placeholder="Örn: Geliştirici, Tasarımcı…" value={roleName} onChange={e => setRoleName(e.target.value)} required />
+                  <label>{_t('set_rol_name','Rol Adı')}</label>
+                  <input autoFocus placeholder={_t('set_rol_name_ph','Örn: Geliştirici, Tasarımcı…')} value={roleName} onChange={e => setRoleName(e.target.value)} required />
                 </div>
                 <div className="field" style={{ marginBottom:10 }}>
-                  <label>Renk</label>
+                  <label>{_t('set_rol_color','Renk')}</label>
                   <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
                     {ROLE_COLORS.map(c => (
                       <button key={c} type="button" onClick={() => setRoleColor(c)}
@@ -1049,25 +1054,25 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                   </div>
                 </div>
                 <div className="field" style={{ marginBottom:10 }}>
-                  <label>İzinler</label>
+                  <label>{_t('set_rol_permissions','İzinler')}</label>
                   <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                     {ALL_PERMS.map(p => (
                       <label key={p} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer' }}>
                         <input type="checkbox" checked={rolePerms.includes(p)} onChange={() => togglePerm(p)} style={{ accentColor:'var(--accent)' }} />
-                        {PERM_LABELS[p]}
+                        {_t(PERM_LABELS_KEYS[p][0], PERM_LABELS_KEYS[p][1])}
                       </label>
                     ))}
                   </div>
                 </div>
                 <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer', marginBottom:14 }}>
                   <input type="checkbox" checked={roleDefault} onChange={e => setRoleDefault(e.target.checked)} style={{ accentColor:'var(--accent)' }} />
-                  Yeni üyeler için varsayılan rol
+                  {_t('set_rol_default_for_new','Yeni üyeler için varsayılan rol')}
                 </label>
                 <div style={{ display:'flex', gap:8 }}>
                   <button type="submit" className="btn btn-primary" disabled={roleBusy || !roleName.trim()}>
-                    {roleBusy ? 'Kaydediliyor…' : 'Kaydet'}
+                    {roleBusy ? _t('set_rol_saving','Kaydediliyor…') : _t('set_rol_save','Kaydet')}
                   </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => setRoleForm(null)}>İptal</button>
+                  <button type="button" className="btn btn-ghost" onClick={() => setRoleForm(null)}>{_t('set_rol_cancel','İptal')}</button>
                 </div>
               </form>
             )}
@@ -1079,8 +1084,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {canManageProjects && projects.length > 0 && (
         <div className="settings-section">
           <div>
-            <h3>Projeler</h3>
-            <p className="desc">Her projenin ikon ve rengini özelleştirin.</p>
+            <h3>{_t('set_prj_title','Projeler')}</h3>
+            <p className="desc">{_t('set_prj_desc','Her projenin ikon ve rengini özelleştirin.')}</p>
           </div>
           <div className="settings-card" style={{ display:'flex', flexDirection:'column', gap:10 }}>
             {projects.map(p => {
@@ -1099,14 +1104,14 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                       <Icon name={p.icon || 'folder'} size={16} strokeWidth={1.8} />
                     </div>
                     <span style={{ fontWeight:500, fontSize:13, flex:1 }}>{p.name}</span>
-                    <button className="icon-btn" title="Düzenle" onClick={() => setEditingProject(isEditing ? null : { id:p.id, color:p.color, icon:p.icon||'folder' })}>
+                    <button className="icon-btn" title={_t('set_prj_edit','Düzenle')} onClick={() => setEditingProject(isEditing ? null : { id:p.id, color:p.color, icon:p.icon||'folder' })}>
                       <Icon name={isEditing ? 'x' : 'edit'} size={13} />
                     </button>
                   </div>
                   {isEditing && (
                     <div style={{ padding:'0 14px 14px', borderTop:'1px solid var(--line)', paddingTop:14, display:'flex', flexDirection:'column', gap:12 }}>
                       <div>
-                        <div style={{ fontSize:11, fontWeight:600, color:'var(--ink-muted)', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>Renk</div>
+                        <div style={{ fontSize:11, fontWeight:600, color:'var(--ink-muted)', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>{_t('set_prj_color','Renk')}</div>
                         <div style={{ display:'flex', gap:7 }}>
                           {COLORS.map(([lbl,val]) => (
                             <button key={val} type="button" title={lbl} onClick={() => setEditingProject(ep => ({...ep, color:val}))}
@@ -1117,7 +1122,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                         </div>
                       </div>
                       <div>
-                        <div style={{ fontSize:11, fontWeight:600, color:'var(--ink-muted)', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>İkon</div>
+                        <div style={{ fontSize:11, fontWeight:600, color:'var(--ink-muted)', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.05em' }}>{_t('set_prj_icon','İkon')}</div>
                         <div style={{ display:'grid', gridTemplateColumns:'repeat(10,1fr)', gap:4, maxHeight:160, overflowY:'auto' }}>
                           {(window.PROJECT_ICONS||[]).map(({id,label}) => (
                             <button key={id+label} type="button" title={label} onClick={() => setEditingProject(ep => ({...ep, icon:id}))}
@@ -1132,8 +1137,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:8, marginTop:2 }}>
-                        <button className="btn btn-primary" style={{ fontSize:12 }} onClick={() => saveProjectIcon(p.id, editIcon, editColor)}>Kaydet</button>
-                        <button className="btn btn-ghost" style={{ fontSize:12 }} onClick={() => setEditingProject(null)}>İptal</button>
+                        <button className="btn btn-primary" style={{ fontSize:12 }} onClick={() => saveProjectIcon(p.id, editIcon, editColor)}>{_t('set_prj_save','Kaydet')}</button>
+                        <button className="btn btn-ghost" style={{ fontSize:12 }} onClick={() => setEditingProject(null)}>{_t('set_prj_cancel','İptal')}</button>
                       </div>
                     </div>
                   )}
@@ -1151,12 +1156,12 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {ws.name && (
         <div className="settings-section" data-nav-id="members">
           <div>
-            <h3>Takım Üyeleri</h3>
+            <h3>{_t('set_mem_title','Takım Üyeleri')}</h3>
             <p className="desc">{members.length} üye · {ws.name}</p>
           </div>
           <div className="settings-card settings-panel members-panel">
             {members.map(m => {
-              const workspaceRole = m.ws_role === 'owner' ? 'Sahip' : (m.role_name || 'Üye');
+              const workspaceRole = m.ws_role === 'owner' ? _t('set_mem_owner','Sahip') : (m.role_name || 'Üye');
               const profileRole = m.role && m.role !== workspaceRole ? ` · ${m.role}` : '';
               return (
               <div key={m.id} className="member-row">
@@ -1165,7 +1170,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                   <div style={{ fontWeight:500, fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
                     {m.name}
                     {m.ws_role === 'owner' && (
-                      <span className="member-badge">Sahip</span>
+                      <span className="member-badge">{_t('set_mem_owner','Sahip')}</span>
                     )}
                   </div>
                   <div style={{ fontSize:11, color:'var(--ink-muted)', marginTop:1 }}>{workspaceRole}{profileRole}</div>
@@ -1177,17 +1182,17 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                       roles={roles}
                       onChange={roleId => changeMemberRole(m.id, roleId)}
                       disabled={memberBusy === m.id || (!isOwner && m.id === me.id)}
-                      title={(!isOwner && m.id === me.id) ? 'Kendi rolünüzü değiştiremezsiniz' : undefined}
+                      title={(!isOwner && m.id === me.id) ? _t('set_mem_cannot_change','Kendi rolünüzü değiştiremezsiniz') : undefined}
                     />
                     {confirmRemoveMemberId === m.id ? (
                       <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11 }}>
-                        <button className="col-menu-confirm-yes" onClick={() => removeMember(m.id)}>Çıkar</button>
-                        <button className="col-menu-confirm-no" onClick={() => setConfirmRemoveMemberId(null)}>İptal</button>
+                        <button className="col-menu-confirm-yes" onClick={() => removeMember(m.id)}>{_t('set_mem_remove','Çıkar')}</button>
+                        <button className="col-menu-confirm-no" onClick={() => setConfirmRemoveMemberId(null)}>{_t('set_mem_cancel','İptal')}</button>
                       </div>
                     ) : (
                     <button
                       className="icon-btn"
-                      title="Üyeyi çıkar"
+                      title={_t('set_mem_remove_title','Üyeyi çıkar')}
                       onClick={() => setConfirmRemoveMemberId(m.id)}
                       style={{ color:'var(--status-rose)' }}
                     >
@@ -1205,17 +1210,17 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {/* ── Notifications ── */}
       <div className="settings-section" data-nav-id="notifications">
         <div>
-          <h3>Bildirimler</h3>
-          <p className="desc">Hangi bildirimleri, nasıl alacağınızı özelleştirin.</p>
+          <h3>{_t('set_notif_title','Bildirimler')}</h3>
+          <p className="desc">{_t('set_notif_desc','Hangi bildirimleri, nasıl alacağınızı özelleştirin.')}</p>
         </div>
         <div className="settings-card settings-panel">
 
           <div className="notif-pref-group">
-            <div className="notif-pref-title">Genel</div>
+            <div className="notif-pref-title">{_t('set_notif_general','Genel')}</div>
             <div className="tweak-toggle" onClick={() => setTweak('notifyMessages', !(tweaks.notifyMessages !== false))}>
               <div className="tweak-toggle-info">
-                <span>Mesaj bildirimleri</span>
-                <span className="tweak-toggle-desc">Chat mesajları için anlık bildirim al</span>
+                <span>{_t('set_notif_msg','Mesaj bildirimleri')}</span>
+                <span className="tweak-toggle-desc">{_t('set_notif_msg_desc','Chat mesajları için anlık bildirim al')}</span>
               </div>
               <div className="toggle" data-on={tweaks.notifyMessages !== false} />
             </div>
@@ -1223,8 +1228,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
               style={{ opacity: tweaks.notifyMessages === false ? 0.4 : 1 }}
               onClick={() => tweaks.notifyMessages !== false && setTweak('soundEnabled', tweaks.soundEnabled === false)}>
               <div className="tweak-toggle-info">
-                <span>Bildirim sesi</span>
-                <span className="tweak-toggle-desc">Yeni mesajlarda kısa bir ses çalar. Rahatsız Etme modunda çalmaz.</span>
+                <span>{_t('set_notif_sound','Bildirim sesi')}</span>
+                <span className="tweak-toggle-desc">{_t('set_notif_sound_desc','Yeni mesajlarda kısa bir ses çalar. Rahatsız Etme modunda çalmaz.')}</span>
               </div>
               <div className="toggle" data-on={tweaks.notifyMessages !== false && tweaks.soundEnabled !== false} />
             </div>
@@ -1232,61 +1237,61 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
               style={{ opacity: tweaks.notifyMessages === false ? 0.4 : 1 }}
               onClick={() => tweaks.notifyMessages !== false && setTweak('notifyToasts', !(tweaks.notifyToasts !== false))}>
               <div className="tweak-toggle-info">
-                <span>Toast bildirimleri</span>
-                <span className="tweak-toggle-desc">Ekranın köşesinde bildirim baloncuğu göster</span>
+                <span>{_t('set_notif_toast','Toast bildirimleri')}</span>
+                <span className="tweak-toggle-desc">{_t('set_notif_toast_desc','Ekranın köşesinde bildirim baloncuğu göster')}</span>
               </div>
               <div className="toggle" data-on={tweaks.notifyMessages !== false && tweaks.notifyToasts !== false} />
             </div>
           </div>
 
           <div className="notif-pref-group" style={{ opacity: tweaks.notifyMessages === false ? 0.4 : 1 }}>
-            <div className="notif-pref-title">Mesaj Filtreleri</div>
+            <div className="notif-pref-title">{_t('set_notif_filters','Mesaj Filtreleri')}</div>
             <div className="tweak-toggle"
               onClick={() => tweaks.notifyMessages !== false && setTweak('notifyDMs', !(tweaks.notifyDMs !== false))}>
               <div className="tweak-toggle-info">
-                <span>Direkt mesajlar</span>
-                <span className="tweak-toggle-desc">Birisinden doğrudan mesaj aldığında</span>
+                <span>{_t('set_notif_dm','Direkt mesajlar')}</span>
+                <span className="tweak-toggle-desc">{_t('set_notif_dm_desc','Birisinden doğrudan mesaj aldığında')}</span>
               </div>
               <div className="toggle" data-on={tweaks.notifyMessages !== false && tweaks.notifyDMs !== false} />
             </div>
             <div className="tweak-toggle"
               onClick={() => tweaks.notifyMessages !== false && setTweak('notifyGroupChat', !(tweaks.notifyGroupChat !== false))}>
               <div className="tweak-toggle-info">
-                <span>Genel kanal mesajları</span>
-                <span className="tweak-toggle-desc">Takım kanalında yeni mesaj geldiğinde</span>
+                <span>{_t('set_notif_channel','Genel kanal mesajları')}</span>
+                <span className="tweak-toggle-desc">{_t('set_notif_channel_desc','Takım kanalında yeni mesaj geldiğinde')}</span>
               </div>
               <div className="toggle" data-on={tweaks.notifyMessages !== false && tweaks.notifyGroupChat !== false} />
             </div>
             <div className="tweak-toggle"
               onClick={() => setTweak('notifyMentions', !(tweaks.notifyMentions !== false))}>
               <div className="tweak-toggle-info">
-                <span>@Bahsedilmeler</span>
-                <span className="tweak-toggle-desc">Adın @ile geçtiğinde her zaman bildir</span>
+                <span>{_t('set_notif_mention','@Bahsedilmeler')}</span>
+                <span className="tweak-toggle-desc">{_t('set_notif_mention_desc','Adın @ile geçtiğinde her zaman bildir')}</span>
               </div>
               <div className="toggle" data-on={tweaks.notifyMentions !== false} />
             </div>
           </div>
 
           <div className="notif-pref-group">
-            <div className="notif-pref-title">Görev Bildirimleri</div>
+            <div className="notif-pref-title">{_t('set_notif_tasks','Görev Bildirimleri')}</div>
             <div className="tweak-toggle" onClick={() => setTweak('notifyAssigned', !(tweaks.notifyAssigned !== false))}>
               <div className="tweak-toggle-info">
-                <span>Görev atama</span>
-                <span className="tweak-toggle-desc">Bir kart sana atandığında</span>
+                <span>{_t('set_notif_assign','Görev atama')}</span>
+                <span className="tweak-toggle-desc">{_t('set_notif_assign_desc','Bir kart sana atandığında')}</span>
               </div>
               <div className="toggle" data-on={tweaks.notifyAssigned !== false} />
             </div>
             <div className="tweak-toggle" onClick={() => setTweak('notifyComments', !(tweaks.notifyComments !== false))}>
               <div className="tweak-toggle-info">
-                <span>Yorum bildirimleri</span>
-                <span className="tweak-toggle-desc">Takip ettiğin bir kartta yorum olduğunda</span>
+                <span>{_t('set_notif_comment','Yorum bildirimleri')}</span>
+                <span className="tweak-toggle-desc">{_t('set_notif_comment_desc','Takip ettiğin bir kartta yorum olduğunda')}</span>
               </div>
               <div className="toggle" data-on={tweaks.notifyComments !== false} />
             </div>
             <div className="tweak-toggle" onClick={() => setTweak('notifyWeekly', !tweaks.notifyWeekly)}>
               <div className="tweak-toggle-info">
-                <span>Haftalık özet</span>
-                <span className="tweak-toggle-desc">Pazartesi sabahı haftalık aktivite özeti</span>
+                <span>{_t('set_notif_weekly','Haftalık özet')}</span>
+                <span className="tweak-toggle-desc">{_t('set_notif_weekly_desc','Pazartesi sabahı haftalık aktivite özeti')}</span>
               </div>
               <div className="toggle" data-on={!!tweaks.notifyWeekly} />
             </div>
@@ -1294,12 +1299,12 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
           <div className="notif-pref-note">
             <Icon name="info" size={12} />
-            <span>"Rahatsız Etme" modunda tüm mesaj bildirimleri sessize alınır.</span>
+            <span>{_t('set_notif_dnd_hint','"Rahatsız Etme" modunda tüm mesaj bildirimleri sessize alınır.')}</span>
           </div>
 
           {/* Per-event channel matrix */}
           <div className="notif-pref-group">
-            <div className="notif-pref-title">Olay türüne göre kanallar</div>
+            <div className="notif-pref-title">{_t('set_notif_channels','Olay türüne göre kanallar')}</div>
             <table className="notif-matrix">
               <thead>
                 <tr>
@@ -1309,12 +1314,12 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
               </thead>
               <tbody>
                 {[
-                  { k: 'mention',  label: '@Bahsetme' },
-                  { k: 'taskAssign', label: 'Görev atama' },
-                  { k: 'dm',       label: 'Direkt mesaj' },
-                  { k: 'channel',  label: 'Kanal mesajı' },
-                  { k: 'reaction', label: 'Mesajına reaksiyon' },
-                  { k: 'calendar', label: 'Takvim hatırlatma' },
+                  { k: 'mention',    label: _t('set_notif_ev_mention','@Bahsetme') },
+                  { k: 'taskAssign', label: _t('set_notif_ev_assign','Görev atama') },
+                  { k: 'dm',         label: _t('set_notif_ev_dm','Direkt mesaj') },
+                  { k: 'channel',    label: _t('set_notif_ev_channel','Kanal mesajı') },
+                  { k: 'reaction',   label: _t('set_notif_ev_reaction','Mesajına reaksiyon') },
+                  { k: 'calendar',   label: _t('set_notif_ev_calendar','Takvim hatırlatma') },
                 ].map(row => {
                   const get = (def) => {
                     const key = `notifMatrix_${row.k}_inapp`;
@@ -1342,20 +1347,20 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
           {/* DND schedule */}
           <div className="notif-pref-group">
-            <div className="notif-pref-title">Rahatsız etme zamanlaması</div>
+            <div className="notif-pref-title">{_t('set_notif_dnd_schedule','Rahatsız etme zamanlaması')}</div>
             <div className="tweak-toggle" onClick={() => setTweak('dndEnabled', !tweaks.dndEnabled)}>
               <div className="tweak-toggle-info">
-                <span>Otomatik DND penceresi</span>
-                <span className="tweak-toggle-desc">Her gün belirli saat aralığında bildirimleri sustur</span>
+                <span>{_t('set_notif_auto_dnd','Otomatik DND penceresi')}</span>
+                <span className="tweak-toggle-desc">{_t('set_notif_auto_dnd_desc','Her gün belirli saat aralığında bildirimleri sustur')}</span>
               </div>
               <div className="toggle" data-on={!!tweaks.dndEnabled} />
             </div>
             {tweaks.dndEnabled && (
               <div className="notif-pref-schedule" style={{ paddingLeft: 0 }}>
-                <span>Başlangıç</span>
+                <span>{_t('set_notif_start','Başlangıç')}</span>
                 <input type="time" value={tweaks.dndStart || '19:00'} onChange={e => setTweak('dndStart', e.target.value)} />
                 <span>–</span>
-                <span>Bitiş</span>
+                <span>{_t('set_notif_end','Bitiş')}</span>
                 <input type="time" value={tweaks.dndEnd || '08:00'} onChange={e => setTweak('dndEnd', e.target.value)} />
               </div>
             )}
@@ -1367,24 +1372,24 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {/* ── Keyboard shortcuts ── */}
       <div className="settings-section" data-nav-id="shortcuts">
         <div>
-          <h3>Klavye Kısayolları</h3>
-          <p className="desc">Hızlı navigasyon ve aksiyonlar.</p>
+          <h3>{_t('set_sct_title','Klavye Kısayolları')}</h3>
+          <p className="desc">{_t('set_sct_desc','Hızlı navigasyon ve aksiyonlar.')}</p>
         </div>
         <div className="settings-card settings-panel">
           <div className="keymap-list">
             {[
-              ['Komut paleti aç', ['⌘','K']],
-              ['Yeni görev', ['N']],
-              ['Ana sayfa', ['G','D']],
-              ['Pano (Kanban)', ['G','B']],
-              ['Liste görünümü', ['G','L']],
-              ['Takvim', ['G','C']],
-              ['Sohbet', ['G','M']],
-              ['Ayarlar', ['G','S']],
-              ['Arama odakla', ['/']],
-              ['Mesaj gönder', ['↵']],
-              ['Yeni satır (mesajda)', ['⇧','↵']],
-              ['Tüm panelleri kapat', ['Esc']],
+              [_t('set_sct_cmd_palette','Komut paleti aç'), ['⌘','K']],
+              [_t('set_sct_new_task','Yeni görev'), ['N']],
+              [_t('set_sct_home','Ana sayfa'), ['G','D']],
+              [_t('set_sct_board','Pano (Kanban)'), ['G','B']],
+              [_t('set_sct_list','Liste görünümü'), ['G','L']],
+              [_t('set_sct_calendar','Takvim'), ['G','C']],
+              [_t('set_sct_chat','Sohbet'), ['G','M']],
+              [_t('set_sct_settings','Ayarlar'), ['G','S']],
+              [_t('set_sct_search','Arama odakla'), ['/']],
+              [_t('set_sct_send','Mesaj gönder'), ['↵']],
+              [_t('set_sct_newline','Yeni satır (mesajda)'), ['⇧','↵']],
+              [_t('set_sct_close_panels','Tüm panelleri kapat'), ['Esc']],
             ].map(([label, keys]) => (
               <div key={label} className="keymap-row">
                 <span className="keymap-label">{label}</span>
@@ -1395,8 +1400,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
             ))}
           </div>
           <div className="keymap-foot">
-            <button className="btn btn-ghost" onClick={() => window.showToast?.('Varsayılanlar geri yüklendi.', 'success')}>
-              Varsayılana sıfırla
+            <button className="btn btn-ghost" onClick={() => window.showToast?.(_t('set_sct_reset','Varsayılana sıfırla'), 'success')}>
+              {_t('set_sct_reset','Varsayılana sıfırla')}
             </button>
           </div>
         </div>
@@ -1405,34 +1410,34 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {/* ── Privacy & Sessions ── */}
       <div className="settings-section" data-nav-id="privacy">
         <div>
-          <h3>Gizlilik &amp; Oturumlar</h3>
-          <p className="desc">Görünürlük, okundu bilgisi ve aktif cihazlar.</p>
+          <h3>{_t('set_prv_title','Gizlilik & Oturumlar')}</h3>
+          <p className="desc">{_t('set_prv_desc','Görünürlük, okundu bilgisi ve aktif cihazlar.')}</p>
         </div>
         <div className="settings-card settings-panel">
           <div className="notif-pref-group">
-            <div className="notif-pref-title">Görünürlük</div>
+            <div className="notif-pref-title">{_t('set_prv_visibility','Görünürlük')}</div>
             <div className="tweak-toggle" onClick={() => setTweak('readReceipts', !(tweaks.readReceipts !== false))}>
               <div className="tweak-toggle-info">
-                <span>Okundu bilgisi</span>
-                <span className="tweak-toggle-desc">Mesajları okuduğunda diğerleri görür</span>
+                <span>{_t('set_prv_read_receipts','Okundu bilgisi')}</span>
+                <span className="tweak-toggle-desc">{_t('set_prv_read_receipts_desc','Mesajları okuduğunda diğerleri görür')}</span>
               </div>
               <div className="toggle" data-on={tweaks.readReceipts !== false} />
             </div>
             <div className="tweak-toggle" onClick={() => setTweak('typingIndicator', !(tweaks.typingIndicator !== false))}>
               <div className="tweak-toggle-info">
-                <span>Yazıyor göstergesi</span>
-                <span className="tweak-toggle-desc">Yazarken karşı taraf "yazıyor…" görür</span>
+                <span>{_t('set_prv_typing','Yazıyor göstergesi')}</span>
+                <span className="tweak-toggle-desc">{_t('set_prv_typing_desc','Yazarken karşı taraf "yazıyor…" görür')}</span>
               </div>
               <div className="toggle" data-on={tweaks.typingIndicator !== false} />
             </div>
           </div>
           <div className="tweak-group" style={{ marginTop: 12 }}>
-            <div className="tweak-label">Çevrimiçi durumu</div>
+            <div className="tweak-label">{_t('set_prv_online','Çevrimiçi durumu')}</div>
             <div className="tweak-options">
               {[
-                ['visible', 'Herkese görünür'],
-                ['team', 'Sadece takım'],
-                ['hidden', 'Gizli'],
+                ['visible', _t('set_prv_everyone','Herkese görünür')],
+                ['team', _t('set_prv_team_only','Sadece takım')],
+                ['hidden', _t('set_prv_hidden','Gizli')],
               ].map(([k, l]) => (
                 <button key={k} className="tweak-opt" data-active={(tweaks.presenceVisibility || 'visible') === k} onClick={() => setTweak('presenceVisibility', k)}>
                   {l}
@@ -1442,24 +1447,24 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           </div>
 
           <div className="notif-pref-group">
-            <div className="notif-pref-title">Aktif oturumlar</div>
+            <div className="notif-pref-title">{_t('set_prv_sessions','Aktif oturumlar')}</div>
             <div className="session-list">
               {[
-                { icon: 'monitor', label: 'Bu tarayıcı', meta: 'Şu an aktif', current: true },
-                { icon: 'smartphone', label: 'Mobil cihaz', meta: 'Henüz oturum yok' },
+                { icon: 'monitor', label: _t('set_prv_this_browser','Bu tarayıcı'), meta: _t('set_prv_active_now','Şu an aktif'), current: true },
+                { icon: 'smartphone', label: _t('set_prv_mobile','Mobil cihaz'), meta: _t('set_prv_no_sessions','Henüz oturum yok') },
               ].map((s, i) => (
                 <div key={i} className="session-row">
                   <div className="session-ic"><Icon name={s.icon} size={14} /></div>
                   <div className="session-body">
-                    <div className="session-label">{s.label} {s.current && <span className="session-badge">Bu cihaz</span>}</div>
+                    <div className="session-label">{s.label} {s.current && <span className="session-badge">{_t('set_prv_this_device','Bu cihaz')}</span>}</div>
                     <div className="session-meta">{s.meta}</div>
                   </div>
-                  {!s.current && <button className="btn btn-ghost" disabled>Çıkış</button>}
+                  {!s.current && <button className="btn btn-ghost" disabled>{_t('set_prv_logout','Çıkış')}</button>}
                 </div>
               ))}
             </div>
             <button className="btn btn-ghost" style={{ marginTop: 8, color: 'var(--status-rose)' }} onClick={onLogout}>
-              <Icon name="logOut" size={13} /> Tüm cihazlarda çıkış yap
+              <Icon name="logOut" size={13} /> {_t('set_prv_logout_all','Tüm cihazlarda çıkış yap')}
             </button>
           </div>
         </div>
@@ -1473,9 +1478,9 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
         </div>
         <div className="settings-card settings-panel">
           <div className="tweak-group">
-            <div className="tweak-label">Arayüz dili</div>
+            <div className="tweak-label">{_t('set_lng_interface','Arayüz dili')}</div>
             <div className="tweak-options">
-              {[['tr', 'Türkçe'], ['en', 'English'], ['de', 'Deutsch'], ['es', 'Español'], ['ru', 'Русский']].map(([k, l]) => (
+              {[['tr', 'Türkçe'], ['en', 'English']].map(([k, l]) => (
                 <button key={k} className="tweak-opt" data-active={(tweaks.locale || 'tr') === k} onClick={() => { setTweak('locale', k); localStorage.setItem('stoa.lang', k); }}>
                   {l}
                 </button>
@@ -1483,7 +1488,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
             </div>
           </div>
           <div className="tweak-group">
-            <div className="tweak-label">Tarih formatı</div>
+            <div className="tweak-label">{_t('set_lng_date_format','Tarih formatı')}</div>
             <div className="tweak-options">
               {[
                 ['dmY', '24 May 2026'],
@@ -1497,9 +1502,9 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
             </div>
           </div>
           <div className="tweak-group">
-            <div className="tweak-label">Haftanın ilk günü</div>
+            <div className="tweak-label">{_t('set_lng_week_start','Haftanın ilk günü')}</div>
             <div className="tweak-options">
-              {[['mon', 'Pazartesi'], ['sun', 'Pazar'], ['sat', 'Cumartesi']].map(([k, l]) => (
+              {[['mon', _t('set_lng_monday','Pazartesi')], ['sun', _t('set_lng_sunday','Pazar')], ['sat', _t('set_lng_saturday','Cumartesi')]].map(([k, l]) => (
                 <button key={k} className="tweak-opt" data-active={(tweaks.weekStart || 'mon') === k} onClick={() => setTweak('weekStart', k)}>
                   {l}
                 </button>
@@ -1507,7 +1512,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
             </div>
           </div>
           <div className="tweak-group">
-            <div className="tweak-label">Saat dilimi</div>
+            <div className="tweak-label">{_t('set_lng_timezone','Saat dilimi')}</div>
             <div className="field">
               <input
                 value={tweaks.timezone || 'Europe/Istanbul (UTC+03:00)'}
@@ -1521,14 +1526,14 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {/* ── Data & Export ── */}
       <div className="settings-section" data-nav-id="export">
         <div>
-          <h3>Veri &amp; Dışa Aktarma</h3>
-          <p className="desc">Çalışma alanı ve kişisel verilerinizin yedeklerini alın.</p>
+          <h3>{_t('set_exp_title','Veri & Dışa Aktarma')}</h3>
+          <p className="desc">{_t('set_exp_desc','Çalışma alanı ve kişisel verilerinizin yedeklerini alın.')}</p>
         </div>
         <div className="settings-card settings-panel">
           <div className="export-row">
             <div className="export-body">
-              <div className="export-title">Çalışma alanı dışa aktarma</div>
-              <div className="export-desc">Görevler, mesajlar ve dosyalar (.zip)</div>
+              <div className="export-title">{_t('set_exp_ws_title','Çalışma alanı dışa aktarma')}</div>
+              <div className="export-desc">{_t('set_exp_ws_desc','Görevler, mesajlar ve dosyalar (.zip)')}</div>
             </div>
             <div className="tweak-options" style={{ marginRight: 8 }}>
               {['JSON', 'CSV', 'Markdown'].map(f => (
@@ -1541,10 +1546,10 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           </div>
           <div className="export-row">
             <div className="export-body">
-              <div className="export-title">Kişisel veri indirme</div>
-              <div className="export-desc">GDPR uyumlu — mesajlar, profil, dosyalar</div>
+              <div className="export-title">{_t('set_exp_personal_title','Kişisel veri indirme')}</div>
+              <div className="export-desc">{_t('set_exp_personal_desc','GDPR uyumlu — mesajlar, profil, dosyalar')}</div>
             </div>
-            <button className="btn btn-ghost" disabled><Icon name="download" size={12} /> Verilerimi indir</button>
+            <button className="btn btn-ghost" disabled><Icon name="download" size={12} /> {_t('set_exp_download','Verilerimi indir')}</button>
           </div>
         </div>
       </div>
@@ -1552,13 +1557,13 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       {/* ── Danger zone ── */}
       <div className="settings-section" data-nav-id="danger">
         <div>
-          <h3 style={{ color:'var(--status-rose)' }}>Tehlikeli bölge</h3>
-          <p className="desc">Geri alınamayan işlemler.</p>
+          <h3 style={{ color:'var(--status-rose)' }}>{_t('set_dng_title','Tehlikeli bölge')}</h3>
+          <p className="desc">{_t('set_dng_desc','Geri alınamayan işlemler.')}</p>
         </div>
         <div className="settings-card settings-panel">
           {onLogout && (
             <button className="btn btn-ghost" style={{ justifyContent:'flex-start' }} onClick={onLogout}>
-              <Icon name="logOut" size={14} /> Çıkış yap
+              <Icon name="logOut" size={14} /> {_t('set_dng_logout','Çıkış yap')}
             </button>
           )}
           {isOwner && (
@@ -1569,20 +1574,20 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                   style={{ justifyContent:'flex-start', color:'var(--status-rose)', borderColor:'oklch(58% 0.13 10 / 0.3)' }}
                   onClick={() => { setTransferOpen(true); setTransferSlug(''); setTransferError(''); }}
                 >
-                  <Icon name="userPlus" size={14} /> Sahipliği aktar
+                  <Icon name="userPlus" size={14} /> {_t('set_dng_transfer','Sahipliği aktar')}
                 </button>
               ) : (
                 <div className="danger-confirm">
                   <div>
-                    <strong>Sahipliği başka bir üyeye aktar.</strong>
-                    <p>Bu işlemden sonra sahip yetkilerinizi kaybedersiniz. Geri alınamaz.</p>
+                    <strong>{_t('set_dng_transfer_desc','Sahipliği başka bir üyeye aktar.')}</strong>
+                    <p>{_t('set_dng_transfer_warn','Bu işlemden sonra sahip yetkilerinizi kaybedersiniz. Geri alınamaz.')}</p>
                   </div>
                   <select
                     value={transferSlug}
                     onChange={e => setTransferSlug(e.target.value)}
                     style={{ width:'100%', padding:'8px 10px', borderRadius:8, border:'1px solid var(--line)', background:'var(--bg)', color:'var(--ink)', fontSize:13 }}
                   >
-                    <option value="">— Üye seçin —</option>
+                    <option value="">{_t('set_dng_select_member','— Üye seçin —')}</option>
                     {members.filter(m => m.id !== window.CURRENT_USER?.id).map(m => (
                       <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
@@ -1590,7 +1595,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                   {transferError && <div className="inline-error">{transferError}</div>}
                   <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                     <button className="btn btn-ghost" onClick={() => { setTransferOpen(false); setTransferError(''); }} disabled={transferBusy}>
-                      İptal
+                      {_t('set_dng_cancel','İptal')}
                     </button>
                     <button
                       className="btn btn-ghost"
@@ -1598,7 +1603,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                       onClick={transferOwnership}
                       disabled={transferBusy || !transferSlug}
                     >
-                      <Icon name="userPlus" size={14} /> {transferBusy ? 'Aktarılıyor…' : 'Sahipliği aktar'}
+                      <Icon name="userPlus" size={14} /> {transferBusy ? _t('set_dng_transferring','Aktarılıyor…') : _t('set_dng_transfer_btn','Sahipliği aktar')}
                     </button>
                   </div>
                 </div>
@@ -1611,13 +1616,13 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
               style={{ justifyContent:'flex-start', color:'var(--status-rose)', borderColor:'oklch(58% 0.13 10 / 0.3)' }}
               onClick={() => { setDeleteOpen(true); setDeleteError(''); }}
             >
-              <Icon name="trash" size={14} /> Hesabı sil
+              <Icon name="trash" size={14} /> {_t('set_dng_delete_account','Hesabı sil')}
             </button>
           ) : (
             <div className="danger-confirm">
               <div>
-                <strong>Hesap kalıcı olarak silinecek.</strong>
-                <p>Devam etmek için hesabınızın e-posta adresini yazın.</p>
+                <strong>{_t('set_dng_delete_desc','Hesap kalıcı olarak silinecek.')}</strong>
+                <p>{_t('set_dng_delete_confirm','Devam etmek için hesabınızın e-posta adresini yazın.')}</p>
               </div>
               <input
                 type="email"
@@ -1629,10 +1634,10 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
               {deleteError && <div className="inline-error">{deleteError}</div>}
               <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                 <button className="btn btn-ghost" onClick={() => { setDeleteOpen(false); setDeleteEmail(''); setDeleteError(''); }} disabled={deleteBusy}>
-                  İptal
+                  {_t('set_dng_cancel','İptal')}
                 </button>
                 <button className="btn btn-ghost" style={{ color:'var(--status-rose)', borderColor:'oklch(58% 0.13 10 / 0.35)' }} onClick={deleteAccount} disabled={deleteBusy || !deleteEmail.trim()}>
-                  <Icon name="trash" size={14} /> {deleteBusy ? 'Siliniyor…' : 'Hesabı kalıcı sil'}
+                  <Icon name="trash" size={14} /> {deleteBusy ? _t('set_dng_deleting','Siliniyor…') : _t('set_dng_delete_btn','Hesabı kalıcı sil')}
                 </button>
               </div>
             </div>
