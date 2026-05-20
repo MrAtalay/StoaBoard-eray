@@ -93,7 +93,7 @@ const AUTH_I18N = {
     hero_h1_before: "Build tomorrow's projects with today's ",
     hero_h1_em: 'lightest',
     hero_h1_after: ' tools.',
-    hero_p: "The tech world no longer tolerates heavy, clunky systems. StoaBoard was designed with startup agility at its core — 15-second setup, zero complexity, and full synchronization. Seamlessly switch between board, list, and calendar views while feeling your team's creativity, not the system's weight. The future starts here, powered by lightness.",
+    hero_p: "The tech world no longer tolerates heavy, clunky systems. StoaBoard was designed with startup agility at its core: 15-second setup, zero complexity, and full synchronization. Seamlessly switch between board, list, and calendar views while feeling your team's creativity, not the system's weight. The future starts here, powered by lightness.",
     stat_teams: 'active teams',
     stat_tasks: 'completed tasks',
     stat_setup: 'avg. setup',
@@ -231,7 +231,7 @@ const StoaLogoPNG = ({ size = 40, style = {} }) => (
 );
 
 // Fallback SVG logosu (PNG yüklenemezse) — gerçek logoya yakın
-const StoaLogoSVG = ({ color = '#1d3461', size = 40 }) => (
+const StoaLogoSVG = ({ color = '#1a4a70', size = 40 }) => (
   <svg width={size} height={size} viewBox="0 0 100 110" fill="none" xmlns="http://www.w3.org/2000/svg">
     {/* Sol sütun grubu */}
     <rect x="5" y="52" width="8" height="42" rx="2" fill={color} />
@@ -256,7 +256,7 @@ const StoaLogoSVG = ({ color = '#1d3461', size = 40 }) => (
 );
 
 // Akıllı logo: önce PNG dene, hata olunca SVG göster
-const StoaLogo = ({ color = '#1d3461', size = 40, style = {} }) => {
+const StoaLogo = ({ color = '#1a4a70', size = 40, style = {} }) => {
   const [pngFailed, setPngFailed] = useAuthState(false);
   if (pngFailed) return <StoaLogoSVG color={color} size={size} />;
   return (
@@ -266,7 +266,7 @@ const StoaLogo = ({ color = '#1d3461', size = 40, style = {} }) => {
       alt="StoaBoard"
       style={{
         objectFit: 'contain', display: 'block', ...style,
-        ...(color !== '#1d3461' ? { filter: color === '#ef4444' ? 'invert(27%) sepia(97%) saturate(1000%) hue-rotate(332deg)' : color === 'white' ? 'brightness(0) invert(1)' : 'none' } : {})
+        ...(color !== '#1a4a70' ? { filter: color === '#ef4444' ? 'invert(27%) sepia(97%) saturate(1000%) hue-rotate(332deg)' : color === 'white' ? 'brightness(0) invert(1)' : 'none' } : {})
       }}
       onError={() => setPngFailed(true)}
     />
@@ -336,7 +336,7 @@ function AuthPage({ onSignIn }) {
     return () => document.removeEventListener('mousedown', close);
   }, [langMenuOpen]);
 
-  // YENİ FOTOĞRAFLAR - zoom azaltıldı
+
   const slideImages = [
     "https://images.unsplash.com/photo-1486272812091-a9bf3c6376c5?q=80&w=1920&auto=format&fit=crop",
     "https://images.unsplash.com/photo-1776799733252-e918015c662b?q=80&w=1920&auto=format&fit=crop",
@@ -450,7 +450,7 @@ function AuthPage({ onSignIn }) {
         </div>
         <div className="glass-content">
           <div className="auth-brand-row">
-            <StoaLogo color="#1d3461" size={38} />
+            <StoaLogo color="#1a4a70" size={38} />
             <div className="auth-brand-text">Stoa<em>Board</em></div>
           </div>
           <div className="auth-hero">
@@ -680,7 +680,7 @@ const BlueprintSVG = () => (
 
 // Oda rozeti önizlemesi (create)
 const TEMPLATE_META = {
-  software: { iconName: 'cpu',    color: '#1d3461', label: 'Yazılım Geliştirme',
+  software: { iconName: 'cpu',    color: '#1a4a70', label: 'Yazılım Geliştirme',
     cols: ['Backlog','Yapılacak','Devam Ediyor','İncelemede','Tamamlandı'],
     labels: [['Bug','rose'],['Özellik','blue'],['Teknik Borç','amber'],['Sprint','green']] },
   design:   { iconName: 'layers', color: '#6d28d9', label: 'Tasarım Stüdyosu',
@@ -708,33 +708,89 @@ const RoomBadge = ({ name, template }) => {
   );
 };
 
-// Oda doğrulama kartı (join) — 8 hane girilince gösterilir
+// Oda doğrulama kartı (join) gerçek davet kodunu API ile kontrol eder.
+const workspaceJoinErrorText = (err) => {
+  const key = err?.message || err || '';
+  if (key === 'invalid_invite_code') return 'Oda bulunamadı. Davet kodunu kontrol et.';
+  if (key === 'invite_code_required') return 'Davet kodu zorunludur.';
+  const translated = window.t?.('err_' + key);
+  if (translated && translated !== 'err_' + key) return translated;
+  return key || 'Bir hata oluştu.';
+};
+
 const JoinRoomPreview = ({ code, isOnline }) => {
-  if (!code || code.length < 8) return null;
-  // Mock: gerçek API'de window.API.previewRoom(code) çağrılır
-  const mockRooms = {
-    'ABCD1234': { name: "Aristo'nun Akademisi", admin: 'Platon', members: 12 },
-    'STOA2024': { name: 'Stoa Takımı', admin: 'Marcus Aurelius', members: 7 },
-    'FLUX2025': { name: 'Flux Labs', admin: 'Zeno', members: 24 },
-  };
-  const room = mockRooms[code] || { name: 'Doğrulandı — Aktif Oda', admin: 'Oda Yöneticisi', members: '?' };
+  const normalizedCode = (code || '').trim().toUpperCase();
+  const [state, setState] = React.useState({ status: 'idle', room: null, error: '' });
+
+  React.useEffect(() => {
+    if (!normalizedCode || normalizedCode.length < 8) {
+      setState({ status: 'idle', room: null, error: '' });
+      return;
+    }
+
+    if (!isOnline) {
+      setState({ status: 'offline', room: null, error: 'Bağlantı yok.' });
+      return;
+    }
+
+    let cancelled = false;
+    setState({ status: 'checking', room: null, error: '' });
+    const timer = setTimeout(() => {
+      window.API.validateInviteCode(normalizedCode)
+        .then((res) => {
+          if (cancelled) return;
+          setState({ status: 'valid', room: res.workspace || null, error: '' });
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          const missing = err?.message === 'invalid_invite_code';
+          setState({
+            status: missing ? 'invalid' : 'error',
+            room: null,
+            error: missing ? 'Oda bulunamadı. Davet kodunu kontrol et.' : workspaceJoinErrorText(err),
+          });
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [normalizedCode, isOnline]);
+
+  if (!normalizedCode || normalizedCode.length < 8) return null;
+
+  const isValid = state.status === 'valid';
+  const isChecking = state.status === 'checking';
+  const statusText = isChecking
+    ? 'Kod kontrol ediliyor'
+    : isValid
+      ? (state.room?.pending ? 'İstek zaten beklemede' : 'Oda bulundu')
+      : state.error || 'Oda bulunamadı';
+
   return (
-    <div className="join-room-preview" style={{ animation: 'fadeIn 0.35s ease' }}>
+    <div className="join-room-preview" data-status={state.status} style={{ animation: 'fadeIn 0.35s ease' }}>
       <div className="join-room-status">
         <span className="join-room-dot" />
-        <span className="join-room-verified">Oda Doğrulandı</span>
+        <span className="join-room-verified">{statusText}</span>
       </div>
-      <div className="join-room-name">{room.name}</div>
-      <div className="join-room-meta">
-        <span>Yönetici: <strong>{room.admin}</strong></span>
-        <span>·</span>
-        <span>{room.members} üye</span>
-      </div>
+      {isValid ? (
+        <>
+          <div className="join-room-name">{state.room?.name || 'Çalışma alanı'}</div>
+          <div className="join-room-meta">
+            <span>{state.room?.member_count ?? 0} üye</span>
+            {state.room?.is_member && <><span>·</span><span>Zaten üyesin</span></>}
+          </div>
+        </>
+      ) : (
+        <div className="join-room-meta">
+          <span>{isChecking ? 'Lütfen bekle, kod gerçek odalar arasında aranıyor.' : 'Rastgele ya da hatalı kodlarla giriş yapılmaz.'}</span>
+        </div>
+      )}
     </div>
   );
 };
 
-// Güvenlik protokolü notu
 const SecurityNote = () => (
   <div className="security-note">
     <div className="security-note-icon">
@@ -792,9 +848,9 @@ function PendingLobby({ joinedAt, onApproved, onRejected }) {
     <div style={{ textAlign: 'center', padding: '24px 0' }}>
       <style>{`@keyframes stoa-ping{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.9);opacity:0}}`}</style>
       <div style={{ position: 'relative', width: 84, height: 84, margin: '0 auto 22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid #1d3461', animation: 'stoa-ping 1.6s ease-out infinite' }} />
-        <div style={{ position: 'absolute', inset: 8, borderRadius: '50%', border: '2px solid #1d3461', animation: 'stoa-ping 1.6s ease-out infinite 0.4s' }} />
-        <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#1d3461', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>
+        <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid #1a4a70', animation: 'stoa-ping 1.6s ease-out infinite' }} />
+        <div style={{ position: 'absolute', inset: 8, borderRadius: '50%', border: '2px solid #1a4a70', animation: 'stoa-ping 1.6s ease-out infinite 0.4s' }} />
+        <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#1a4a70', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
           </svg>
@@ -807,7 +863,7 @@ function PendingLobby({ joinedAt, onApproved, onRejected }) {
       </p>
       <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '12px 28px', borderRadius: 12, background: 'rgba(29,52,97,0.06)', border: '1px solid rgba(29,52,97,0.15)', marginBottom: 22 }}>
         <div style={{ fontSize: 11, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bekleme Süresi</div>
-        <div style={{ fontSize: 24, fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: '#1d3461' }}>
+        <div style={{ fontSize: 24, fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: '#1a4a70' }}>
           {fmtElapsed(elapsed)}
         </div>
       </div>
@@ -858,9 +914,11 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
   const handleJoin = async (e) => {
     e.preventDefault();
     if (!isOnline) { setError('Ağ bağlantısı yok.'); return; }
+    const joinCode = code.trim().toUpperCase();
+    if (joinCode.length !== 8) { setError('Davet kodu 8 karakter olmalı.'); return; }
     setError(''); setBusy(true);
     try {
-      const res = await window.API.joinWorkspace(code.trim());
+      const res = await window.API.joinWorkspace(joinCode);
       if (res && res.pending) {
         setPendingJoinedAt(Date.now());
         setPendingLobby(true);
@@ -868,7 +926,7 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
         onReady();
       }
     }
-    catch (err) { setError(window.t?.('err_' + err.message) || err.message); }
+    catch (err) { setError(workspaceJoinErrorText(err)); }
     finally { setBusy(false); }
   };
 
@@ -1066,7 +1124,7 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
               <JoinRoomPreview code={code} isOnline={isOnline} />
               {/* Güvenlik protokolü notu */}
               <SecurityNote />
-              <button type="submit" className="auth-submit" disabled={busy || code.length < 6 || !isOnline}>
+              <button type="submit" className="auth-submit" disabled={busy || code.trim().length !== 8 || !isOnline}>
                 {busy ? 'DOĞRULANIYOR…' : 'İÇERİ GİR'}
               </button>
             </form>

@@ -513,6 +513,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
   const [menuOpen, setMenuOpen] = useNS(false);
   const [mode, setMode]     = useNS('edit'); // 'edit' | 'preview'
   const [collabOpen, setCollabOpen] = useNS(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useNS(false);
   const titleRef = useNR(null);
   const menuRef  = useNR(null);
   const collabRef = useNR(null);
@@ -629,9 +630,8 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
   };
   const handleDelete = () => {
     if (!canEdit) return;
-    if (!window.confirm(window.t?.('notes_delete_confirm') || 'Bu notu silmek istediğinden emin misin? Bu işlem geri alınamaz.')) return;
     setMenuOpen(false);
-    onDelete(note);
+    setDeleteConfirmOpen(true);
   };
   const handleCollabToggle = (memberId) => {
     if (!canEdit) return;
@@ -646,6 +646,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
   const linkedTaskIds = (note.linked_tasks || []).map(String);
 
   return (
+    <>
     <div className="note-detail">
       <div className="note-detail-head">
         <button type="button" className="note-back-btn" onClick={onBack}>
@@ -834,6 +835,22 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
         )}
       </div>
     </div>
+    {deleteConfirmOpen && (() => {
+      const CM = window.ConfirmModal;
+      if (!CM) return null;
+      return (
+        <CM
+          open={deleteConfirmOpen}
+          title={window.t?.('notes_delete_title') || 'Notu Sil'}
+          message={window.t?.('notes_delete_confirm') || 'Bu notu silmek istediğinize emin misiniz? Bu işlem geri alınamaz.'}
+          confirmText={window.t?.('notes_delete_btn') || 'Sil'}
+          variant="danger"
+          onConfirm={() => { setDeleteConfirmOpen(false); onDelete(note); }}
+          onCancel={() => setDeleteConfirmOpen(false)}
+        />
+      );
+    })()}
+    </>
   );
 }
 

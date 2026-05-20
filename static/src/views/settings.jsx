@@ -967,9 +967,38 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           <div className="tweak-group">
             <div className="tweak-label">{_t('set_app_accent','Vurgu rengi')}</div>
             <div className="swatch-row">
-              {[['terracotta','oklch(55% 0.13 25)'],['sage','oklch(55% 0.09 150)'],['slate','oklch(50% 0.04 250)'],['indigo','oklch(52% 0.15 270)'],['plum','oklch(50% 0.14 340)']].map(([k,v]) => (
-                <button key={k} className="swatch" data-active={tweaks.accent===k} style={{ background:v }} onClick={() => setTweak('accent',k)} />
+              {[['navy','#1a4a70'],['terracotta','oklch(55% 0.13 25)'],['sage','oklch(55% 0.09 150)'],['slate','oklch(50% 0.04 250)'],['indigo','oklch(52% 0.15 270)'],['plum','oklch(50% 0.14 340)']].map(([k,v]) => (
+                <button key={k} className="swatch" data-active={tweaks.accent===k} style={{ background:v }} onClick={() => setTweak('accent',k)} title={k} />
               ))}
+              <label
+                className="swatch swatch-custom"
+                data-active={tweaks.accent === 'custom'}
+                title={_t('set_app_accent_custom','Özel renk')}
+                style={{
+                  background: (tweaks.accent === 'custom' && tweaks.accentHex) ? tweaks.accentHex : 'var(--bg-subtle)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: tweaks.accent !== 'custom' ? '1px dashed var(--line)' : undefined,
+                  cursor: 'pointer'
+                }}
+              >
+                {tweaks.accent !== 'custom' && (
+                  <Icon name="plus" size={14} style={{ color: 'var(--ink-muted)' }} />
+                )}
+                <input
+                  type="color"
+                  value={tweaks.accentHex || '#1a4a70'}
+                  onChange={(e) => {
+                    const hex = e.target.value;
+                    setTweak('accentHex', hex);
+                    setTweak('accent', 'custom');
+                  }}
+                  style={{ opacity: 0, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', cursor: 'pointer', margin: 0, padding: 0 }}
+                />
+              </label>
             </div>
           </div>
           <div className="tweak-group">
@@ -1436,25 +1465,6 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           <div className="notif-pref-note">
             <Icon name="info" size={12} />
             <span>{_t('set_notif_dnd_hint','"Rahatsız Etme" modunda tüm mesaj bildirimleri sessize alınır.')}</span>
-          </div>
-
-          {/* Gizlilik: Okundu & Yazıyor (buraya taşındı) */}
-          <div className="notif-pref-group">
-            <div className="notif-pref-title">{_t('set_prv_visibility','Görünürlük')}</div>
-            <div className="tweak-toggle" onClick={() => setTweak('readReceipts', !(tweaks.readReceipts !== false))}>
-              <div className="tweak-toggle-info">
-                <span>{_t('set_prv_read_receipts','Okundu bilgisi')}</span>
-                <span className="tweak-toggle-desc">{_t('set_prv_read_receipts_desc','Mesajları okuduğunda diğerleri görür')}</span>
-              </div>
-              <div className="toggle" data-on={tweaks.readReceipts !== false} />
-            </div>
-            <div className="tweak-toggle" onClick={() => setTweak('typingIndicator', !(tweaks.typingIndicator !== false))}>
-              <div className="tweak-toggle-info">
-                <span>{_t('set_prv_typing','Yazıyor göstergesi')}</span>
-                <span className="tweak-toggle-desc">{_t('set_prv_typing_desc','Yazarken karşı taraf "yazıyor…" görür')}</span>
-              </div>
-              <div className="toggle" data-on={tweaks.typingIndicator !== false} />
-            </div>
           </div>
 
           {/* Per-event channel matrix */}

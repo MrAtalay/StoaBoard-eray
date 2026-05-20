@@ -427,6 +427,7 @@ class Channel(db.Model):
     name = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text, nullable=True)
     type = db.Column(db.String(10), default='public')  # 'public' | 'private'
+    icon = db.Column(db.String(50), default='hash')
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=_now)
     updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
@@ -447,6 +448,7 @@ class Channel(db.Model):
             'name': self.name,
             'description': self.description or '',
             'type': self.type or 'public',
+            'icon': self.icon or ('lock' if self.type == 'private' else 'hash'),
             'is_default': bool(self.is_default),
             'created_by': self.created_by,
             'member_count': len(self.members),
@@ -592,6 +594,9 @@ class ChatMessage(db.Model):
     channel = db.Column(db.String(80), default='general')  # 'general' = legacy default; team channel id
     pinned = db.Column(db.Boolean, default=False)
     is_read = db.Column(db.Boolean, default=False)
+    reply_to_id = db.Column(db.Integer, nullable=True)
+    reply_to_sender = db.Column(db.String(120), nullable=True)
+    reply_to_text = db.Column(db.String(280), nullable=True)
 
     sender = db.relationship('User', foreign_keys=[sender_id])
     receiver = db.relationship('User', foreign_keys=[receiver_id])
@@ -607,6 +612,12 @@ class ChatMessage(db.Model):
             'pinned': bool(self.pinned),
             'is_read': bool(self.is_read) if self.receiver_id else None,
         }
+        if self.reply_to_id:
+            base['reply_to'] = {
+                'id': self.reply_to_id,
+                'sender': self.reply_to_sender or '',
+                'text': self.reply_to_text or '',
+            }
         if self.is_deleted:
             base['deleted'] = True
             return base

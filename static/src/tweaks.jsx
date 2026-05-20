@@ -28,6 +28,7 @@ function TweaksPanel({ tweaks, setTweak, visible }) {
             <div className="tweak-label">{window.t?.('tweak_accent')||'Vurgu rengi'}</div>
             <div className="swatch-row">
               {[
+                ['navy','#1a4a70'],
                 ['terracotta','oklch(55% 0.13 25)'],
                 ['sage','oklch(55% 0.09 150)'],
                 ['slate','oklch(50% 0.04 250)'],
@@ -36,6 +37,22 @@ function TweaksPanel({ tweaks, setTweak, visible }) {
               ].map(([k, v]) => (
                 <button key={k} className="swatch" data-active={tweaks.accent === k} style={{ background: v }} onClick={() => setTweak('accent', k)} title={k} />
               ))}
+              <label
+                className="swatch swatch-custom"
+                data-active={tweaks.accent === 'custom'}
+                title={window.t?.('tweak_accent_custom') || 'Özel renk'}
+                style={tweaks.accent === 'custom' && tweaks.accentHex ? { background: tweaks.accentHex } : undefined}
+              >
+                <input
+                  type="color"
+                  value={tweaks.accentHex || '#1a4a70'}
+                  onChange={(e) => {
+                    const hex = e.target.value;
+                    setTweak('accentHex', hex);
+                    setTweak('accent', 'custom');
+                  }}
+                />
+              </label>
             </div>
           </div>
 

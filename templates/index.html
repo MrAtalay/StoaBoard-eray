@@ -8,18 +8,30 @@
 <link rel="icon" type="image/x-icon" href="/static/stoaboard_beyaz.png">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/styles.css?v=38">
+<link rel="stylesheet" href="/static/styles.css?v=42">
 
 <script>
   window.__TWEAKS__ = {
     "theme": "cream",
-    "accent": "terracotta",
+    "accent": "navy",
     "fontPair": "sans",
     "density": "balanced",
     "showProgress": true,
     "showTags": true,
     "sidebarCollapsed": false
   };
+  // Brand rebrand 2026: terracotta default → navy (one-time, per-browser)
+  try {
+    if (!localStorage.getItem('stoa.brand2026')) {
+      const k = 'stoa.tweaks';
+      const saved = JSON.parse(localStorage.getItem(k) || '{}');
+      if (!saved.accent || saved.accent === 'terracotta') {
+        saved.accent = 'navy';
+        localStorage.setItem(k, JSON.stringify(saved));
+      }
+      localStorage.setItem('stoa.brand2026', '1');
+    }
+  } catch (e) {}
 </script>
 </head>
 <body>
@@ -34,22 +46,22 @@
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
 
   <!-- App scripts in order -->
-  <script type="text/babel" src="/static/src/icons.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/data.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/shell.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/views/board.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/views/list.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/views/calendar.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/views/dashboard.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/views/notes.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/views/settings.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/views/auth.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/modals.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/drawer.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/palette.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/notifications.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/tweaks.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/chat.jsx?v=38"></script>
-  <script type="text/babel" src="/static/src/app.jsx?v=38"></script>
+  <script type="text/babel" src="/static/src/icons.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/data.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/shell.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/views/board.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/views/list.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/views/calendar.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/views/dashboard.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/views/notes.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/views/settings.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/views/auth.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/modals.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/drawer.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/palette.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/notifications.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/tweaks.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/chat.jsx?v=42"></script>
+  <script type="text/babel" src="/static/src/app.jsx?v=42"></script>
 </body>
 </html>

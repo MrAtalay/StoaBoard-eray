@@ -23,7 +23,28 @@ if confirm != 'EVET':
     sys.exit(0)
 
 with app.app_context():
-    db.drop_all()
+    from sqlalchemy import text
+    
+    # Tüm tabloları CASCADE ile sil (PostgreSQL)
+    try:
+        engine = db.engine
+        with engine.connect() as conn:
+            # CASCADE ile tüm tabloları sil
+            conn.execute(text("""
+                DO $$ DECLARE
+                    r RECORD;
+                BEGIN
+                    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                        EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+                    END LOOP;
+                END $$;
+            """))
+            conn.commit()
+            print("Tum tablolar silindi.")
+    except Exception as e:
+        print(f"Tablo sil hatası: {e}")
+    
+    # Şimdi tabloları yeniden oluştur
     db.create_all()
     print("\nVeritabani sifirlandi ve tablolar olusturuldu.")
     print()

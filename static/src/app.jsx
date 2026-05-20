@@ -84,10 +84,12 @@ function App() {
   });
 
   const setTweak = (key, value) => {
-    const next = { ...tweaks, [key]: value };
-    setTweaks(next);
-    localStorage.setItem('stoa.tweaks', JSON.stringify(next));
-    try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: value } }, '*'); } catch (e) {}
+    setTweaks(prev => {
+      const next = { ...prev, [key]: value };
+      localStorage.setItem('stoa.tweaks', JSON.stringify(next));
+      try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: value } }, '*'); } catch (e) {}
+      return next;
+    });
   };
 
   // ── Global translation fn — always current before any child renders ─────────
@@ -104,6 +106,16 @@ function App() {
   useEf(() => { document.documentElement.dataset.accent   = tweaks.accent;   }, [tweaks.accent]);
   useEf(() => { document.documentElement.dataset.fontpair = tweaks.fontPair; }, [tweaks.fontPair]);
   useEf(() => { document.documentElement.dataset.density  = tweaks.density;  }, [tweaks.density]);
+  // Custom accent: when accent === 'custom', apply the stored hex inline.
+  // Otherwise clear inline so preset/default CSS rules win.
+  useEf(() => {
+    const root = document.documentElement;
+    if (tweaks.accent === 'custom' && tweaks.accentHex) {
+      root.style.setProperty('--accent', tweaks.accentHex);
+    } else {
+      root.style.removeProperty('--accent');
+    }
+  }, [tweaks.accent, tweaks.accentHex]);
 
   useEf(() => {
     const handler = (e) => {
@@ -614,6 +626,21 @@ function App() {
 
   const openChat = (dmWithSlug, msgId) => {
     const slug = typeof dmWithSlug === 'string' ? dmWithSlug : null;
+    if (slug && slug === window.CURRENT_USER?.id) {
+      setChatDmWith(null);
+      setChatHighlightMsgId(null);
+      setChatOpen(false);
+      setView('settings');
+      return;
+    }
+    const canOpenDm = !slug || members.some(m => m.id === slug);
+    if (slug && !canOpenDm) {
+      setChatDmWith(null);
+      setChatHighlightMsgId(null);
+      setChatOpen(false);
+      setView('chat');
+      return;
+    }
     setChatDmWith(slug);
     setChatHighlightMsgId(msgId || null);
     setChatOpen(true);

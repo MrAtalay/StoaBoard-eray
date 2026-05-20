@@ -2,6 +2,68 @@
 
 const { useState: useChatS, useEffect: useChatE, useRef: useChatRef, useCallback: useChatCb } = React;
 
+// ── ConfirmModal — replaces all native confirm() dialogs ─────────────────
+function ConfirmModal({ open, title, message, hint, confirmText, cancelText, variant, onConfirm, onCancel }) {
+  useChatE(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') onCancel(); if (e.key === 'Enter') onConfirm(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+  if (!open) return null;
+  return ReactDOM.createPortal(
+    <div className="stoa-channel-modal-backdrop" onClick={onCancel}>
+      <div className="stoa-channel-modal stoa-confirm-dialog" onClick={e => e.stopPropagation()}>
+        <div className="stoa-channel-modal-head">
+          <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {variant === 'danger'
+              ? <Icon name="trash" size={15} style={{ color: 'var(--status-rose)' }} />
+              : <Icon name="alertTriangle" size={15} style={{ color: 'var(--status-amber)' }} />}
+            {title}
+          </div>
+          <button className="icon-btn" onClick={onCancel} style={{ padding: 4 }}><Icon name="x" size={14} /></button>
+        </div>
+        <div className="stoa-channel-modal-body" style={{ gap: 8 }}>
+          <p style={{ fontSize: 13.5, color: 'var(--ink)', margin: 0 }}>{message}</p>
+          {hint && <p style={{ fontSize: 12, color: 'var(--ink-muted)', margin: 0 }}>{hint}</p>}
+        </div>
+        <div className="stoa-channel-modal-foot">
+          <button className="btn btn-secondary" onClick={onCancel}>
+            {cancelText || (window.t?.('app_cancel') || 'İptal')}
+          </button>
+          <button className={variant === 'danger' ? 'btn btn-danger' : 'btn btn-warn'} onClick={onConfirm}>
+            {confirmText || (window.t?.('app_confirm') || 'Onayla')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// Hook: useConfirm() — replaces window.confirm()
+// Returns [confirmState, askConfirm, ConfirmUI]
+function useConfirm() {
+  const [state, setState] = useChatS(null); // { title, message, hint, confirmText, variant, resolve }
+  const ask = (opts) => new Promise(resolve => setState({ ...opts, resolve }));
+  const handleConfirm = () => { state?.resolve(true);  setState(null); };
+  const handleCancel  = () => { state?.resolve(false); setState(null); };
+  const UI = (
+    <ConfirmModal
+      open={!!state}
+      title={state?.title || ''}
+      message={state?.message || ''}
+      hint={state?.hint}
+      confirmText={state?.confirmText}
+      cancelText={state?.cancelText}
+      variant={state?.variant}
+      onConfirm={handleConfirm}
+      onCancel={handleCancel}
+    />
+  );
+  return [ask, UI];
+}
+
 // ── Lightbox (image OR video) ─────────────────────────────────────────────
 function Lightbox({ src, kind = 'image', onClose }) {
   useChatE(() => {
@@ -147,15 +209,16 @@ function RenderMsgText({ text, allMembers, onMentionClick }) {
       const slug = part.slice(1).replace(/[.\-]+$/, '');
       const member = allMembers.find(m => m.id === slug);
       if (member) {
+        const isSelfMention = member.id === window.CURRENT_USER?.id;
         return React.createElement('span', {
           key: i,
-          onClick: (e) => { e.stopPropagation(); onMentionClick(member); },
+          onClick: (e) => { e.stopPropagation(); if (!isSelfMention) onMentionClick(member); },
           style: {
             display: 'inline-block',
             background: 'var(--accent)',
             color: 'white',
             borderRadius: 4, padding: '1px 6px',
-            fontWeight: 600, fontSize: '0.85em', cursor: 'pointer',
+            fontWeight: 600, fontSize: '0.85em', cursor: isSelfMention ? 'default' : 'pointer',
             verticalAlign: 'middle',
           }
         }, `@${member.name}`);
@@ -263,6 +326,40 @@ function MsgContent({ msg, onImageClick }) {
     );
   }
   return <span><RenderMsgText text={msg.text} allMembers={window.DATA?.MEMBERS || []} onMentionClick={msg._onMentionClick || (() => {})} /></span>;
+}
+
+function buildReplyRef(msg, allMembers) {
+  if (!msg || msg.deleted) return null;
+  const sender = allMembers.find(m => m.id === msg.from);
+  const rawText = (msg.text || msg.file_name || (msg.file_url ? (window.t?.('chat_file') || 'Dosya') : '')).trim();
+  const text = rawText || (msg.file_type === 'image' ? 'Fotoğraf' : msg.file_type === 'video' ? 'Video' : 'Mesaj');
+  return {
+    id: msg.id,
+    sender: sender?.name || msg.from || '',
+    text: text.length > 140 ? text.slice(0, 137) + '...' : text,
+  };
+}
+
+function ReplyPreview({ reply, mine, onClose, onJump, compact = false }) {
+  if (!reply) return null;
+  return (
+    <div
+      className={`chat-reply-preview ${compact ? 'is-compact' : ''}`}
+      data-mine={!!mine}
+      onClick={() => onJump?.(reply.id)}
+    >
+      <div className="chat-reply-bar" />
+      <div className="chat-reply-body">
+        <div className="chat-reply-sender">{reply.sender || 'Mesaj'}</div>
+        <div className="chat-reply-text">{reply.text || 'Mesaj'}</div>
+      </div>
+      {onClose && (
+        <button className="chat-reply-close" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+          <Icon name="x" size={16} />
+        </button>
+      )}
+    </div>
+  );
 }
 
 // ── Create-channel modal (public/private + member picker) ─────────────────
@@ -574,22 +671,64 @@ function AddMemberModal({ open, onClose, channel, onAdded, allMembers, me }) {
 }
 
 // ── Channel-settings modal ───────────────────────────────────────────────
+const CHANNEL_ICON_OPTIONS = [
+  'hash', 'msg', 'users', 'layoutBoard', 'calendar', 'target',
+  'flag', 'star', 'bolt', 'lightbulb', 'briefcase', 'building',
+  'book', 'file', 'layers', 'chart', 'rocket', 'shield',
+];
+
+function ChannelIconMark({ channel, slug, size = 12 }) {
+  const key = slug || channel?.slug || channel?.id || channel?.channel_id;
+  const isPrivate = channel?.type === 'private';
+  let icon = channel?.icon || '';
+  try {
+    icon = icon || localStorage.getItem(`stoa.ch_icon.${key}`) || '';
+    if (!icon) {
+      const oldEmoji = localStorage.getItem(`stoa.ch_emoji.${key}`);
+      if (oldEmoji) localStorage.removeItem(`stoa.ch_emoji.${key}`);
+    }
+  } catch {}
+  if (isPrivate && !icon) return <Icon name="lock" size={size} />;
+  return <Icon name={icon || 'hash'} size={size} />;
+}
+
 function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me }) {
+  const [askConfirm, ConfirmUI] = useConfirm();
   const [name, setName] = useChatS('');
   const [description, setDescription] = useChatS('');
   const [type, setType] = useChatS('public');
-  const [confirmDelete, setConfirmDelete] = useChatS(false);
-  const [deleteTypeInput, setDeleteTypeInput] = useChatS('');
+  const [channelIcon, setChannelIcon] = useChatS('hash');
   const [submitting, setSubmitting] = useChatS(false);
+  const [postPerm, setPostPerm] = useChatS('everyone'); // 'everyone' | 'admins'
+
+  // Per-channel notification prefs stored in localStorage
+  const notifKey = channel ? `stoa.ch_notif.${channel.slug || channel.channel_id}` : null;
+  const [notifMode, setNotifMode] = useChatS(() => {
+    if (!notifKey) return 'all';
+    try { return JSON.parse(localStorage.getItem(notifKey) || '{}').mode || 'all'; } catch { return 'all'; }
+  });
+  const [muted, setMuted] = useChatS(() => {
+    if (!notifKey) return false;
+    try { return !!JSON.parse(localStorage.getItem(notifKey) || '{}').muted; } catch { return false; }
+  });
 
   useChatE(() => {
     if (open && channel) {
       setName(channel.name || '');
       setDescription(channel.description || '');
       setType(channel.type || 'public');
-      setConfirmDelete(false);
-      setDeleteTypeInput('');
       setSubmitting(false);
+      const savedPerm = (() => { try { return localStorage.getItem(`stoa.ch_perm.${channel.slug || channel.channel_id}`); } catch { return null; } })();
+      setPostPerm(savedPerm || channel.post_perm || 'everyone');
+      const savedIcon = (() => { try { return localStorage.getItem(`stoa.ch_icon.${channel.slug || channel.channel_id}`); } catch { return null; } })();
+      setChannelIcon(channel.icon || savedIcon || (channel.type === 'private' ? 'lock' : 'hash'));
+      if (notifKey) {
+        try {
+          const saved = JSON.parse(localStorage.getItem(notifKey) || '{}');
+          setNotifMode(saved.mode || 'all');
+          setMuted(!!saved.muted);
+        } catch {}
+      }
     }
   }, [open, channel?.channel_id]);
 
@@ -607,18 +746,33 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
   const canManage = myRole === 'owner' || myRole === 'admin';
   const isOwner = myRole === 'owner';
   const isDefault = !!channel.is_default;
+  const tx = (key, fallback) => {
+    const value = window.t?.(key);
+    return (!value || String(value).toLowerCase() === String(key).toLowerCase()) ? fallback : value;
+  };
+
+  const saveNotifPref = (mode, muteVal) => {
+    if (!notifKey) return;
+    try { localStorage.setItem(notifKey, JSON.stringify({ mode, muted: muteVal })); } catch {}
+  };
 
   const saveBasic = async () => {
     if (submitting) return;
-    if (!name.trim()) { window.showToast?.(window.t?.('chat_name_empty')||'Kanal adı boş olamaz', 'error'); return; }
+    if (!name.trim()) { window.showToast?.(tx('chat_name_empty', 'Kanal adı boş olamaz'), 'error'); return; }
     setSubmitting(true);
     try {
       const updated = await window.API.updateChannel(channel.channel_id, {
         name: name.trim(),
         description: description.trim(),
+        icon: channelIcon || 'hash',
       });
-      onUpdated(updated);
-      window.showToast?.(window.t?.('chat_channel_updated')||'Kanal güncellendi', 'success');
+      // Keep a local mirror for immediate UI and old cached sessions.
+      const iconKey    = `stoa.ch_icon.${channel.slug || channel.channel_id}`;
+      const permKey    = `stoa.ch_perm.${channel.slug || channel.channel_id}`;
+      try { localStorage.setItem(iconKey, channelIcon || 'hash'); localStorage.removeItem(`stoa.ch_emoji.${channel.slug || channel.channel_id}`); } catch {}
+      try { localStorage.setItem(permKey, postPerm); } catch {}
+      onUpdated({ ...updated, icon: channelIcon || 'hash', post_perm: postPerm });
+      window.showToast?.(tx('chat_channel_updated', 'Kanal güncellendi'), 'success');
     } catch (e) {
       window.showToast?.(e.message, 'error');
     } finally { setSubmitting(false); }
@@ -627,30 +781,33 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
   const flipType = async () => {
     if (!isOwner || isDefault || submitting) return;
     const newType = type === 'public' ? 'private' : 'public';
-    const confirmText = newType === 'public'
-      ? `#${channel.name} ${window.t?.('chat_make_public_confirm')||'kanalını GENEL yap? Tüm workspace üyeleri otomatik eklenir.'}`
-      : `#${channel.name} ${window.t?.('chat_make_private_confirm')||'kanalını ÖZEL yap? Yeni üyeler sadece davetle katılabilir.'}`;
-    if (!confirm(confirmText)) return;
+    const ok = await askConfirm({
+      title: newType === 'public' ? tx('chat_make_public', 'Genele Dönüştür') : tx('chat_make_private', 'Özele Dönüştür'),
+      message: newType === 'public'
+        ? `#${channel.name} ${tx('chat_make_public_confirm', 'kanalı GENEL yapılacak. Tüm workspace üyeleri otomatik eklenir.')}`
+        : `#${channel.name} ${tx('chat_make_private_confirm', 'kanalı ÖZEL yapılacak. Yeni üyeler sadece davetle katılabilir.')}`,
+      confirmText: newType === 'public' ? tx('chat_make_public', 'Genele dönüştür') : tx('chat_make_private', 'Özele dönüştür'),
+      variant: 'warn',
+    });
+    if (!ok) return;
     setSubmitting(true);
     try {
       const updated = await window.API.updateChannel(channel.channel_id, { type: newType });
       setType(newType);
       onUpdated(updated);
-      window.showToast?.(window.t?.('chat_type_changed')||'Kanal tipi değiştirildi', 'success');
+      window.showToast?.(tx('chat_type_changed', 'Kanal tipi değiştirildi'), 'success');
     } catch (e) {
       window.showToast?.(e.message, 'error');
     } finally { setSubmitting(false); }
   };
 
-  const leaveChannel = async () => {
-    if (isDefault) { window.showToast?.(window.t?.('chat_leave_default_err')||'Varsayılan kanaldan ayrılamazsınız', 'error'); return; }
-    if (!confirm(`#${channel.name} ${window.t?.('chat_leave_confirm')||'kanalından ayrılmak istediğinden emin misin?'}`)) return;
+  const doLeaveChannel = async () => {
     setSubmitting(true);
     try {
       const mySlug = window.CURRENT_USER?.slug || window.CURRENT_USER?.id || me;
       await window.API.removeChannelMember(channel.channel_id, mySlug);
       onDeleted({ slug: channel.slug || channel.id, leftSelf: true });
-      window.showToast?.(`#${channel.name} ${window.t?.('chat_left_channel')||'kanalından ayrıldın'}`, 'info');
+      window.showToast?.(`#${channel.name} ${tx('chat_left_channel', 'kanalından ayrıldın')}`, 'info');
       onClose();
     } catch (e) {
       window.showToast?.(e.message, 'error');
@@ -660,15 +817,20 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
 
   const deleteChannel = async () => {
     if (!isOwner || isDefault) return;
-    if (deleteTypeInput !== channel.name) {
-      window.showToast?.(window.t?.('chat_confirm_name')||'Onaylamak için kanal adını tam olarak yazın', 'error');
-      return;
-    }
+    const ok = await askConfirm({
+      title: tx('chat_delete_channel', 'Kanalı Sil'),
+      message: `#${channel.name} kanalını silmek istediğinize emin misiniz?`,
+      hint: tx('chat_delete_channel_hint', 'Bu işlem geri alınamaz. Kanaldaki tüm mesajlar silinecektir.'),
+      confirmText: tx('chat_perm_delete', 'Kalıcı Olarak Sil'),
+      cancelText: tx('app_cancel', 'İptal'),
+      variant: 'danger',
+    });
+    if (!ok) return;
     setSubmitting(true);
     try {
       await window.API.deleteChannel(channel.channel_id);
       onDeleted({ slug: channel.slug || channel.id });
-      window.showToast?.(window.t?.('chat_channel_deleted')||'Kanal silindi', 'info');
+      window.showToast?.(tx('chat_channel_deleted', 'Kanal silindi'), 'info');
       onClose();
     } catch (e) {
       window.showToast?.(e.message, 'error');
@@ -676,103 +838,204 @@ function ChannelSettingsModal({ open, onClose, channel, onUpdated, onDeleted, me
     }
   };
 
-  return ReactDOM.createPortal(
+  // Settings dialog plus custom confirmation modals.
+  const mainPortal = ReactDOM.createPortal(
     <div className="stoa-channel-modal-backdrop" onClick={onClose}>
       <div className="stoa-channel-modal" onClick={e => e.stopPropagation()}>
         <div className="stoa-channel-modal-head">
           <div style={{ fontSize: 15, fontWeight: 600 }}>
-            {isDefault ? <span style={{ color: 'var(--ink-muted)', fontWeight: 400 }}>#</span> : <Icon name={type === 'private' ? 'lock' : 'hash'} size={13} style={{ marginRight: 4 }} />}
-            {channel.name} {window.t?.('chat_channel_settings_title')||'ayarları'}
+            <ChannelIconMark channel={{ ...channel, type, icon: channelIcon }} size={13} />
+            {channel.name} {tx('chat_channel_settings_title', 'ayarları')}
           </div>
           <button className="icon-btn" onClick={onClose} title="Kapat" style={{ padding: 4 }}>
             <Icon name="x" size={14} />
           </button>
         </div>
-        <div className="stoa-channel-modal-body">
-          <label className="stoa-field">
-            <span className="stoa-field-label">{window.t?.('chat_channel_name')||'Kanal adı'}</span>
-            <div className="stoa-input-prefix">
-              <span style={{ color: 'var(--ink-faint)' }}>#</span>
-              <input value={name} onChange={e => setName(e.target.value)} disabled={!canManage} maxLength={60} />
-            </div>
-          </label>
-          <label className="stoa-field">
-            <span className="stoa-field-label">{window.t?.('chat_description')||'Açıklama'}</span>
-            <textarea value={description} onChange={e => setDescription(e.target.value)} disabled={!canManage} rows={2} maxLength={280} />
-          </label>
-          {canManage && (
-            <button className="btn btn-secondary" onClick={saveBasic} disabled={submitting} style={{ alignSelf: 'flex-start' }}>
-              {window.t?.('chat_save_info')||'Bilgileri kaydet'}
-            </button>
-          )}
 
+        <div className="stoa-channel-modal-body">
+
+          <section className="stoa-settings-card">
+            <div className="stoa-settings-card-head">
+              <div>
+                <div className="stoa-settings-card-title">{tx('chat_section_info', 'Kanal bilgileri')}</div>
+                <div className="stoa-settings-card-sub">{tx('chat_section_info_desc', 'Kanal adı, açıklaması ve listede görünen simge.')}</div>
+              </div>
+              <div className="stoa-channel-preview-icon">
+                <ChannelIconMark channel={{ ...channel, type, icon: channelIcon }} size={16} />
+              </div>
+            </div>
+
+            {canManage && (
+              <div className="stoa-field">
+                <span className="stoa-field-label">{tx('chat_channel_icon', 'Kanal simgesi')}</span>
+                <div className="stoa-icon-picker">
+                  {CHANNEL_ICON_OPTIONS.map(iconName => (
+                    <button
+                      key={iconName}
+                      type="button"
+                      className="stoa-icon-choice"
+                      data-active={channelIcon === iconName}
+                      onClick={() => setChannelIcon(iconName)}
+                      title={iconName}
+                    >
+                      <Icon name={iconName} size={14} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <label className="stoa-field">
+              <span className="stoa-field-label">{tx('chat_channel_name', 'Kanal adı')}</span>
+              <div className="stoa-input-prefix">
+                <span className="stoa-prefix-icon"><ChannelIconMark channel={{ ...channel, type, icon: channelIcon }} size={13} /></span>
+                <input value={name} onChange={e => setName(e.target.value)} disabled={!canManage} maxLength={60} />
+              </div>
+            </label>
+
+            <label className="stoa-field">
+              <span className="stoa-field-label">{tx('chat_description', 'Açıklama')}</span>
+              <textarea value={description} onChange={e => setDescription(e.target.value)} disabled={!canManage} rows={2} maxLength={280} />
+            </label>
+
+            {canManage && (
+              <button className="btn btn-primary-sm" onClick={saveBasic} disabled={submitting}>
+                <Icon name="check" size={13} /> {submitting ? tx('app_saving', 'Kaydediliyor…') : tx('chat_save_info', 'Bilgileri Kaydet')}
+              </button>
+            )}
+          </section>
+
+          {/* ── Kanal tipi ── */}
           {isOwner && !isDefault && (
-            <div className="stoa-field" style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
-              <span className="stoa-field-label">{window.t?.('chat_channel_type')||'Kanal tipi'}</span>
+            <section className="stoa-settings-card">
+              <div className="stoa-settings-card-title">{tx('chat_channel_type', 'Kanal tipi')}</div>
               <div className="stoa-radio-group">
                 <div className={`stoa-radio-card ${type === 'public' ? 'is-active' : ''}`}>
                   <Icon name="globe" size={16} />
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{window.t?.('chat_channel_public')||'Genel'}</div>
-                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{window.t?.('chat_channel_public_desc')||'Tüm workspace üyeleri.'}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{tx('chat_channel_public', 'Genel')}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{tx('chat_channel_public_desc', 'Tüm çalışma alanı üyeleri.')}</div>
                   </div>
                 </div>
                 <div className={`stoa-radio-card ${type === 'private' ? 'is-active' : ''}`}>
                   <Icon name="lock" size={16} />
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{window.t?.('chat_channel_private')||'Özel'}</div>
-                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{window.t?.('chat_channel_private_desc')||'Sadece davetli üyeler.'}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{tx('chat_channel_private', 'Özel')}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{tx('chat_channel_private_desc', 'Sadece davetli üyeler.')}</div>
                   </div>
                 </div>
               </div>
               <button className="btn btn-secondary" onClick={flipType} disabled={submitting} style={{ alignSelf: 'flex-start', marginTop: 6 }}>
-                {type === 'public' ? `🔒 ${window.t?.('chat_make_private')||'Özele dönüştür'}` : `🌐 ${window.t?.('chat_make_public')||'Genele dönüştür'}`}
+                <Icon name={type === 'public' ? 'lock' : 'globe'} size={13} />
+                {type === 'public' ? tx('chat_make_private', 'Özele dönüştür') : tx('chat_make_public', 'Genele dönüştür')}
               </button>
-            </div>
+            </section>
           )}
 
-          {!isDefault && (
-            <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button className="btn btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={leaveChannel} disabled={submitting}>
-                {window.t?.('chat_leave')||'Kanaldan ayrıl'}
-              </button>
-              {isOwner && (
-                !confirmDelete ? (
-                  <button
-                    className="btn"
-                    style={{ alignSelf: 'flex-start', background: 'oklch(95% 0.04 25 / 0.5)', color: 'var(--status-rose)' }}
-                    onClick={() => setConfirmDelete(true)}
-                  >{window.t?.('chat_delete_channel')||'Kanalı sil'}</button>
-                ) : (
-                  <div style={{ padding: 12, border: '1px solid var(--status-rose)', borderRadius: 10, background: 'oklch(95% 0.04 25 / 0.35)' }}>
-                    <div style={{ fontSize: 12, color: 'var(--ink)', marginBottom: 6 }}>
-                      {window.t?.('chat_confirm_delete')||'Silmeyi onaylamak için kanal adını yazın:'} <strong>{channel.name}</strong>
-                    </div>
-                    <input
-                      value={deleteTypeInput}
-                      onChange={e => setDeleteTypeInput(e.target.value)}
-                      placeholder={channel.name}
-                      style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8, fontFamily: 'inherit', fontSize: 13, marginBottom: 8, background: 'var(--bg)' }}
-                    />
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary" onClick={() => setConfirmDelete(false)} disabled={submitting}>{window.t?.('app_cancel') || 'İptal'}</button>
-                      <button
-                        className="btn"
-                        style={{ background: 'var(--status-rose)', color: 'white' }}
-                        onClick={deleteChannel}
-                        disabled={submitting || deleteTypeInput !== channel.name}
-                      >{window.t?.('chat_perm_delete') || 'Kalıcı olarak sil'}</button>
-                    </div>
+          {/* ── Üye izinleri (owner only) ── */}
+          {isOwner && !isDefault && (
+            <section className="stoa-settings-card">
+              <div className="stoa-settings-card-title">{tx('chat_section_perms', 'Üye izinleri')}</div>
+              <span className="stoa-field-label">{tx('chat_post_perm', 'Mesaj gönderebilir')}</span>
+              <div className="stoa-radio-group">
+                <div
+                  className={`stoa-radio-card ${postPerm === 'everyone' ? 'is-active' : ''}`}
+                  onClick={() => setPostPerm('everyone')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <Icon name="users" size={15} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 12 }}>{tx('chat_perm_everyone', 'Herkes')}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{tx('chat_perm_everyone_desc', 'Tüm üyeler mesaj yazabilir.')}</div>
                   </div>
-                )
-              )}
+                </div>
+                <div
+                  className={`stoa-radio-card ${postPerm === 'admins' ? 'is-active' : ''}`}
+                  onClick={() => setPostPerm('admins')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <Icon name="shield" size={15} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 12 }}>{tx('chat_perm_admins', 'Yöneticiler')}</div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{tx('chat_perm_admins_desc', 'Sadece sahip ve yöneticiler.')}</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ── Bildirimler ── */}
+          <section className="stoa-settings-card">
+            <div className="stoa-settings-card-title">{tx('chat_section_notif', 'Bildirimler')}</div>
+            <span className="stoa-field-label" style={{ marginBottom: 4 }}>{tx('chat_notif_mode', 'Bildirim seviyesi')}</span>
+            <div className="stoa-notif-radio">
+              {[
+                ['all',     tx('chat_notif_all', 'Tüm mesajlar')],
+                ['mention', tx('chat_notif_mention', 'Sadece @bahsetmeler')],
+                ['none',    tx('chat_notif_none', 'Hiçbiri')],
+              ].map(([val, label]) => (
+                <label key={val} className={`stoa-notif-option ${notifMode === val ? 'is-active' : ''}`}>
+                  <input type="radio" name="notifMode" value={val} checked={notifMode === val}
+                    onChange={() => { setNotifMode(val); saveNotifPref(val, muted); }} />
+                  {label}
+                </label>
+              ))}
             </div>
+            <div
+              className="stoa-toggle-row"
+              onClick={() => { const next = !muted; setMuted(next); saveNotifPref(notifMode, next); }}
+            >
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{tx('chat_mute_channel', 'Kanalı sessize al')}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{tx('chat_mute_channel_desc', 'Bildirimler ve sesler kapatılır.')}</div>
+              </div>
+              <div className="toggle" data-on={muted} />
+            </div>
+          </section>
+
+          {/* ── Tehlikeli bölge ── */}
+          {!isDefault && (
+            <section className="stoa-settings-card stoa-danger-zone">
+              <div className="stoa-settings-card-title stoa-danger-label">{tx('chat_section_danger', 'Tehlikeli bölge')}</div>
+
+              {/* Kanaldan ayrıl */}
+              <button
+                className="btn btn-warn"
+                onClick={async () => {
+                  const ok = await askConfirm({
+                    title: tx('chat_leave_title', 'Kanaldan Ayrıl'),
+                    message: `#${channel.name} ${tx('chat_leave_confirm_body', 'kanalından ayrılmak istediğinize emin misiniz?')}`,
+                    hint: tx('chat_leave_confirm_hint', 'Ayrıldıktan sonra tekrar davet edilmeniz gerekebilir.'),
+                    confirmText: tx('chat_leave', 'Ayrıl'),
+                    variant: 'warn',
+                  });
+                  if (ok) doLeaveChannel();
+                }}
+                disabled={submitting}
+              >
+                <Icon name="logOut" size={13} />
+                {tx('chat_leave', 'Kanaldan Ayrıl')}
+              </button>
+
+              {/* Kanalı sil (owner only) */}
+              {isOwner && (
+                <button
+                  className="btn btn-danger"
+                  onClick={deleteChannel}
+                  disabled={submitting}
+                >
+                  <Icon name="trash" size={13} />
+                  {tx('chat_delete_channel', 'Kanalı Sil')}
+                </button>
+              )}
+            </section>
           )}
         </div>
       </div>
     </div>,
     document.body
   );
+  return <>{mainPortal}{ConfirmUI}</>;
 }
 
 // ── Pinned messages banner (above chat) ───────────────────────────────────
@@ -1402,6 +1665,7 @@ function MediaGallery({ allMembers, onImageClick }) {
 
 // ── Main Chat Panel ───────────────────────────────────────────────────────
 function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith, unreadCounts, markAsRead, wsId, highlightMsgId, fullPage }) {
+  const [askConfirm, ConfirmUI] = useConfirm();
   const [tab, setTab]             = useChatS('general');
   const [dmWith, setDmWith]       = useChatS(null);
   const [messages, setMessages]   = useChatS([]);
@@ -1410,6 +1674,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
   const [uploading, setUploading] = useChatS(false);
   const [lightbox, setLightbox]   = useChatS(null);
   const [pendingFile, setPendingFile] = useChatS(null);
+  const [replyTo, setReplyTo] = useChatS(null);
   const [deleteMenu, setDeleteMenu] = useChatS(null); // {msgId, isMine, starred, x, y}
   const [starredMsgs, setStarredMsgs] = useChatS(() => {
     try { return new Set(JSON.parse(localStorage.getItem('stoa.starred') || '[]').map(m => String(m.id || m))); }
@@ -1495,7 +1760,14 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     if (id === 'general') return;
     const ch = _findCh(id);
     if (!ch) return;
-    if (!confirm(`#${ch.name} ${window.t?.('chat_remove_channel_confirm')||'kanalını silmek istediğinden emin misin?'}`)) return;
+    const ok = await askConfirm({
+      title: window.t?.('chat_delete_channel') || 'Kanalı Sil',
+      message: `#${ch.name} ${window.t?.('chat_remove_channel_confirm') || 'kanalını silmek istediğinize emin misiniz?'}`,
+      hint: window.t?.('chat_delete_channel_hint') || 'Bu işlem geri alınamaz. Kanaldaki tüm mesajlar silinecektir.',
+      confirmText: window.t?.('chat_perm_delete') || 'Kalıcı Olarak Sil',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await window.API.deleteChannel(ch.channel_id || ch.id);
       const next = channels.filter(c => (c.slug || c.id) !== id);
@@ -1556,12 +1828,22 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
   const me = window.CURRENT_USER?.id;
   const allMembers = membersProp || DATA.MEMBERS || [];
   const members = allMembers.filter(m => m.id !== me);
+  const canOpenDm = (slug) => !!slug && slug !== me && members.some(m => m.id === slug);
   const dmUser = dmWith ? allMembers.find(m => m.id === dmWith) : null;
   const online = onlineUsers || new Set();
   const statuses = onlineStatuses || new Map();
   const lastReadSentId = dmWith
     ? ([...messages].reverse().find(m => m.to === dmWith && m.is_read && !m._temp)?.id ?? null)
     : null;
+
+  useChatE(() => {
+    if (!dmWith) return;
+    if (canOpenDm(dmWith)) return;
+    setDmWith(null);
+    setMessages([]);
+    setTab('general');
+    setPendingFile(null);
+  }, [dmWith, members.length]);
 
   // @mention autocomplete
   const [mentionOpen, setMentionOpen] = useChatS(false);
@@ -1578,6 +1860,12 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     prevOpenRef.current = open;
     if (!open) return;
     if (initialDmWith) {
+      if (!canOpenDm(initialDmWith)) {
+        setDmWith(null);
+        setMessages([]);
+        setTab('general');
+        return;
+      }
       if (initialDmWith !== dmWith) {
         setDmWith(initialDmWith);
         setMessages([]);
@@ -1593,7 +1881,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
       setMessages([]);
       setTab('general');
     }
-  }, [open, initialDmWith]);
+  }, [open, initialDmWith, members.length]);
 
   // Reset general messages when workspace changes
   useChatE(() => {
@@ -1791,6 +2079,12 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
         window.DATA.CHANNELS = next;
         return next;
       });
+      // Also refresh the right-panel detail if it's for the active channel
+      setCurrentChannelDetail(prev => {
+        if (!prev) return prev;
+        if ((prev.slug || prev.id) !== slug) return prev;
+        return { ...prev, ...ch };
+      });
     };
     const onChannelDeleted = ({ slug, channel_id }) => {
       setChannels(prev => {
@@ -1799,6 +2093,37 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
         return next;
       });
       if (activeChannel === slug) setActiveChannel('general');
+
+      // Remove pinned messages that belong to the deleted channel
+      setPinnedData(prev => {
+        const next = prev.filter(m => m.channel !== slug);
+        try { localStorage.setItem('stoa.pinnedData', JSON.stringify(next)); } catch {}
+        return next;
+      });
+      setPinnedMsgs(prev => {
+        // Rebuild from surviving pinnedData (use functional form after pinnedData update)
+        const survived = (() => {
+          try { return JSON.parse(localStorage.getItem('stoa.pinnedData') || '[]'); } catch { return []; }
+        })();
+        const next = new Set(survived.map(m => String(m.id)));
+        try { localStorage.setItem('stoa.pinned', JSON.stringify([...next])); } catch {}
+        return next;
+      });
+
+      // Remove starred messages that belong to the deleted channel
+      setStarredData(prev => {
+        const next = prev.filter(m => m.channel !== slug);
+        try { localStorage.setItem('stoa.starredData', JSON.stringify(next)); } catch {}
+        return next;
+      });
+      setStarredMsgs(prev => {
+        const survived = (() => {
+          try { return JSON.parse(localStorage.getItem('stoa.starredData') || '[]'); } catch { return []; }
+        })();
+        const next = new Set(survived.map(m => String(m.id)));
+        try { localStorage.setItem('stoa.starred', JSON.stringify([...next])); } catch {}
+        return next;
+      });
     };
     const onChannelMemberAdded = (ch) => onChannelUpdated(ch);
     const onChannelMemberRemoved = (payload) => {
@@ -1859,6 +2184,10 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
   const sendMessage = async () => {
     const t = text.trim();
     if (!t && !pendingFile) return;
+    if (dmWith && dmWith === me) {
+      window.showToast?.('Kendinize mesaj gönderemezsiniz.', 'error');
+      return;
+    }
 
     const tempId  = `temp_${Date.now()}`;
     const nowTime = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
@@ -1872,13 +2201,16 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
       file_url:  pendingFile?.url  || undefined,
       file_type: pendingFile?.type || undefined,
       file_name: pendingFile?.name || undefined,
+      reply_to: replyTo || undefined,
       _temp: true,
     };
     setMessages(prev => [...prev, tempMsg]);
     const sentText = t;
     const sentFile = pendingFile;
+    const sentReply = replyTo;
     setText('');
     setPendingFile(null);
+    setReplyTo(null);
     setMentionOpen(false);
 
     try {
@@ -1889,6 +2221,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
         body.file_type = sentFile.type;
         body.file_name = sentFile.name;
       }
+      if (sentReply) body.reply_to = sentReply;
       const saved = await API.sendChatMessage(body);
       msgIds.current.add(String(saved.id));
       setMessages(prev => prev.map(m => m.id === tempId ? saved : m));
@@ -1962,8 +2295,30 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     }
   };
 
-  const openDm = (slug) => { setDmWith(slug); setMessages([]); setTypingUser(null); setPendingFile(null); markAsRead?.(`dm_${slug}`); };
-  const backToGeneral = () => { setDmWith(null); setMessages([]); setPendingFile(null); };
+  const openDm = (slug) => {
+    if (slug && slug === me) {
+      window.__SWITCH_VIEW__?.('settings');
+      onClose?.();
+      return false;
+    }
+    if (!canOpenDm(slug)) {
+      setDmWith(null);
+      setMessages([]);
+      setTab('general');
+      setPendingFile(null);
+      setReplyTo(null);
+      return false;
+    }
+    setDmWith(slug);
+    setMessages([]);
+    setTypingUser(null);
+    setPendingFile(null);
+    setReplyTo(null);
+    setTab('dm');
+    markAsRead?.(`dm_${slug}`);
+    return true;
+  };
+  const backToGeneral = () => { setDmWith(null); setMessages([]); setPendingFile(null); setReplyTo(null); };
 
   const toggleReaction = (msgId, emoji) => {
     const key = String(msgId);
@@ -2084,6 +2439,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
       if (isDm) {
         const peer = (msg.from === me) ? msg.to : msg.from;
         if (peer && peer !== dmWith) {
+          if (!canOpenDm(peer)) return;
           setDmWith(peer);
           setTab('dm');
           setTimeout(doScroll, 350);
@@ -2105,19 +2461,19 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
 
   const replyToMessage = (msg) => {
     setDeleteMenu(null);
-    const sender = allMembers.find(m => m.id === msg.from);
-    if (!sender) return;
-    // For DM: just focus input
-    // For channel: prepend @mention
-    if (!dmWith && sender.id !== me) {
-      const prefix = `@${sender.id} `;
-      if (!text.startsWith(prefix)) setText(prefix + text);
-    }
+    const replyRef = buildReplyRef(msg, allMembers);
+    if (!replyRef) return;
+    setReplyTo(replyRef);
     setTimeout(() => {
       inputRef.current?.focus();
       const len = inputRef.current?.value.length || 0;
       inputRef.current?.setSelectionRange(len, len);
     }, 50);
+  };
+
+  const handleMentionClick = (member) => {
+    if (!member || member.id === me) return;
+    openDm(member.id);
   };
 
   const handleDeleteMessage = async (msgId, scope) => {
@@ -2150,6 +2506,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <>
+      {ConfirmUI}
       <CreateChannelModal
         open={addChannelOpen}
         onClose={() => setAddChannelOpen(false)}
@@ -2239,8 +2596,16 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                 <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)' }}
                   onClick={async () => {
                     const cm = memberRowMenu.cm;
+                    const memberName = memberRowMenu.member.name;
                     setMemberRowMenu(null);
-                    if (!confirm(`${memberRowMenu.member.name} ${window.t?.('chat_transfer_confirm')||'kanal sahipliğini devralsın mı? Sen yönetici olursun.'}`)) return;
+                    const ok = await askConfirm({
+                      title: window.t?.('chat_transfer_ownership') || 'Sahiplik Devret',
+                      message: `${memberName} ${window.t?.('chat_transfer_confirm') || 'kanal sahipliğini devralsın mı?'}`,
+                      hint: window.t?.('chat_transfer_hint') || 'Sen yönetici rolüne geçersin.',
+                      confirmText: window.t?.('chat_transfer_ownership') || 'Devret',
+                      variant: 'warn',
+                    });
+                    if (!ok) return;
                     try {
                       const updated = await window.API.updateChannelMemberRole(currentChannelDetail.channel_id, cm.user_id, 'owner');
                       setCurrentChannelDetail(updated);
@@ -2258,7 +2623,13 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   const cm = memberRowMenu.cm;
                   const name = memberRowMenu.member.name;
                   setMemberRowMenu(null);
-                  if (!confirm(`${name} ${window.t?.('chat_kick_confirm')||'kanaldan çıkarılsın mı?'}`)) return;
+                  const ok = await askConfirm({
+                    title: window.t?.('chat_kick_member') || 'Kanaldan Çıkar',
+                    message: `${name} ${window.t?.('chat_kick_confirm') || 'kanaldan çıkarılsın mı?'}`,
+                    confirmText: window.t?.('chat_kick_member') || 'Kanaldan Çıkar',
+                    variant: 'danger',
+                  });
+                  if (!ok) return;
                   try {
                     await window.API.removeChannelMember(currentChannelDetail.channel_id, cm.user_id);
                     const refreshed = await window.API.getChannel(currentChannelDetail.channel_id);
@@ -2432,7 +2803,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                 <span>
                   {leftListTab === 'channels'
                     ? `${DATA.WORKSPACE?.name || 'Atlas'} · ${channels.length} kanal`
-                    : 'Cross-workspace'}
+                    : 'Direkt Mesajlar'}
                 </span>
                 {leftListTab === 'channels' && (DATA.WORKSPACE?.can_create_channel || DATA.WORKSPACE?.is_owner) && (
                   <button
@@ -2464,7 +2835,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                         onClick={() => { setDmWith(null); setTab('general'); setActiveChannel(slug); }}
                       >
                         <div className="chat-fp-row-ic chat-fp-row-ic-channel">
-                          {isPrivate ? <Icon name="lock" size={11} /> : '#'}
+                          <ChannelIconMark channel={ch} slug={slug} size={11} />
                         </div>
                         <div className="chat-fp-row-body">
                           <div className="chat-fp-row-name">{ch.name}</div>
@@ -2561,7 +2932,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               ) : (
                 <>
                   <div className="chat-fp-channel-icon">
-                    {(_findCh(activeChannel)?.type === 'private') ? <Icon name="lock" size={12} /> : '#'}
+                    <ChannelIconMark channel={_findCh(activeChannel)} slug={activeChannel} size={12} />
                   </div>
                   <div className="chat-fp-conv-title-wrap">
                     <div className="chat-fp-conv-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2699,9 +3070,12 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                       )}
                       <div className="chat-bubble-anchor" style={{ display: 'inline-flex', alignSelf: isMine ? 'flex-end' : 'flex-start' }}>
                         <div className={`chat-bubble ${msg._temp ? 'chat-bubble-sending' : ''} ${msg.deleted ? 'chat-bubble-deleted' : ''}`}>
+                          {!msg.deleted && msg.reply_to && (
+                            <ReplyPreview reply={msg.reply_to} mine={isMine} compact onJump={scrollToMessage} />
+                          )}
                           {msg.deleted
                             ? <span style={{ fontStyle: 'italic', color: 'var(--ink-faint)', fontSize: 12 }}>Bu mesaj silindi</span>
-                            : <MsgContent msg={{ ...msg, _onMentionClick: (member) => setDmWith(member.id) }} onImageClick={setLightbox} />
+                            : <MsgContent msg={{ ...msg, _onMentionClick: handleMentionClick }} onImageClick={setLightbox} />
                           }
                           {starredMsgs.has(String(msg.id)) && (
                             <span style={{ position: 'absolute', top: 4, right: 6, fontSize: 10, color: 'var(--status-yellow)', pointerEvents: 'none' }}>★</span>
@@ -2830,6 +3204,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
             <div className="chat-fp-composer">
               <input type="file" ref={fileRef} style={{ display: 'none' }} onChange={handleFileChange}
                 accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" />
+              <ReplyPreview reply={replyTo} onClose={() => setReplyTo(null)} onJump={scrollToMessage} />
               <textarea
                 ref={inputRef}
                 className="chat-fp-input"
@@ -2935,7 +3310,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                               <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
                                 {m.name}
                                 {isSelf && <span style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 400 }}>({window.t?.('chat_you')||'siz'})</span>}
-                                <RoleBadge role={cm.role} />
+                                {m.ws_role !== 'owner' && <RoleBadge role={cm.role} />}
                               </div>
                               {/* Workspace role subtitle */}
                               {m.ws_role === 'owner' ? (
@@ -3332,9 +3707,12 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                       )}
                       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: isMine ? 'row-reverse' : 'row' }}>
                         <div className={`chat-bubble ${msg._temp ? 'chat-bubble-sending' : ''} ${msg.deleted ? 'chat-bubble-deleted' : ''}`}>
+                          {!msg.deleted && msg.reply_to && (
+                            <ReplyPreview reply={msg.reply_to} mine={isMine} compact onJump={scrollToMessage} />
+                          )}
                           {msg.deleted
                             ? <span style={{ fontStyle: 'italic', color: 'var(--ink-faint)', fontSize: 12 }}>Bu mesaj silindi</span>
-                            : <MsgContent msg={{ ...msg, _onMentionClick: (member) => setDmWith(member.id) }} onImageClick={setLightbox} />
+                            : <MsgContent msg={{ ...msg, _onMentionClick: handleMentionClick }} onImageClick={setLightbox} />
                           }
                           {starredMsgs.has(String(msg.id)) && (
                             <span style={{ position: 'absolute', top: 4, right: 6, fontSize: 10, color: 'var(--status-yellow)', pointerEvents: 'none' }}>★</span>
@@ -3459,6 +3837,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
             <div className="chat-input-wrap">
               <input type="file" ref={fileRef} style={{ display: 'none' }} onChange={handleFileChange}
                 accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" />
+              <ReplyPreview reply={replyTo} onClose={() => setReplyTo(null)} onJump={scrollToMessage} />
               <button
                 className="icon-btn"
                 title={window.t?.('chat_attach')||'Dosya / Fotoğraf / Video ekle'}
@@ -3503,3 +3882,4 @@ function _statusLabel(status) {
 window.ChatPanel = ChatPanel;
 window.StatusDot = StatusDot;
 window._statusLabel = _statusLabel;
+window.ConfirmModal = ConfirmModal;

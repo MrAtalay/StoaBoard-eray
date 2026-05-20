@@ -53,6 +53,13 @@ def _migrate_db():
             "ALTER TABLE chat_messages ADD COLUMN is_read BOOLEAN DEFAULT FALSE"
             if is_pg else
             "ALTER TABLE chat_messages ADD COLUMN is_read INTEGER DEFAULT 0"),
+        ('chat_messages', 'reply_to_id', "ALTER TABLE chat_messages ADD COLUMN reply_to_id INTEGER"),
+        ('chat_messages', 'reply_to_sender', "ALTER TABLE chat_messages ADD COLUMN reply_to_sender VARCHAR(120)"),
+        ('chat_messages', 'reply_to_text', "ALTER TABLE chat_messages ADD COLUMN reply_to_text VARCHAR(280)"),
+        ('channels', 'icon',
+            "ALTER TABLE channels ADD COLUMN IF NOT EXISTS icon VARCHAR(50) DEFAULT 'hash'"
+            if is_pg else
+            "ALTER TABLE channels ADD COLUMN icon VARCHAR(50) DEFAULT 'hash'"),
         ('task_attachments', 'display_name', "ALTER TABLE task_attachments ADD COLUMN display_name VARCHAR(255)"),
     ]
     index_migrations = [
@@ -78,12 +85,33 @@ def _migrate_db():
             conn.execute(text(sql))
 
     # Indexes (idempotent — IF NOT EXISTS)
+    # Guarantee columns required by ORM seed queries before seeding starts.
+    if 'channels' in tables:
+        with db.engine.begin() as conn:
+            if is_pg:
+                conn.execute(text(
+                    "ALTER TABLE channels ADD COLUMN IF NOT EXISTS icon VARCHAR(50) DEFAULT 'hash'"
+                ))
+                conn.execute(text("UPDATE channels SET icon = 'hash' WHERE icon IS NULL"))
+            else:
+                cols = {column['name'] for column in inspect(db.engine).get_columns('channels')}
+                if 'icon' not in cols:
+                    conn.execute(text("ALTER TABLE channels ADD COLUMN icon VARCHAR(50) DEFAULT 'hash'"))
+
+    # Indexes.
     with db.engine.begin() as conn:
         for idx_sql in index_migrations:
             try:
                 conn.execute(text(idx_sql))
             except Exception:
                 pass
+
+    if 'chat_messages' in tables:
+        with db.engine.begin() as conn:
+            conn.execute(text(
+                "DELETE FROM chat_messages "
+                "WHERE receiver_id IS NOT NULL AND sender_id = receiver_id"
+            ))
 
 
 def _seed_default_channels():
@@ -105,6 +133,7 @@ def _seed_default_channels():
                 name='genel',
                 description='Tüm proje üyeleri için varsayılan kanal',
                 type='public',
+                icon='hash',
                 created_by=ws.owner_id,
                 is_default=True,
             )

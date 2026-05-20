@@ -136,6 +136,20 @@ def _require_project_access(user, project, message='Bu projeye erişiminiz yok')
     return _require_workspace_access(user, project.workspace_id, message)
 
 
+def _users_share_workspace(user_a_id, user_b_id, workspace_id):
+    if not workspace_id:
+        return False
+    count = (
+        WorkspaceMember.query
+        .filter(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id.in_([user_a_id, user_b_id]),
+        )
+        .count()
+    )
+    return count == 2
+
+
 def _member_to_dict(wm):
     d = wm.user.to_dict()
     d['ws_role'] = wm.role
@@ -541,6 +555,39 @@ def update_workspace(ws_id):
             ws.name = name
     db.session.commit()
     return jsonify({'ok': True, 'name': ws.name})
+
+
+@api_bp.route('/workspaces/validate-code', methods=['GET'])
+@_login_required
+def validate_workspace_code():
+    user = _current_user()
+    code = (request.args.get('code') or '').strip().upper()
+    if not code:
+        return jsonify({'error': 'invite_code_required'}), 400
+
+    ws = Workspace.query.filter_by(invite_code=code).first()
+    if not ws:
+        return jsonify({'error': 'invalid_invite_code'}), 404
+
+    existing = WorkspaceMember.query.filter_by(user_id=user.id, workspace_id=ws.id).first()
+    pending = WorkspaceJoinRequest.query.filter_by(
+        user_id=user.id,
+        workspace_id=ws.id,
+        status='pending',
+    ).first()
+    member_count = WorkspaceMember.query.filter_by(workspace_id=ws.id).count()
+
+    return jsonify({
+        'ok': True,
+        'workspace': {
+            'id': ws.id,
+            'name': ws.name,
+            'logo_url': ws.logo_url,
+            'member_count': member_count,
+            'is_member': bool(existing),
+            'pending': bool(pending),
+        },
+    })
 
 
 @api_bp.route('/workspaces/join', methods=['POST'])
@@ -1432,6 +1479,19 @@ def delete_column(col_id):
     )
     if denied:
         return denied
+    # Re-home tasks to another column on the same project so they don't
+    # become orphans (no CASCADE on BoardColumn.tasks). Prefer the first
+    # remaining column by position; fall back to column_id = NULL.
+    fallback = (
+        BoardColumn.query
+        .filter(BoardColumn.project_id == col.project_id, BoardColumn.id != col.id)
+        .order_by(BoardColumn.position)
+        .first()
+    )
+    fallback_id = fallback.id if fallback else None
+    Task.query.filter_by(column_id=col.id).update(
+        {'column_id': fallback_id}, synchronize_session=False
+    )
     db.session.delete(col)
     db.session.commit()
     return jsonify({'ok': True})
@@ -1624,11 +1684,36 @@ def _delete_project_tree(project):
     db.session.delete(project)
 
 
+def _delete_channel_tree(channel):
+    """Delete a channel + all its messages.
+
+    ChatMessage.channel is a string slug, NOT a FK — so cascade cannot
+    reach it. We must manually delete messages with this workspace_id/slug
+    combination (DM messages have receiver_id set + channel='general' or
+    similar, but workspace channel messages have receiver_id IS NULL).
+    """
+    ChatMessage.query.filter(
+        ChatMessage.workspace_id == channel.workspace_id,
+        ChatMessage.receiver_id.is_(None),
+        ChatMessage.channel == channel.slug,
+    ).delete(synchronize_session=False)
+    db.session.delete(channel)  # CASCADE removes ChannelMember rows
+
+
 def _delete_workspace_tree(workspace):
     for project in Project.query.filter_by(workspace_id=workspace.id).all():
         _delete_project_tree(project)
 
+    # Channels: must clean per-channel messages before deleting channel rows
+    for ch in Channel.query.filter_by(workspace_id=workspace.id).all():
+        _delete_channel_tree(ch)
+
+    # Catch-all for any remaining ws-scoped chat messages (DMs, legacy
+    # 'general' rows that don't match a Channel slug, etc.)
     ChatMessage.query.filter_by(workspace_id=workspace.id).delete()
+    Note.query.filter_by(workspace_id=workspace.id).delete()
+    WorkspaceJoinRequest.query.filter_by(workspace_id=workspace.id).delete()
+    Notification.query.filter_by(workspace_id=workspace.id).delete()
     WorkspaceMember.query.filter_by(workspace_id=workspace.id).delete()
     WorkspaceRole.query.filter_by(workspace_id=workspace.id).delete()
     db.session.delete(workspace)
@@ -1900,7 +1985,7 @@ def delete_project(project_id):
     )
     if denied:
         return denied
-    db.session.delete(project)
+    _delete_project_tree(project)
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -2153,6 +2238,9 @@ def create_channel():
     if ch_type not in ('public', 'private'):
         ch_type = 'public'
     description = (data.get('description') or '').strip() or None
+    icon = (data.get('icon') or ('lock' if ch_type == 'private' else 'hash')).strip()
+    if not re.match(r'^[A-Za-z][A-Za-z0-9]*$', icon):
+        icon = 'hash'
     member_slugs = data.get('member_slugs') or []
     if not isinstance(member_slugs, list):
         member_slugs = []
@@ -2163,6 +2251,7 @@ def create_channel():
         name=name[:120],
         description=description,
         type=ch_type,
+        icon=icon[:50],
         created_by=user.id,
         is_default=False,
     )
@@ -2255,6 +2344,11 @@ def update_channel(channel_id):
         channel.name = new_name[:120]
     if 'description' in data:
         channel.description = (data['description'] or '').strip() or None
+    if 'icon' in data:
+        icon = (data.get('icon') or '').strip()
+        if not re.match(r'^[A-Za-z][A-Za-z0-9]*$', icon):
+            icon = 'hash'
+        channel.icon = icon[:50]
     if 'type' in data and not channel.is_default:
         new_type = data['type']
         if new_type not in ('public', 'private'):
@@ -2296,7 +2390,7 @@ def delete_channel(channel_id):
     member_ids = [m.user_id for m in channel.members]
     ws_id = channel.workspace_id
     slug = channel.slug
-    db.session.delete(channel)
+    _delete_channel_tree(channel)
     db.session.commit()
     _emit_channel_event('channel_deleted', {'channel_id': channel_id, 'slug': slug, 'workspace_id': ws_id}, member_ids)
     return jsonify({'ok': True})
@@ -2454,6 +2548,7 @@ def create_chat_message():
     file_url  = data.get('file_url') or None
     file_type = data.get('file_type') or None
     file_name = data.get('file_name') or None
+    reply_data = data.get('reply_to') if isinstance(data.get('reply_to'), dict) else None
     channel  = (data.get('channel') or 'general').strip().lower()[:80] or 'general'
 
     if not text and not file_url:
@@ -2466,10 +2561,14 @@ def create_chat_message():
         receiver = User.query.filter_by(slug=to_slug).first()
         if not receiver:
             return jsonify({'error': 'Kullanıcı bulunamadı'}), 404
+        if receiver.id == user.id:
+            return jsonify({'error': 'Kendinize mesaj gönderemezsiniz'}), 400
         workspace_id = user.current_workspace_id
         if not workspace_id:
             m = _current_member(user)
             workspace_id = m.workspace_id if m else None
+        if not _users_share_workspace(user.id, receiver.id, workspace_id):
+            return jsonify({'error': 'Bu kullanÄ±cÄ± aktif takÄ±mÄ±nÄ±zda deÄŸil'}), 403
         channel = 'dm'
     else:
         m = _current_member(user)
@@ -2491,6 +2590,13 @@ def create_chat_message():
         file_name=file_name,
         channel=channel,
     )
+    if reply_data:
+        try:
+            msg.reply_to_id = int(reply_data.get('id')) if reply_data.get('id') is not None else None
+        except (TypeError, ValueError):
+            msg.reply_to_id = None
+        msg.reply_to_sender = (reply_data.get('sender') or '')[:120]
+        msg.reply_to_text = (reply_data.get('text') or '')[:280]
     db.session.add(msg)
     db.session.flush()
 
@@ -2570,6 +2676,14 @@ def get_chat_messages():
         # DMs are global — not restricted by workspace
         other = User.query.filter_by(slug=with_slug).first()
         if not other:
+            return jsonify([])
+        if other.id == user.id:
+            return jsonify([])
+        ws_id = user.current_workspace_id
+        if not ws_id:
+            member = _current_member(user)
+            ws_id = member.workspace_id if member else None
+        if not _users_share_workspace(user.id, other.id, ws_id):
             return jsonify([])
         messages = (
             ChatMessage.query
@@ -2711,6 +2825,8 @@ def get_pinned_messages():
         other = User.query.filter_by(slug=with_slug).first()
         if not other:
             return jsonify([])
+        if other.id == user.id:
+            return jsonify([])
         q = ChatMessage.query.filter(
             ChatMessage.pinned.is_(True),
             db.or_(
@@ -2731,8 +2847,15 @@ def get_pinned_messages():
             ChatMessage.receiver_id.is_(None),
         )
         if scope == 'all':
-            # No channel filter — pinned across every channel in the workspace
-            pass
+            # Restrict to channels that still exist (+ general which is always valid)
+            live_slugs = [r[0] for r in db.session.query(Channel.slug).filter_by(workspace_id=ws_id).all()]
+            live_slugs.append('general')
+            q = q.filter(
+                db.or_(
+                    ChatMessage.channel.is_(None),
+                    ChatMessage.channel.in_(live_slugs),
+                )
+            )
         elif channel == 'general':
             q = q.filter(db.or_(ChatMessage.channel == 'general', ChatMessage.channel.is_(None)))
         else:

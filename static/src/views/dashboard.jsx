@@ -4,7 +4,7 @@ const { useState: useDashState, useEffect: useDashEffect, useRef: useDashRef } =
 
 function DashboardView({ tasks, onOpenTask, onView }) {
   const [chartPeriod, setChartPeriod] = useDashState('week');
-  const [teamSort, setTeamSort]       = useDashState('open');
+  const [teamSort, setTeamSort] = useDashState('open');
   const [teamSortOpen, setTeamSortOpen] = useDashState(false);
   const teamSortRef = useDashRef(null);
 
@@ -16,10 +16,10 @@ function DashboardView({ tasks, onOpenTask, onView }) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [teamSortOpen]);
-  const doneColIds  = new Set(DATA.COLUMNS.filter(c => c.is_done).map(c => c.id));
-  const total      = tasks.length;
-  const done       = tasks.filter(t => doneColIds.has(t.col)).length;
-  const overdue    = tasks.filter(t => DATA.isOverdue(t.due, t.col)).length;
+  const doneColIds = new Set(DATA.COLUMNS.filter(c => c.is_done).map(c => c.id));
+  const total = tasks.length;
+  const done = tasks.filter(t => doneColIds.has(t.col)).length;
+  const overdue = tasks.filter(t => DATA.isOverdue(t.due, t.col)).length;
   const inProgress = tasks.filter(t => !doneColIds.has(t.col)).length;
 
   const throughput = DATA.THROUGHPUT || [];
@@ -30,9 +30,9 @@ function DashboardView({ tasks, onOpenTask, onView }) {
     { done: 0, review: 0, progress: 0 }
   );
   const monthData = [
-    { day: 'H1', done: Math.round(wkTot.done * 0.9),  review: Math.round(wkTot.review * 1.1), progress: Math.round(wkTot.progress * 0.8) },
-    { day: 'H2', done: Math.round(wkTot.done * 1.2),  review: Math.round(wkTot.review * 0.9), progress: Math.round(wkTot.progress * 1.3) },
-    { day: 'H3', done: Math.round(wkTot.done * 0.8),  review: Math.round(wkTot.review * 1.2), progress: Math.round(wkTot.progress * 1.0) },
+    { day: 'H1', done: Math.round(wkTot.done * 0.9), review: Math.round(wkTot.review * 1.1), progress: Math.round(wkTot.progress * 0.8) },
+    { day: 'H2', done: Math.round(wkTot.done * 1.2), review: Math.round(wkTot.review * 0.9), progress: Math.round(wkTot.progress * 1.3) },
+    { day: 'H3', done: Math.round(wkTot.done * 0.8), review: Math.round(wkTot.review * 1.2), progress: Math.round(wkTot.progress * 1.0) },
     { day: 'H4', done: wkTot.done, review: wkTot.review, progress: wkTot.progress },
   ];
 
@@ -40,9 +40,9 @@ function DashboardView({ tasks, onOpenTask, onView }) {
   const chartData = chartPeriod === 'week'
     ? rawChartData.filter(d => d.done + d.review + d.progress > 0)
     : rawChartData;
-  const maxBar    = Math.max(...chartData.map(d => d.done + d.review + d.progress), 1);
+  const maxBar = Math.max(...chartData.map(d => d.done + d.review + d.progress), 1);
 
-  const weeklyDone  = throughput.reduce((s, d) => s + d.done, 0);
+  const weeklyDone = throughput.reduce((s, d) => s + d.done, 0);
   const highPriority = tasks.filter(t => t.priority === 'high' && !doneColIds.has(t.col)).length;
 
   const getColColor = (col) => col?.is_done ? 'var(--status-green)' : (col?.color || 'var(--ink-faint)');
@@ -58,15 +58,15 @@ function DashboardView({ tasks, onOpenTask, onView }) {
 
   const greeting = (() => {
     const h = new Date().getHours();
-    if (h >= 5  && h < 12) return window.t('dash_greeting_morning');
+    if (h >= 5 && h < 12) return window.t('dash_greeting_morning');
     if (h >= 12 && h < 18) return window.t('dash_greeting_afternoon');
     if (h >= 18 && h < 21) return window.t('dash_greeting_evening');
     return window.t('dash_greeting_night');
   })();
 
   const SORT_OPTIONS = [
-    { key: 'open',  label: window.t('dash_sort_open') },
-    { key: 'done',  label: window.t('dash_sort_done') },
+    { key: 'open', label: window.t('dash_sort_open') },
+    { key: 'done', label: window.t('dash_sort_done') },
     { key: 'alpha', label: window.t('dash_sort_alpha') },
   ];
   const peopleStats = DATA.MEMBERS.map(m => {
@@ -77,7 +77,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
   });
 
   const sortedPeople = [...peopleStats].sort((a, b) => {
-    if (teamSort === 'done')  return b.done - a.done;
+    if (teamSort === 'done') return b.done - a.done;
     if (teamSort === 'alpha') return a.name.localeCompare(b.name, 'tr');
     return b.open - a.open;
   }).slice(0, 6);
@@ -88,7 +88,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
       <p className="dash-sub">
         {window.t('dash_sub_prefix')} <strong style={{ color: 'var(--ink)' }}>{inProgress}</strong> {window.t('dash_sub_active')}
         {overdue > 0 && <>; <strong style={{ color: 'var(--status-rose)' }}>{overdue}</strong> {window.t('dash_sub_overdue')}</>}
-        {overdue === 0 && ` — ${window.t('dash_sub_great')}`}
+        {overdue === 0 && ` ${window.t('dash_sub_great')}`}
       </p>
 
       <div className="dash-grid">
@@ -193,9 +193,9 @@ function DashboardView({ tasks, onOpenTask, onView }) {
                         {dayLabel}: <b>{d.done}</b> {window.t('dash_chart_done')} · <b>{d.review}</b> {window.t('dash_chart_review')} · <b>{d.progress}</b> {window.t('dash_chart_progress')}
                       </div>
                       <div className="bar-stack" style={{ height: h }}>
-                        <div className="bar-seg" data-t="progress" style={{ height: `${totalD ? (d.progress/totalD)*100 : 0}%` }} />
-                        <div className="bar-seg" data-t="review"   style={{ height: `${totalD ? (d.review/totalD)*100 : 0}%` }} />
-                        <div className="bar-seg" data-t="done"     style={{ height: `${totalD ? (d.done/totalD)*100 : 0}%` }} />
+                        <div className="bar-seg" data-t="progress" style={{ height: `${totalD ? (d.progress / totalD) * 100 : 0}%` }} />
+                        <div className="bar-seg" data-t="review" style={{ height: `${totalD ? (d.review / totalD) * 100 : 0}%` }} />
+                        <div className="bar-seg" data-t="done" style={{ height: `${totalD ? (d.done / totalD) * 100 : 0}%` }} />
                       </div>
                       <div className="bar-label">{dayLabel}</div>
                     </div>
