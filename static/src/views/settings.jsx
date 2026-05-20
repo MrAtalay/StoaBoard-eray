@@ -181,18 +181,36 @@ function LabelsSection({ canManage }) {
   );
 }
 
-function RoleDropdown({ value, roles, onChange, disabled }) {
+function RoleDropdown({ value, roles, onChange, disabled, onRoleCreated }) {
+  const _t = (k, fb) => window.t?.(k) || fb;
   const [open, setOpen] = React.useState(false);
+  const [qOpen, setQOpen] = React.useState(false);
+  const [qName, setQName] = React.useState('');
+  const [qBusy, setQBusy] = React.useState(false);
   const ref = React.useRef(null);
 
   React.useEffect(() => {
     if (!open) return;
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQOpen(false); setQName(''); } };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
   const current = roles.find(r => r.id === value);
+
+  const createRole = async () => {
+    const n = qName.trim();
+    if (!n) return;
+    setQBusy(true);
+    try {
+      const r = await API.createRole({ name: n, color: ROLE_COLORS[roles.length % ROLE_COLORS.length], permissions: [] });
+      onRoleCreated?.(r);
+      onChange(r.id);
+      setQName(''); setQOpen(false); setOpen(false);
+      window.showToast?.(`"${r.name}" rolü oluşturuldu.`, 'success');
+    } catch (e) { window.showToast?.(e.message, 'error'); }
+    finally { setQBusy(false); }
+  };
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -227,7 +245,7 @@ function RoleDropdown({ value, roles, onChange, disabled }) {
           position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 200,
           background: 'var(--bg-raised)', border: '1px solid var(--line)',
           borderRadius: 10, boxShadow: 'var(--shadow-md)',
-          minWidth: 148, overflow: 'hidden',
+          minWidth: 160, overflow: 'hidden',
         }}>
           {value && (
             <button
@@ -268,6 +286,67 @@ function RoleDropdown({ value, roles, onChange, disabled }) {
               {r.id === value && <Icon name="check" size={12} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
             </button>
           ))}
+          {onRoleCreated && (
+            <div style={{ borderTop: '1px solid var(--line)', padding: '6px 8px' }}>
+              {!qOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setQOpen(true)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    width: '100%', padding: '7px 4px', textAlign: 'left',
+                    fontSize: 11.5, color: 'var(--ink-muted)',
+                    background: 'none', fontFamily: 'var(--font-ui)', cursor: 'pointer',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+                  onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-muted)'}
+                >
+                  <Icon name="plus" size={11} /> {_t('set_mem_new_role', 'Yeni rol oluştur')}
+                </button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <input
+                    autoFocus
+                    value={qName}
+                    onChange={e => setQName(e.target.value)}
+                    onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') createRole(); if (e.key === 'Escape') { setQOpen(false); setQName(''); } }}
+                    placeholder={_t('set_mem_role_name_ph', 'Rol adı…')}
+                    style={{
+                      padding: '5px 8px', borderRadius: 6, border: '1px solid var(--accent)',
+                      background: 'var(--bg)', color: 'var(--ink)', fontSize: 12,
+                      outline: 'none', fontFamily: 'var(--font-ui)',
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button
+                      type="button"
+                      onClick={createRole}
+                      disabled={qBusy || !qName.trim()}
+                      style={{
+                        flex: 1, padding: '5px 8px', borderRadius: 6, fontSize: 11.5,
+                        background: 'var(--accent)', color: '#fff', fontFamily: 'var(--font-ui)',
+                        cursor: qBusy || !qName.trim() ? 'not-allowed' : 'pointer',
+                        opacity: qBusy || !qName.trim() ? 0.6 : 1,
+                      }}
+                    >
+                      {qBusy ? '…' : _t('set_lbl_add', 'Ekle')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setQOpen(false); setQName(''); }}
+                      style={{
+                        padding: '5px 8px', borderRadius: 6, fontSize: 11.5,
+                        background: 'var(--bg-subtle)', color: 'var(--ink-muted)',
+                        fontFamily: 'var(--font-ui)', cursor: 'pointer',
+                      }}
+                    >
+                      {_t('set_lbl_cancel', 'İptal')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -369,6 +448,8 @@ function JoinRequestsSection() {
 }
 
 function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersChange }) {
+  const _t = (k, fb) => window.t?.(k) || fb;
+
   const me       = window.CURRENT_USER || DATA.MEMBERS[0] || {};
   const ws       = window.DATA.WORKSPACE || {};
   const isOwner  = ws.is_owner || false;
@@ -410,6 +491,60 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
   const [members, setMembers]         = React.useState([...DATA.MEMBERS]);
   const [memberBusy, setMemberBusy]   = React.useState(null);
+
+  // ── Keyboard shortcut customization ──────────────────────────────────────
+  const DEFAULT_SHORTCUTS = [
+    { id: 'cmd_palette',   label: _t('set_sct_cmd_palette','Komut paleti aç'),        keys: ['Ctrl','K'] },
+    { id: 'new_task',      label: _t('set_sct_new_task','Yeni görev'),                 keys: ['N'] },
+    { id: 'go_home',       label: _t('set_sct_home','Ana sayfa'),                      keys: ['G','H'] },
+    { id: 'go_board',      label: _t('set_sct_board','Pano (Kanban)'),                 keys: ['G','B'] },
+    { id: 'go_list',       label: _t('set_sct_list','Liste görünümü'),                 keys: ['G','L'] },
+    { id: 'go_calendar',   label: _t('set_sct_calendar','Takvim'),                     keys: ['G','C'] },
+    { id: 'go_chat',       label: _t('set_sct_chat','Sohbet'),                         keys: ['G','M'] },
+    { id: 'go_settings',   label: _t('set_sct_settings','Ayarlar'),                    keys: ['G','S'] },
+    { id: 'search',        label: _t('set_sct_search','Arama odakla'),                 keys: ['/'] },
+    { id: 'send_msg',      label: _t('set_sct_send','Mesaj gönder'),                   keys: ['↵'] },
+    { id: 'newline',       label: _t('set_sct_newline','Yeni satır (mesajda)'),        keys: ['⇧','↵'] },
+    { id: 'close_panels',  label: _t('set_sct_close_panels','Tüm panelleri kapat'),    keys: ['Esc'] },
+  ];
+  const [customShortcuts, setCustomShortcuts] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('stoa.shortcuts') || 'null') || {}; } catch { return {}; }
+  });
+  const [recordingId, setRecordingId] = React.useState(null);
+  const recordingRef = React.useRef(null);
+
+  const getShortcutKeys = (id) => customShortcuts[id] || DEFAULT_SHORTCUTS.find(s => s.id === id)?.keys || [];
+
+  const saveShortcut = (id, keys) => {
+    const next = { ...customShortcuts, [id]: keys };
+    setCustomShortcuts(next);
+    localStorage.setItem('stoa.shortcuts', JSON.stringify(next));
+  };
+
+  const resetShortcuts = () => {
+    setCustomShortcuts({});
+    localStorage.removeItem('stoa.shortcuts');
+    window.showToast?.('Kısayollar varsayılana sıfırlandı.', 'success');
+  };
+
+  React.useEffect(() => {
+    if (!recordingId) return;
+    const handler = (e) => {
+      e.preventDefault();
+      const parts = [];
+      if (e.metaKey || e.ctrlKey) parts.push('⌘');
+      if (e.altKey) parts.push('⌥');
+      if (e.shiftKey) parts.push('⇧');
+      const key = e.key;
+      if (!['Meta','Control','Alt','Shift'].includes(key)) {
+        parts.push(key === 'Enter' ? '↵' : key === 'Escape' ? 'Esc' : key === '/' ? '/' : key.length === 1 ? key.toUpperCase() : key);
+        saveShortcut(recordingId, parts);
+        setRecordingId(null);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [recordingId, customShortcuts]);
   const [confirmDeleteRoleId, setConfirmDeleteRoleId] = React.useState(null);
   const [confirmRemoveMemberId, setConfirmRemoveMemberId] = React.useState(null);
 
@@ -665,7 +800,6 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
   // ── Render ────────────────────────────────────────────────────────────────
 
   // Inner-nav sections (ids match section [data-nav-id])
-  const _t = (k, fb) => window.t?.(k) || fb;
   const navSections = [
     { id: 'profile',       label: _t('set_profile','Profil'),              icon: 'user' },
     { id: 'appearance',    label: _t('set_appearance','Görünüm'),          icon: 'palette' },
@@ -676,9 +810,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
     { id: 'labels',        label: _t('set_labels','Etiketler'),            icon: 'tag' },
     { id: 'notifications', label: _t('set_notifications','Bildirimler'),   icon: 'bell' },
     { id: 'shortcuts',     label: _t('set_shortcuts','Kısayollar'),        icon: 'cmd' },
-    { id: 'privacy',       label: _t('set_privacy','Gizlilik'),            icon: 'shield' },
     { id: 'language',      label: _t('set_language','Dil & Bölge'),        icon: 'languages' },
-    { id: 'export',        label: _t('set_export','Veri & Dışa Aktarma'),  icon: 'download' },
     { id: 'danger',        label: _t('set_danger','Tehlikeli Bölge'),      icon: 'alertTriangle', danger: true },
   ];
   const [activeNav, setActiveNav] = React.useState('profile');
@@ -690,21 +822,23 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
     if (!root) return;
     const el = root.querySelector(`[data-nav-id="${id}"]`);
     if (el) {
-      const offset = el.offsetTop - 16;
-      root.scrollTo({ top: offset, behavior: 'smooth' });
+      const rootRect = root.getBoundingClientRect();
+      const elRect   = el.getBoundingClientRect();
+      root.scrollTo({ top: root.scrollTop + (elRect.top - rootRect.top) - 20, behavior: 'smooth' });
     }
   };
 
-  // Scroll-spy
+  // Scroll-spy — use getBoundingClientRect for accurate threshold
   React.useEffect(() => {
     const root = scrollRef.current;
     if (!root) return;
     const onScroll = () => {
       const sections = root.querySelectorAll('[data-nav-id]');
-      const scrollTop = root.scrollTop + 50;
+      const rootTop  = root.getBoundingClientRect().top;
       let current = sections[0]?.dataset.navId;
       sections.forEach(s => {
-        if (s.offsetTop <= scrollTop) current = s.dataset.navId;
+        const top = s.getBoundingClientRect().top - rootTop;
+        if (top <= 80) current = s.dataset.navId;
       });
       if (current) setActiveNav(prev => prev === current ? prev : current);
     };
@@ -1183,6 +1317,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                       onChange={roleId => changeMemberRole(m.id, roleId)}
                       disabled={memberBusy === m.id || (!isOwner && m.id === me.id)}
                       title={(!isOwner && m.id === me.id) ? _t('set_mem_cannot_change','Kendi rolünüzü değiştiremezsiniz') : undefined}
+                      onRoleCreated={canManageMembers ? (r) => setRoles(prev => [...prev, r]) : undefined}
                     />
                     {confirmRemoveMemberId === m.id ? (
                       <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11 }}>
@@ -1302,6 +1437,25 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
             <span>{_t('set_notif_dnd_hint','"Rahatsız Etme" modunda tüm mesaj bildirimleri sessize alınır.')}</span>
           </div>
 
+          {/* Gizlilik: Okundu & Yazıyor (buraya taşındı) */}
+          <div className="notif-pref-group">
+            <div className="notif-pref-title">{_t('set_prv_visibility','Görünürlük')}</div>
+            <div className="tweak-toggle" onClick={() => setTweak('readReceipts', !(tweaks.readReceipts !== false))}>
+              <div className="tweak-toggle-info">
+                <span>{_t('set_prv_read_receipts','Okundu bilgisi')}</span>
+                <span className="tweak-toggle-desc">{_t('set_prv_read_receipts_desc','Mesajları okuduğunda diğerleri görür')}</span>
+              </div>
+              <div className="toggle" data-on={tweaks.readReceipts !== false} />
+            </div>
+            <div className="tweak-toggle" onClick={() => setTweak('typingIndicator', !(tweaks.typingIndicator !== false))}>
+              <div className="tweak-toggle-info">
+                <span>{_t('set_prv_typing','Yazıyor göstergesi')}</span>
+                <span className="tweak-toggle-desc">{_t('set_prv_typing_desc','Yazarken karşı taraf "yazıyor…" görür')}</span>
+              </div>
+              <div className="toggle" data-on={tweaks.typingIndicator !== false} />
+            </div>
+          </div>
+
           {/* Per-event channel matrix */}
           <div className="notif-pref-group">
             <div className="notif-pref-title">{_t('set_notif_channels','Olay türüne göre kanallar')}</div>
@@ -1373,99 +1527,59 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       <div className="settings-section" data-nav-id="shortcuts">
         <div>
           <h3>{_t('set_sct_title','Klavye Kısayolları')}</h3>
-          <p className="desc">{_t('set_sct_desc','Hızlı navigasyon ve aksiyonlar.')}</p>
+          <p className="desc">{_t('set_sct_desc','Kısayollara tıklayarak kendi tuş atamalarını yapabilirsin.')}</p>
         </div>
         <div className="settings-card settings-panel">
           <div className="keymap-list">
-            {[
-              [_t('set_sct_cmd_palette','Komut paleti aç'), ['⌘','K']],
-              [_t('set_sct_new_task','Yeni görev'), ['N']],
-              [_t('set_sct_home','Ana sayfa'), ['G','D']],
-              [_t('set_sct_board','Pano (Kanban)'), ['G','B']],
-              [_t('set_sct_list','Liste görünümü'), ['G','L']],
-              [_t('set_sct_calendar','Takvim'), ['G','C']],
-              [_t('set_sct_chat','Sohbet'), ['G','M']],
-              [_t('set_sct_settings','Ayarlar'), ['G','S']],
-              [_t('set_sct_search','Arama odakla'), ['/']],
-              [_t('set_sct_send','Mesaj gönder'), ['↵']],
-              [_t('set_sct_newline','Yeni satır (mesajda)'), ['⇧','↵']],
-              [_t('set_sct_close_panels','Tüm panelleri kapat'), ['Esc']],
-            ].map(([label, keys]) => (
-              <div key={label} className="keymap-row">
-                <span className="keymap-label">{label}</span>
-                <span className="keymap-keys">
-                  {keys.map((k, i) => <kbd key={i}>{k}</kbd>)}
-                </span>
-              </div>
-            ))}
+            {DEFAULT_SHORTCUTS.map((sc) => {
+              const isRecording = recordingId === sc.id;
+              const currentKeys = getShortcutKeys(sc.id);
+              const isCustom    = !!customShortcuts[sc.id];
+              return (
+                <div key={sc.id} className="keymap-row" data-recording={isRecording || undefined}>
+                  <span className="keymap-label">{sc.label}</span>
+                  <div className="keymap-keys-wrap">
+                    {isRecording ? (
+                      <span className="keymap-recording-hint">Tuşa bas… <button className="keymap-cancel" onClick={() => setRecordingId(null)}>✕</button></span>
+                    ) : (
+                      <>
+                        <span
+                          className="keymap-keys"
+                          title="Değiştirmek için tıkla"
+                          onClick={() => setRecordingId(sc.id)}
+                        >
+                          {currentKeys.map((k, i) => <kbd key={i}>{k}</kbd>)}
+                        </span>
+                        {isCustom && (
+                          <button
+                            className="keymap-reset-one"
+                            title="Bu kısayolu sıfırla"
+                            onClick={() => {
+                              const next = { ...customShortcuts };
+                              delete next[sc.id];
+                              setCustomShortcuts(next);
+                              localStorage.setItem('stoa.shortcuts', JSON.stringify(next));
+                            }}
+                          >
+                            ↺
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <div className="keymap-foot">
-            <button className="btn btn-ghost" onClick={() => window.showToast?.(_t('set_sct_reset','Varsayılana sıfırla'), 'success')}>
-              {_t('set_sct_reset','Varsayılana sıfırla')}
+            <button className="btn btn-ghost" onClick={resetShortcuts}>
+              ↺ {_t('set_sct_reset','Varsayılana sıfırla')}
             </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Privacy & Sessions ── */}
-      <div className="settings-section" data-nav-id="privacy">
-        <div>
-          <h3>{_t('set_prv_title','Gizlilik & Oturumlar')}</h3>
-          <p className="desc">{_t('set_prv_desc','Görünürlük, okundu bilgisi ve aktif cihazlar.')}</p>
-        </div>
-        <div className="settings-card settings-panel">
-          <div className="notif-pref-group">
-            <div className="notif-pref-title">{_t('set_prv_visibility','Görünürlük')}</div>
-            <div className="tweak-toggle" onClick={() => setTweak('readReceipts', !(tweaks.readReceipts !== false))}>
-              <div className="tweak-toggle-info">
-                <span>{_t('set_prv_read_receipts','Okundu bilgisi')}</span>
-                <span className="tweak-toggle-desc">{_t('set_prv_read_receipts_desc','Mesajları okuduğunda diğerleri görür')}</span>
-              </div>
-              <div className="toggle" data-on={tweaks.readReceipts !== false} />
-            </div>
-            <div className="tweak-toggle" onClick={() => setTweak('typingIndicator', !(tweaks.typingIndicator !== false))}>
-              <div className="tweak-toggle-info">
-                <span>{_t('set_prv_typing','Yazıyor göstergesi')}</span>
-                <span className="tweak-toggle-desc">{_t('set_prv_typing_desc','Yazarken karşı taraf "yazıyor…" görür')}</span>
-              </div>
-              <div className="toggle" data-on={tweaks.typingIndicator !== false} />
-            </div>
-          </div>
-          <div className="tweak-group" style={{ marginTop: 12 }}>
-            <div className="tweak-label">{_t('set_prv_online','Çevrimiçi durumu')}</div>
-            <div className="tweak-options">
-              {[
-                ['visible', _t('set_prv_everyone','Herkese görünür')],
-                ['team', _t('set_prv_team_only','Sadece takım')],
-                ['hidden', _t('set_prv_hidden','Gizli')],
-              ].map(([k, l]) => (
-                <button key={k} className="tweak-opt" data-active={(tweaks.presenceVisibility || 'visible') === k} onClick={() => setTweak('presenceVisibility', k)}>
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="notif-pref-group">
-            <div className="notif-pref-title">{_t('set_prv_sessions','Aktif oturumlar')}</div>
-            <div className="session-list">
-              {[
-                { icon: 'monitor', label: _t('set_prv_this_browser','Bu tarayıcı'), meta: _t('set_prv_active_now','Şu an aktif'), current: true },
-                { icon: 'smartphone', label: _t('set_prv_mobile','Mobil cihaz'), meta: _t('set_prv_no_sessions','Henüz oturum yok') },
-              ].map((s, i) => (
-                <div key={i} className="session-row">
-                  <div className="session-ic"><Icon name={s.icon} size={14} /></div>
-                  <div className="session-body">
-                    <div className="session-label">{s.label} {s.current && <span className="session-badge">{_t('set_prv_this_device','Bu cihaz')}</span>}</div>
-                    <div className="session-meta">{s.meta}</div>
-                  </div>
-                  {!s.current && <button className="btn btn-ghost" disabled>{_t('set_prv_logout','Çıkış')}</button>}
-                </div>
-              ))}
-            </div>
-            <button className="btn btn-ghost" style={{ marginTop: 8, color: 'var(--status-rose)' }} onClick={onLogout}>
-              <Icon name="logOut" size={13} /> {_t('set_prv_logout_all','Tüm cihazlarda çıkış yap')}
-            </button>
+            {Object.keys(customShortcuts).length > 0 && (
+              <span style={{ fontSize: 11, color: 'var(--ink-muted)', marginLeft: 10 }}>
+                {Object.keys(customShortcuts).length} özelleştirilmiş kısayol
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -1519,37 +1633,6 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                 onChange={(e) => setTweak('timezone', e.target.value)}
               />
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Data & Export ── */}
-      <div className="settings-section" data-nav-id="export">
-        <div>
-          <h3>{_t('set_exp_title','Veri & Dışa Aktarma')}</h3>
-          <p className="desc">{_t('set_exp_desc','Çalışma alanı ve kişisel verilerinizin yedeklerini alın.')}</p>
-        </div>
-        <div className="settings-card settings-panel">
-          <div className="export-row">
-            <div className="export-body">
-              <div className="export-title">{_t('set_exp_ws_title','Çalışma alanı dışa aktarma')}</div>
-              <div className="export-desc">{_t('set_exp_ws_desc','Görevler, mesajlar ve dosyalar (.zip)')}</div>
-            </div>
-            <div className="tweak-options" style={{ marginRight: 8 }}>
-              {['JSON', 'CSV', 'Markdown'].map(f => (
-                <button key={f} className="tweak-opt" data-active={(tweaks.exportFormat || 'JSON') === f} onClick={() => setTweak('exportFormat', f)}>
-                  {f}
-                </button>
-              ))}
-            </div>
-            <button className="btn btn-primary" disabled>Dışa aktar</button>
-          </div>
-          <div className="export-row">
-            <div className="export-body">
-              <div className="export-title">{_t('set_exp_personal_title','Kişisel veri indirme')}</div>
-              <div className="export-desc">{_t('set_exp_personal_desc','GDPR uyumlu — mesajlar, profil, dosyalar')}</div>
-            </div>
-            <button className="btn btn-ghost" disabled><Icon name="download" size={12} /> {_t('set_exp_download','Verilerimi indir')}</button>
           </div>
         </div>
       </div>

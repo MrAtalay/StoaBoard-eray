@@ -15,7 +15,33 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
   const [assigneeOpen, setAssigneeOpen] = useDrawerState(false);
   const [confirmDelete, setConfirmDelete] = useDrawerState(false);
   const [mentionQuery, setMentionQuery] = useDrawerState(null);
+  const [mentionIdx, setMentionIdx]     = useDrawerState(0);
   const [duplicating, setDuplicating]   = useDrawerState(false);
+
+  // ── Checklist ────────────────────────────────────────────────────────────
+  const [checklist, setChecklist]       = useDrawerState([]);
+  const [checkInput, setCheckInput]     = useDrawerState('');
+  const [checkSaving, setCheckSaving]   = useDrawerState(false);
+  const [editingCheckId, setEditingCheckId] = useDrawerState(null);
+  const [editingCheckText, setEditingCheckText] = useDrawerState('');
+
+  // ── Attachments ───────────────────────────────────────────────────────────
+  const [attachments, setAttachments]   = useDrawerState([]);
+  const [uploading, setUploading]       = useDrawerState(false);
+  const [uploadProgress, setUploadProgress] = useDrawerState(0);
+  const [imagePreview, setImagePreview] = useDrawerState(null); // { url, name }
+  const [editingAttId, setEditingAttId] = useDrawerState(null);
+  const [editingAttName, setEditingAttName] = useDrawerState('');
+  const fileInputRef                    = useDrawerRef(null);
+
+  // ── Doc state for inline editing ─────────────────────────────────────────
+  const [docState, setDocState] = useDrawerState(null);
+
+  // ── Note linking ─────────────────────────────────────────────────────────
+  const [noteLinkOpen, setNoteLinkOpen] = useDrawerState(false);
+  const [allNotes, setAllNotes]         = useDrawerState(null); // null = not loaded yet
+  const [noteSearch, setNoteSearch]     = useDrawerState('');
+  const noteLinkRef                     = useDrawerRef(null);
   const [dueVal, setDueVal]             = useDrawerState('');
   const [startVal, setStartVal]         = useDrawerState('');
   const [assigneeDatesVal, setAssigneeDatesVal] = useDrawerState({});
@@ -36,8 +62,8 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
     if (!open || !task) { setDetail(null); setStatusOpen(false); return; }
     setLoadingDetail(true);
     API.getTaskDetail(task.id)
-      .then(d => { setDetail(d); setLoadingDetail(false); })
-      .catch(() => { setDetail(null); setLoadingDetail(false); });
+      .then(d => { setDetail(d); setDocState(d?.doc || null); setLoadingDetail(false); })
+      .catch(() => { setDetail(null); setDocState(null); setLoadingDetail(false); });
   }, [open, task?.id]);
 
   // Fetch linked notes for this task
@@ -48,6 +74,43 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
       .then(rows => { setLinkedNotes(rows || []); setLoadingLinkedNotes(false); })
       .catch(() => { setLinkedNotes([]); setLoadingLinkedNotes(false); });
   }, [open, task?.id]);
+
+  // Fetch attachments
+  useDrawerEffect(() => {
+    if (!open || !task) { setAttachments([]); return; }
+    API.listAttachments(task.id).then(rows => setAttachments(rows || [])).catch(() => {});
+  }, [open, task?.id]);
+
+  const handleFileUpload = async (file) => {
+    if (!file || uploading) return;
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const att = await API.uploadAttachment(task.id, fd);
+      setAttachments(prev => [att, ...prev]);
+      window.showToast?.(`"${att.file_name}" yüklendi.`, 'success');
+    } catch (e) { window.showToast?.(e.message, 'error'); }
+    finally { setUploading(false); setUploadProgress(0); }
+  };
+
+  const handleDeleteAttachment = async (attId) => {
+    try {
+      await API.deleteAttachment(attId);
+      setAttachments(prev => prev.filter(a => a.id !== attId));
+    } catch (e) { window.showToast?.(e.message, 'error'); }
+  };
+
+  const handleRenameAttachment = async (attId, newName) => {
+    const n = newName.trim();
+    if (!n) { setEditingAttId(null); return; }
+    try {
+      const updated = await API.renameAttachment(attId, n);
+      setAttachments(prev => prev.map(a => a.id === attId ? { ...a, display_name: updated.display_name } : a));
+    } catch (e) { window.showToast?.(e.message, 'error'); }
+    setEditingAttId(null);
+  };
 
   // Live updates: react to note_updated / note_deleted to keep panel fresh
   useDrawerEffect(() => {
@@ -78,10 +141,71 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
       if (priorityOpen && priorityRef.current && !priorityRef.current.contains(e.target)) setPriorityOpen(false);
       if (labelOpen    && labelRef.current    && !labelRef.current.contains(e.target))    setLabelOpen(false);
       if (assigneeOpen && assigneeRef.current && !assigneeRef.current.contains(e.target)) setAssigneeOpen(false);
+      if (noteLinkOpen && noteLinkRef.current && !noteLinkRef.current.contains(e.target)) setNoteLinkOpen(false);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [statusOpen, priorityOpen, labelOpen, assigneeOpen]);
+  }, [statusOpen, priorityOpen, labelOpen, assigneeOpen, noteLinkOpen]);
+
+  // Load checklist from doc when detail arrives
+  useDrawerEffect(() => {
+    if (!detail) return;
+    const doc = detail.doc || [];
+    const block = doc.find(b => b.kind === 'checklist' && !b._subtask);
+    if (block && block.items) {
+      setChecklist(block.items.map((it, i) => ({ id: i, text: typeof it === 'string' ? it : it.text, done: !!it.done })));
+    } else {
+      setChecklist([]);
+    }
+  }, [detail?.doc]);
+
+  // Save checklist back to doc
+  const saveChecklist = async (items) => {
+    if (!task) return;
+    const existingDoc = (detail?.doc || []).filter(b => !(b.kind === 'checklist' && !b._subtask));
+    const newDoc = items.length > 0
+      ? [...existingDoc, { kind: 'checklist', items: items.map(it => ({ text: it.text, done: it.done })) }]
+      : existingDoc;
+    const done  = items.filter(i => i.done).length;
+    const total = items.length;
+    const progress = total > 0 ? Math.round((done / total) * 100) : (task.progress || 0);
+    setCheckSaving(true);
+    try {
+      await API.updateTask(task.id, { doc: newDoc, progress });
+      onTaskUpdate && onTaskUpdate({ id: task.id, progress });
+    } catch (e) { window.showToast?.('Checklist kaydedilemedi: ' + e.message, 'error'); }
+    finally { setCheckSaving(false); }
+  };
+
+  const toggleCheckItem = (id) => {
+    const updated = checklist.map(it => it.id === id ? { ...it, done: !it.done } : it);
+    setChecklist(updated);
+    saveChecklist(updated);
+  };
+
+  const addCheckItem = () => {
+    const text = checkInput.trim();
+    if (!text) return;
+    const updated = [...checklist, { id: Date.now(), text, done: false }];
+    setChecklist(updated);
+    setCheckInput('');
+    saveChecklist(updated);
+  };
+
+  const deleteCheckItem = (id) => {
+    const updated = checklist.filter(it => it.id !== id);
+    setChecklist(updated);
+    saveChecklist(updated);
+  };
+
+  const renameCheckItem = (id, newText) => {
+    const t = newText.trim();
+    if (!t) return;
+    const updated = checklist.map(it => it.id === id ? { ...it, text: t } : it);
+    setChecklist(updated);
+    saveChecklist(updated);
+    setEditingCheckId(null);
+  };
 
   const patchTask = async (fields) => {
     onTaskUpdate && onTaskUpdate({ id: task.id, ...task, ...fields });
@@ -126,9 +250,16 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
     .filter(Boolean);
   const col = DATA.COLUMNS.find(c => c.id === task.col) || { title_tr: task.col };
 
-  const doc        = detail?.doc        || _basicDoc(task);
+  const doc        = docState || detail?.doc || _basicDoc(task);
   const comments   = detail?.comments_list || [];
   const subsDetail = detail?.subtasks_detail || [];
+
+  const saveDocBlock = async (index, newText) => {
+    const newDoc = doc.map((b, i) => i === index ? { ...b, text: newText } : b);
+    setDocState(newDoc);
+    try { await API.updateTask(task.id, { doc: newDoc }); }
+    catch (e) { window.showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+  };
 
   // ── Submit comment ──────────────────────────────────────────────────────
   const handleCommentSubmit = async () => {
@@ -380,16 +511,160 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
       ) : (
         <div className="doc-content">
           {doc.map((b, i) => (
-            <DrawerDocBlock key={i} block={b} subsDetail={subsDetail} onSubtaskToggle={handleSubtaskToggle} canManageTasks={canManageTasks} />
+            <DrawerDocBlock key={i} block={b} subsDetail={subsDetail} onSubtaskToggle={handleSubtaskToggle} canManageTasks={canManageTasks}
+              onUpdate={canManageTasks ? (newText) => saveDocBlock(i, newText) : undefined} />
           ))}
         </div>
       )}
 
-      {/* Linked notes */}
+      {/* ── Checklist ── */}
       <div className="comments-section" style={{ marginBottom: 18 }}>
-        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', marginBottom: 6 }}>
-          {window.t('drawer_linked_notes')} <span style={{ color: 'var(--ink-muted)', fontSize: 13, fontFamily: 'var(--font-ui)' }}>· {linkedNotes.length}</span>
+        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+          Yapılacaklar
+          {checklist.length > 0 && (
+            <span style={{ fontSize: 12, color: 'var(--ink-muted)', fontFamily: 'var(--font-ui)', fontWeight: 400 }}>
+              {checklist.filter(i => i.done).length}/{checklist.length}
+            </span>
+          )}
+          {checkSaving && <span style={{ fontSize: 11, color: 'var(--ink-faint)', fontFamily: 'var(--font-ui)', fontWeight: 400 }}>kaydediliyor…</span>}
         </h3>
+        {checklist.length > 0 && (
+          <div className="checklist-progress-bar" style={{ marginBottom: 10 }}>
+            <div className="checklist-progress-fill" style={{ width: `${Math.round(checklist.filter(i => i.done).length / checklist.length * 100)}%` }} />
+          </div>
+        )}
+        <div className="drawer-checklist">
+          {checklist.map(it => (
+            <div key={it.id} className="drawer-check-row" data-done={it.done}>
+              <div
+                className="drawer-check-box"
+                data-done={it.done}
+                onClick={() => canManageTasks && editingCheckId !== it.id && toggleCheckItem(it.id)}
+              >
+                {it.done && <Icon name="check" size={10} />}
+              </div>
+              {editingCheckId === it.id ? (
+                <div style={{ display: 'flex', flex: 1, gap: 4, alignItems: 'center' }}>
+                  <input
+                    autoFocus
+                    className="drawer-check-edit-input"
+                    value={editingCheckText}
+                    onChange={e => setEditingCheckText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') renameCheckItem(it.id, editingCheckText || it.text);
+                      if (e.key === 'Escape') setEditingCheckId(null);
+                    }}
+                  />
+                  <button
+                    className="drawer-check-action save"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => renameCheckItem(it.id, editingCheckText || it.text)}
+                    title="Kaydet"
+                  >
+                    <Icon name="check" size={11} />
+                  </button>
+                  <button
+                    className="drawer-check-action cancel"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => setEditingCheckId(null)}
+                    title="İptal"
+                  >
+                    <Icon name="x" size={11} />
+                  </button>
+                </div>
+              ) : (
+                <span className="drawer-check-text">{it.text}</span>
+              )}
+              {canManageTasks && editingCheckId !== it.id && (
+                <button className="drawer-check-del" onClick={() => { setEditingCheckId(it.id); setEditingCheckText(it.text); }} title="Düzenle">
+                  <Icon name="pen" size={10} />
+                </button>
+              )}
+              {canManageTasks && editingCheckId !== it.id && (
+                <button className="drawer-check-del" onClick={() => deleteCheckItem(it.id)} title="Kaldır">
+                  <Icon name="x" size={11} />
+                </button>
+              )}
+            </div>
+          ))}
+          {canManageTasks && (
+            <div className="drawer-check-add">
+              <input
+                placeholder="Yeni madde ekle…"
+                value={checkInput}
+                onChange={e => setCheckInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addCheckItem(); }}
+              />
+              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={addCheckItem} disabled={!checkInput.trim()}>
+                + Ekle
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Linked notes ── */}
+      <div className="comments-section" style={{ marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', margin: 0, flex: 1 }}>
+            {window.t('drawer_linked_notes')} <span style={{ color: 'var(--ink-muted)', fontSize: 13, fontFamily: 'var(--font-ui)' }}>· {linkedNotes.length}</span>
+          </h3>
+          {canManageTasks && (
+            <div style={{ position: 'relative' }} ref={noteLinkRef}>
+              <button
+                className="btn btn-ghost"
+                style={{ fontSize: 11, padding: '3px 9px' }}
+                onClick={() => {
+                  setNoteLinkOpen(o => !o);
+                  setNoteSearch('');
+                  if (!allNotes) API.listNotes().then(setAllNotes).catch(() => setAllNotes([]));
+                }}
+              >
+                <Icon name="plus" size={11} /> Not bağla
+              </button>
+              {noteLinkOpen && (
+                <div className="note-link-dropdown">
+                  <input
+                    autoFocus
+                    placeholder="Not ara…"
+                    value={noteSearch}
+                    onChange={e => setNoteSearch(e.target.value)}
+                    className="note-link-search"
+                  />
+                  <div className="note-link-list">
+                    {allNotes === null
+                      ? <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--ink-faint)' }}>Yükleniyor…</div>
+                      : (allNotes || [])
+                          .filter(n => !linkedNotes.some(ln => ln.id === n.id))
+                          .filter(n => !noteSearch || (n.title || '').toLowerCase().includes(noteSearch.toLowerCase()))
+                          .slice(0, 12)
+                          .map(n => (
+                            <button
+                              key={n.id}
+                              className="note-link-item"
+                              onClick={async () => {
+                                try {
+                                  await API.linkNoteTask(n.id, task.id);
+                                  setLinkedNotes(prev => [n, ...prev]);
+                                  setNoteLinkOpen(false);
+                                  window.showToast?.('Not bağlandı.', 'success');
+                                } catch (e) { window.showToast?.(e.message, 'error'); }
+                              }}
+                            >
+                              <Icon name="note" size={12} />
+                              <span>{n.title || '(başlıksız)'}</span>
+                            </button>
+                          ))
+                    }
+                    {allNotes !== null && (allNotes || []).filter(n => !linkedNotes.some(ln => ln.id === n.id)).length === 0 && (
+                      <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--ink-faint)' }}>Bağlanacak not yok.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         {loadingLinkedNotes ? (
           <div style={{ fontSize: 12, color: 'var(--ink-faint)', padding: '8px 0' }}>{window.t('drawer_loading')}</div>
         ) : linkedNotes.length === 0 ? (
@@ -416,6 +691,122 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
         )}
       </div>
 
+      {/* Attachments */}
+      <div className="comments-section" style={{ marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', margin: 0, flex: 1 }}>
+            {window.t?.('drawer_attachments') || 'Dosyalar'}
+            {attachments.length > 0 && <span style={{ color: 'var(--ink-muted)', fontSize: 13, fontFamily: 'var(--font-ui)', marginLeft: 6 }}>· {attachments.length}</span>}
+          </h3>
+          {canManageTasks && (
+            <>
+              <input ref={fileInputRef} type="file" style={{ display: 'none' }}
+                onChange={e => { if (e.target.files[0]) handleFileUpload(e.target.files[0]); e.target.value = ''; }} />
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: '3px 9px' }}
+                onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                <Icon name="paperclip" size={11} /> {uploading ? (window.t?.('drawer_uploading') || 'Yükleniyor…') : (window.t?.('drawer_attach') || '+ Ekle')}
+              </button>
+            </>
+          )}
+        </div>
+        {/* Drop zone */}
+        {canManageTasks && (
+          <div className="attachment-drop-zone"
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
+            onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
+            onDrop={e => {
+              e.preventDefault();
+              e.currentTarget.classList.remove('drag-over');
+              const file = e.dataTransfer.files[0];
+              if (file) handleFileUpload(file);
+            }}>
+            <Icon name="upload" size={14} />
+            <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{window.t?.('drawer_drop_files') || 'Dosyayı buraya sürükle veya tıkla'}</span>
+          </div>
+        )}
+        {attachments.length > 0 && (
+          <div className="attachment-list">
+            {attachments.map(att => {
+              const isImage = att.file_type.startsWith('image/');
+              const isVideo = att.file_type.startsWith('video/');
+              const displayName = att.display_name || att.file_name.replace(/\.[^/.]+$/, '');
+              const isEditingThis = editingAttId === att.id;
+              return (
+                <div key={att.id} className="attachment-item">
+                  {isImage ? (
+                    <div
+                      className="attachment-thumb"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setImagePreview({ url: att.url, name: displayName })}
+                    >
+                      <img src={att.url} alt={displayName} />
+                    </div>
+                  ) : (
+                    <a href={att.url} download={att.file_name} className="attachment-icon-wrap">
+                      <Icon name={isVideo ? 'video' : 'file'} size={18} />
+                    </a>
+                  )}
+                  <div className="attachment-meta">
+                    {isEditingThis ? (
+                      <input
+                        autoFocus
+                        className="attachment-name-input"
+                        value={editingAttName}
+                        onChange={e => setEditingAttName(e.target.value)}
+                        onBlur={() => handleRenameAttachment(att.id, editingAttName || displayName)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleRenameAttachment(att.id, editingAttName || displayName);
+                          if (e.key === 'Escape') setEditingAttId(null);
+                        }}
+                      />
+                    ) : isImage ? (
+                      <span className="attachment-name" style={{ cursor: 'pointer' }}
+                        onClick={() => setImagePreview({ url: att.url, name: displayName })}
+                        onDoubleClick={canManageTasks ? () => { setEditingAttId(att.id); setEditingAttName(displayName); } : undefined}
+                        title={canManageTasks ? 'Yeniden adlandırmak için çift tıkla' : undefined}>
+                        {displayName}
+                      </span>
+                    ) : (
+                      <a href={att.url} download={att.file_name} className="attachment-name"
+                        onDoubleClick={canManageTasks ? (e) => { e.preventDefault(); setEditingAttId(att.id); setEditingAttName(displayName); } : undefined}
+                        title={canManageTasks ? 'Yeniden adlandırmak için çift tıkla' : undefined}>
+                        {displayName}
+                      </a>
+                    )}
+                    <span className="attachment-sub">{DATA.MEMBERS.find(m => m.id === att.uploader)?.name?.split(' ')[0] || ''} · {fmtTimeAgo(att.created_at)}</span>
+                  </div>
+                  {canManageTasks && !isEditingThis && (
+                    <button className="drawer-check-del" style={{ opacity: 0.6 }}
+                      onClick={() => { setEditingAttId(att.id); setEditingAttName(displayName); }} title="Yeniden adlandır">
+                      <Icon name="pen" size={11} />
+                    </button>
+                  )}
+                  {canManageTasks && !isEditingThis && (
+                    <button className="drawer-check-del" style={{ opacity: 1 }} onClick={() => handleDeleteAttachment(att.id)} title="Sil">
+                      <Icon name="trash" size={12} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {/* Image preview lightbox */}
+        {imagePreview && ReactDOM.createPortal(
+          <div className="img-preview-overlay" onClick={() => setImagePreview(null)}>
+            <div className="img-preview-box" onClick={e => e.stopPropagation()}>
+              <button className="img-preview-close" onClick={() => setImagePreview(null)}>
+                <Icon name="x" size={16} />
+              </button>
+              <img src={imagePreview.url} alt={imagePreview.name} className="img-preview-img" />
+              <div className="img-preview-name">{imagePreview.name}</div>
+            </div>
+          </div>,
+          document.body
+        )}
+      </div>
+
       {/* Comments */}
       <div className="comments-section">
         <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', marginBottom: 6 }}>
@@ -431,7 +822,26 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
                   <span className="comment-name">{m?.name || c.author}</span>
                   <span className="comment-time">{fmtTimeAgo(c.time)}</span>
                 </div>
-                <div className="comment-text">{c.text}</div>
+                <div className="comment-text">
+                  {c.text.split(/(@[\w\-çğışöüÇĞİŞÖÜ]+)/g).map((part, pi) => {
+                    if (part.startsWith('@')) {
+                      const slug = part.slice(1);
+                      const mentioned = DATA.MEMBERS.find(mm => mm.id === slug || mm.name.toLowerCase() === slug.toLowerCase());
+                      if (mentioned) {
+                        return (
+                          <span key={pi} className="comment-mention"
+                            onClick={() => {
+                              window.__CHAT_MENTION_TASK__ = { id: task.id, title: task.title };
+                              if (window.__OPEN_CHAT__) window.__OPEN_CHAT__(mentioned.id);
+                            }}>
+                            @{mentioned.name.split(' ')[0]}
+                          </span>
+                        );
+                      }
+                    }
+                    return part;
+                  })}
+                </div>
               </div>
             </div>
           );
@@ -549,8 +959,11 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
 
 // ── Doc block renderer ──────────────────────────────────────────────────────
 
-function DrawerDocBlock({ block, subsDetail, onSubtaskToggle, canManageTasks = true }) {
+function DrawerDocBlock({ block, subsDetail, onSubtaskToggle, canManageTasks = true, onUpdate }) {
   const [localChecks, setLocalChecks] = useDrawerState(null);
+  const [pEditing, setPEditing] = useDrawerState(false);
+  const [pDirty, setPDirty] = useDrawerState(false);
+  const pRef = useDrawerRef(null);
 
   // Build check state from subsDetail or block items
   React.useEffect(() => {
@@ -574,7 +987,55 @@ function DrawerDocBlock({ block, subsDetail, onSubtaskToggle, canManageTasks = t
   switch (block.kind) {
     case 'h2':    return <h2>{block.text}</h2>;
     case 'h3':    return <h3>{block.text}</h3>;
-    case 'p':     return <p>{block.text}</p>;
+    case 'p':     return (
+      <div style={{ position: 'relative' }}>
+        {pEditing && onUpdate && (
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginBottom: 6 }}>
+            <button
+              className="btn btn-primary"
+              style={{ fontSize: 11, padding: '3px 10px' }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const t = pRef.current?.textContent?.trim() || '';
+                if (t !== block.text) onUpdate(t);
+                setPEditing(false); setPDirty(false);
+                if (pRef.current) { pRef.current.style.background = ''; pRef.current.style.boxShadow = ''; }
+              }}
+            >
+              {window.t?.('set_lbl_save') || 'Kaydet'}
+            </button>
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: 11, padding: '3px 8px' }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                if (pRef.current) { pRef.current.textContent = block.text; pRef.current.style.background = ''; pRef.current.style.boxShadow = ''; }
+                setPEditing(false); setPDirty(false);
+              }}
+            >
+              {window.t?.('set_lbl_cancel') || 'İptal'}
+            </button>
+          </div>
+        )}
+        <p ref={pRef} contentEditable={!!onUpdate} suppressContentEditableWarning
+          data-editable={!!onUpdate}
+          onInput={onUpdate ? () => setPDirty(true) : undefined}
+          onFocus={onUpdate ? (e) => {
+            setPEditing(true);
+            e.currentTarget.style.background = 'var(--bg-subtle)';
+            e.currentTarget.style.boxShadow = '0 0 0 1px var(--accent)';
+          } : undefined}
+          onBlur={onUpdate ? (e) => {
+            e.currentTarget.style.background = '';
+            e.currentTarget.style.boxShadow = '';
+            const t = e.currentTarget.textContent?.trim();
+            if (pDirty && t !== block.text) onUpdate(t);
+            setPEditing(false); setPDirty(false);
+          } : undefined}
+          style={onUpdate ? { outline: 'none', borderRadius: 4, padding: '2px 4px', margin: '-2px -4px', cursor: 'text' } : {}}
+        >{block.text}</p>
+      </div>
+    );
     case 'ul':    return <ul>{(block.items || []).map((it, i) => <li key={i}>{it}</li>)}</ul>;
     case 'pre':   return <pre>{block.text}</pre>;
     case 'quote': return <blockquote>{block.text}</blockquote>;

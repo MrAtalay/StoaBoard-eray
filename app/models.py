@@ -372,6 +372,33 @@ class UploadedFile(db.Model):
     created_at = db.Column(db.DateTime, default=_now)
 
 
+class TaskAttachment(db.Model):
+    __tablename__ = 'task_attachments'
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('tasks.id', ondelete='CASCADE'), nullable=False, index=True)
+    file_id = db.Column(db.Integer, db.ForeignKey('uploaded_files.id', ondelete='CASCADE'), nullable=False)
+    file_name = db.Column(db.String(255), nullable=False)
+    display_name = db.Column(db.String(255), nullable=True)  # user-editable label
+    file_type = db.Column(db.String(100), nullable=False)
+    uploader_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=_now)
+
+    uploader = db.relationship('User')
+    uploaded_file = db.relationship('UploadedFile')
+
+    def to_dict(self):
+        raw_name = self.file_name.rsplit('.', 1)[0] if '.' in self.file_name else self.file_name
+        return {
+            'id': self.id,
+            'file_name': self.file_name,
+            'display_name': self.display_name or raw_name,
+            'file_type': self.file_type,
+            'url': f'/api/attachments/{self.id}',
+            'uploader': self.uploader.slug if self.uploader else None,
+            'created_at': self.created_at.isoformat() if self.created_at else '',
+        }
+
+
 class WorkspaceJoinRequest(db.Model):
     __tablename__ = 'workspace_join_requests'
     id = db.Column(db.Integer, primary_key=True)

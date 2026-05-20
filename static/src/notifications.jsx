@@ -59,10 +59,24 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
   React.useEffect(() => {
     if (open) {
       API.getNotifications()
-        .then(notifs => { setItems(notifs); DATA.NOTIFICATIONS = notifs; })
+        .then(notifs => {
+          setItems(notifs);
+          DATA.NOTIFICATIONS = notifs;
+          const unread = notifs.filter(n => n.unread).length;
+          if (unread === 0) window.__NOTIF_BADGE_RESET__?.();
+        })
         .catch(() => {});
     }
   }, [open]);
+
+  // Full-page: also reload on mount since open is always true
+  React.useEffect(() => {
+    if (fullPage) {
+      API.getNotifications()
+        .then(notifs => { setItems(notifs); DATA.NOTIFICATIONS = notifs; })
+        .catch(() => {});
+    }
+  }, [fullPage]);
 
   React.useEffect(() => {
     const sock = socket || window.SOCKET;
@@ -86,7 +100,13 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
 
   const markAllRead = async () => {
     setItems(prev => prev.map(n => ({ ...n, unread: false })));
-    try { await API.markAllRead(); } catch (_) {}
+    try {
+      await API.markAllRead();
+      const fresh = await API.getNotifications();
+      setItems(fresh);
+      DATA.NOTIFICATIONS = fresh;
+      window.__NOTIF_BADGE_RESET__?.();
+    } catch (_) {}
   };
 
   const deleteAll = async () => {
@@ -104,22 +124,37 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
 
   const handleNotifClick = (n) => {
     markRead(n.id);
-    if (n.task_id) {
-      const task = (window.DATA?.tasks || []).find(t => String(t.id) === String(n.task_id))
-                || (window.__APP_TASKS__ || []).find(t => String(t.id) === String(n.task_id));
-      if (task) { onOpenTask?.(task); onClose(); return; }
-      if (window.__OPEN_TASK_BY_ID__) { window.__OPEN_TASK_BY_ID__(n.task_id); onClose(); return; }
-    }
-    // @mention in general chat → open general channel, scroll to message
-    if (n.chat_channel === 'general') {
-      onOpenChat?.(null, n.message_id || null);
-      onClose();
+    const type = n.type || _notifType(n.text);
+
+    // ── DM / channel message → open chat (callback handles navigation+close) ─
+    if (type === 'dm_received' || type === 'message') {
+      onOpenChat?.(n.sender_slug || null, n.message_id || null);
       return;
     }
-    // DM message or DM mention → open DM with sender, scroll to message
+
+    // ── Chat mention (no task) → open channel/DM ─────────────────────────────
+    if (type === 'mention' && !n.task_id) {
+      onOpenChat?.(n.sender_slug || null, n.message_id || null);
+      return;
+    }
+
+    // ── Task assignment / comment → open task on board ───────────────────────
+    if (n.task_id) {
+      const task = (window.__APP_TASKS__ || []).find(t => String(t.id) === String(n.task_id))
+                || (window.DATA?.tasks || []).find(t => String(t.id) === String(n.task_id));
+      if (task) { onOpenTask?.(task); return; }
+      if (window.__OPEN_TASK_BY_ID__) { window.__OPEN_TASK_BY_ID__(n.task_id); return; }
+    }
+
+    // ── Channel mention fallback ──────────────────────────────────────────────
+    if (n.chat_channel) {
+      onOpenChat?.(null, n.message_id || null);
+      return;
+    }
+
+    // ── Sender slug fallback ──────────────────────────────────────────────────
     if (n.sender_slug) {
       onOpenChat?.(n.sender_slug, n.message_id || null);
-      onClose();
     }
   };
 
@@ -197,7 +232,7 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
                 className={`notif-item notif-type-${type}`}
                 data-unread={n.unread}
                 onClick={() => handleNotifClick(n)}
-                style={{ cursor: (n.task_id || n.sender_slug) ? 'pointer' : 'default' }}
+                style={{ cursor: (n.task_id || n.sender_slug || n.chat_channel || ['dm_received','message','mention','task_assigned','comment_added'].includes(n.type || _notifType(n.text))) ? 'pointer' : 'default' }}
               >
                 <div className="notif-icon-badge">
                   <Icon name={_notifIcon(type)} size={13} />
@@ -206,7 +241,7 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
                   <div className="notif-text" dangerouslySetInnerHTML={{ __html: renderNotifText(n.text) }} />
                   <div className="notif-time">{fmtTimeAgo(n.time)}</div>
                 </div>
-                {(n.task_id || n.sender_slug) && (
+                {(n.task_id || n.sender_slug || n.chat_channel || ['dm_received','message','mention','task_assigned','comment_added'].includes(n.type || _notifType(n.text))) && (
                   <Icon name="arrowRight" size={11} style={{ color: 'var(--ink-faint)', flexShrink: 0, marginRight: 24 }} />
                 )}
                 <button

@@ -15,6 +15,7 @@ from app.models import (
     Notification, ActivityLog, ChatMessage, WorkspaceJoinRequest, UploadedFile,
     Channel, ChannelMember,
     Note, NoteCollaborator, NoteLinkedTask,
+    TaskAttachment,
     _now,
 )
 from app import online_state
@@ -784,6 +785,11 @@ def transfer_ownership():
     member.role = 'member'
 
     db.session.commit()
+
+    # Notify all workspace members so chat/member lists update live
+    _sio.emit('member_role_changed', _member_to_dict(target_member), to=f'ws_{member.workspace_id}')
+    _sio.emit('member_role_changed', _member_to_dict(member),        to=f'ws_{member.workspace_id}')
+
     return jsonify({'ok': True})
 
 
@@ -1114,6 +1120,8 @@ def update_task(task_id):
         task.start_date = _parse_date(data['start'])
     if 'assignee_dates' in data:
         task.assignee_dates = data['assignee_dates'] or None
+    if 'doc' in data:
+        task.doc = data['doc'] if isinstance(data['doc'], list) else None
 
     if 'col' in data:
         new_col = BoardColumn.query.filter_by(
@@ -1293,11 +1301,34 @@ def add_comment(task_id):
     db.session.add(comment)
 
     notifs_to_push = []
+    notified_ids = set()
+
+    # Notify assignees
     for ta in task.assignees:
         if ta.user_id != user.id:
             notif = Notification(user_id=ta.user_id, text=_nt('comment_added', who=user.name, preview=text[:80]), task_id=task_id, sender_slug=user.slug, workspace_id=project.workspace_id)
             db.session.add(notif)
             notifs_to_push.append((ta.user_id, notif))
+            notified_ids.add(ta.user_id)
+
+    # Parse @mentions and notify mentioned users
+    import re as _re
+    mention_names = _re.findall(r'@([\w\-çğışöüÇĞİŞÖÜ]+)', text)
+    for fname in mention_names:
+        mentioned = User.query.filter(
+            User.name.ilike(fname + '%')
+        ).first()
+        if mentioned and mentioned.id != user.id and mentioned.id not in notified_ids:
+            m_notif = Notification(
+                user_id=mentioned.id,
+                text=f'<strong>{user.name}</strong> seni bir görev yorumunda bahsetti: {text[:80]}',
+                task_id=task_id,
+                sender_slug=user.slug,
+                workspace_id=project.workspace_id,
+            )
+            db.session.add(m_notif)
+            notifs_to_push.append((mentioned.id, m_notif))
+            notified_ids.add(mentioned.id)
 
     db.session.flush()
 
@@ -3086,6 +3117,124 @@ def get_task_linked_notes(task_id):
     visible = [n for n in notes if _can_view_note(user, n)]
     visible.sort(key=lambda n: n.updated_at or _now(), reverse=True)
     return jsonify([n.to_dict(include_body=False) for n in visible])
+
+
+# ── Task Attachments ────────────────────────────────────────────────────────
+
+ALLOWED_MIME_PREFIXES = ('image/', 'video/', 'audio/', 'application/pdf',
+                         'text/', 'application/zip', 'application/msword',
+                         'application/vnd.')
+MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024  # 20 MB
+
+
+@api_bp.route('/tasks/<int:task_id>/attachments', methods=['GET'])
+@_login_required
+def list_task_attachments(task_id):
+    user = _current_user()
+    task = Task.query.get_or_404(task_id)
+    project = Project.query.get_or_404(task.project_id)
+    _, denied = _require_project_access(user, project)
+    if denied:
+        return denied
+    items = TaskAttachment.query.filter_by(task_id=task_id).order_by(TaskAttachment.created_at.desc()).all()
+    return jsonify([a.to_dict() for a in items])
+
+
+@api_bp.route('/tasks/<int:task_id>/attachments', methods=['POST'])
+@_login_required
+def upload_task_attachment(task_id):
+    user = _current_user()
+    task = Task.query.get_or_404(task_id)
+    project = Project.query.get_or_404(task.project_id)
+    _, denied = _require_project_access(user, project)
+    if denied:
+        return denied
+    if 'file' not in request.files:
+        return jsonify({'error': 'Dosya bulunamadı'}), 400
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({'error': 'Dosya adı boş'}), 400
+    data = f.read()
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        return jsonify({'error': 'Dosya 20 MB sınırını aşıyor'}), 413
+    mime = f.content_type or 'application/octet-stream'
+    if not any(mime.startswith(p) for p in ALLOWED_MIME_PREFIXES):
+        return jsonify({'error': f'Desteklenmeyen dosya türü: {mime}'}), 415
+    uploaded = UploadedFile(
+        filename=f.filename,
+        content_type=mime,
+        purpose='attachment',
+        data=data,
+        size=len(data),
+    )
+    db.session.add(uploaded)
+    db.session.flush()
+    attachment = TaskAttachment(
+        task_id=task_id,
+        file_id=uploaded.id,
+        file_name=f.filename,
+        file_type=mime,
+        uploader_id=user.id,
+    )
+    db.session.add(attachment)
+    db.session.commit()
+    return jsonify(attachment.to_dict()), 201
+
+
+@api_bp.route('/attachments/<int:attachment_id>', methods=['GET'])
+@_login_required
+def serve_attachment(attachment_id):
+    from flask import send_file
+    import io
+    user = _current_user()
+    att = TaskAttachment.query.get_or_404(attachment_id)
+    task = Task.query.get_or_404(att.task_id)
+    project = Project.query.get_or_404(task.project_id)
+    _, denied = _require_project_access(user, project)
+    if denied:
+        return denied
+    uf = att.uploaded_file
+    return send_file(
+        io.BytesIO(uf.data),
+        mimetype=uf.content_type,
+        as_attachment=False,
+        download_name=att.file_name,
+    )
+
+
+@api_bp.route('/attachments/<int:attachment_id>', methods=['DELETE'])
+@_login_required
+def delete_attachment(attachment_id):
+    user = _current_user()
+    att = TaskAttachment.query.get_or_404(attachment_id)
+    task = Task.query.get_or_404(att.task_id)
+    project = Project.query.get_or_404(task.project_id)
+    _, denied = _require_project_access(user, project)
+    if denied:
+        return denied
+    uf = att.uploaded_file
+    db.session.delete(att)
+    db.session.delete(uf)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@api_bp.route('/attachments/<int:attachment_id>', methods=['PATCH'])
+@_login_required
+def rename_attachment(attachment_id):
+    user = _current_user()
+    att = TaskAttachment.query.get_or_404(attachment_id)
+    task = Task.query.get_or_404(att.task_id)
+    project = Project.query.get_or_404(task.project_id)
+    _, denied = _require_project_access(user, project)
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    name = (data.get('display_name') or '').strip()
+    if name:
+        att.display_name = name
+        db.session.commit()
+    return jsonify(att.to_dict())
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────

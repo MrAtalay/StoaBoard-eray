@@ -623,9 +623,10 @@ function App() {
   window.__OPEN_CHAT__ = openChat;
   window.__APP_TASKS__ = tasks;
   window.__SWITCH_VIEW__ = setView;
+  window.__NOTIF_BADGE_RESET__ = () => setNotifCount(0);
   window.__OPEN_TASK_BY_ID__ = (taskId) => {
     const t = tasks.find(x => String(x.id) === String(taskId));
-    if (t) { setDrawerTask(t); setNotifOpen(false); }
+    if (t) { setDrawerTask(t); setNotifOpen(false); setView('board'); }
   };
 
   const handleCmd = (action) => {
@@ -859,7 +860,7 @@ function App() {
                 onClose={() => setView('dashboard')}
                 socket={socket}
                 onOpenTask={(task) => { setView('board'); setDrawerTask(task); }}
-                onOpenChat={(slug, msgId) => { setView('chat'); openChat(slug, msgId); }}
+                onOpenChat={(slug, msgId) => { openChat(slug, msgId); setView('chat'); }}
                 currentWsId={currentWsId}
                 tweaks={tweaks}
                 setTweak={setTweak}
@@ -916,8 +917,8 @@ function App() {
         open={notifOpen}
         onClose={() => { setNotifOpen(false); setNotifCount(0); }}
         socket={socket}
-        onOpenTask={(task) => { setNotifOpen(false); setDrawerTask(task); }}
-        onOpenChat={(slug, msgId) => { setNotifOpen(false); openChat(slug, msgId); }}
+        onOpenTask={(task) => { setNotifOpen(false); setNotifCount(0); setDrawerTask(task); }}
+        onOpenChat={(slug, msgId) => { setNotifOpen(false); setNotifCount(0); openChat(slug, msgId); }}
         currentWsId={currentWsId}
         tweaks={tweaks}
         setTweak={setTweak}

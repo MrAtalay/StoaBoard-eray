@@ -1458,6 +1458,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
   const [activeChannel, setActiveChannel] = useChatS('general');
   const [addChannelOpen, setAddChannelOpen] = useChatS(false);
   const [channelSettingsId, setChannelSettingsId] = useChatS(null); // for future use
+  const [mentionTaskRef, setMentionTaskRef] = useChatS(null); // { id, title } set when navigating from a @mention
 
   // Refresh channels from API on open / workspace switch
   useChatE(() => {
@@ -1581,6 +1582,11 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
         setDmWith(initialDmWith);
         setMessages([]);
         setTab('dm');
+        // Pick up any task reference set by @mention click
+        if (window.__CHAT_MENTION_TASK__) {
+          setMentionTaskRef(window.__CHAT_MENTION_TASK__);
+          window.__CHAT_MENTION_TASK__ = null;
+        }
       }
     } else if (!wasOpen) {
       // opened via sidebar chat button without a DM target → reset to general
@@ -2649,6 +2655,13 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   onClose={() => setPinnedBannerHidden(true)}
                 />
               )}
+              {dmWith && mentionTaskRef && (
+                <div className="chat-task-ref-banner">
+                  <Icon name="listChecks" size={13} />
+                  <span>{window.t?.('chat_mentioned_in')||'Bahsedildi:'} <strong>{mentionTaskRef.title}</strong></span>
+                  <button onClick={() => setMentionTaskRef(null)}><Icon name="x" size={12} /></button>
+                </div>
+              )}
               {messages.length === 0 && (
                 <div className="chat-empty">
                   {dmWith ? `${dmUser?.name || dmWith} ${window.t?.('chat_dm_start')||'ile sohbet başlat.'}` : (window.t?.('chat_general_first')||'Genel kanala ilk mesajı gönder.')}
@@ -2925,7 +2938,31 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                                 {isSelf && <span style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 400 }}>({window.t?.('chat_you')||'siz'})</span>}
                                 <RoleBadge role={cm.role} />
                               </div>
-                              <div style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{m.role || _statusLabel(mStatus)}</div>
+                              {/* Workspace role subtitle */}
+                              {m.ws_role === 'owner' ? (
+                                <span style={{
+                                  fontSize: 10.5, fontWeight: 600,
+                                  background: 'linear-gradient(90deg, oklch(62% 0.18 295), oklch(58% 0.20 320))',
+                                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                                  backgroundClip: 'text',
+                                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                                }}>
+                                  {window.t?.('chat_founder') || 'Kurucu'}
+                                </span>
+                              ) : (m.role_name || m.role) ? (
+                                <span style={{
+                                  fontSize: 10.5, fontWeight: 500,
+                                  color: m.role_color || 'var(--ink-faint)',
+                                  background: m.role_color ? `${m.role_color}20` : 'transparent',
+                                  padding: m.role_color ? '1px 5px' : '0',
+                                  borderRadius: m.role_color ? '4px' : '0',
+                                  display: 'inline-block',
+                                }}>
+                                  {m.role_name || m.role}
+                                </span>
+                              ) : (
+                                <div style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{_statusLabel(mStatus)}</div>
+                              )}
                             </div>
                             {!isSelf && (
                               <button
@@ -3247,6 +3284,13 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   onUnpin={togglePin}
                   onClose={() => setPinnedBannerHidden(true)}
                 />
+              )}
+              {dmWith && mentionTaskRef && (
+                <div className="chat-task-ref-banner">
+                  <Icon name="listChecks" size={13} />
+                  <span>{window.t?.('chat_mentioned_in')||'Bahsedildi:'} <strong>{mentionTaskRef.title}</strong></span>
+                  <button onClick={() => setMentionTaskRef(null)}><Icon name="x" size={12} /></button>
+                </div>
               )}
               {messages.length === 0 && (
                 <div className="chat-empty">

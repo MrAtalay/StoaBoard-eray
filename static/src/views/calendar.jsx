@@ -5,6 +5,9 @@ const { useState: useCalState, useMemo: useCalMemo, useCallback: useCalCb } = Re
 const CAL_MONTHS     = () => (window.t?.('cal_months') || 'Ocak,Şubat,Mart,Nisan,Mayıs,Haziran,Temmuz,Ağustos,Eylül,Ekim,Kasım,Aralık').split(',');
 const CAL_DAYS_SHORT = () => (window.t?.('cal_days_short') || 'Pzt,Sal,Çar,Per,Cum,Cmt,Paz').split(',');
 
+// Color palette for overlapping bar rotation
+const CAL_COLOR_PALETTE = ['#2e7d32','#c62828','#1565c0','#e65100','#37474f','#6a1b9a','#00838f','#558b2f'];
+
 // ── Turkish national holidays ─────────────────────────────────────────────────
 const TR_FIXED_HOL = [
   [1,  1,  'Yılbaşı'],
@@ -50,37 +53,45 @@ function fmtDateRange(s, e) {
   return `${DATA.fmtDate(s)} – ${DATA.fmtDate(e)}`;
 }
 
+// ISO date string from a Date object
+function toDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks }) {
-  const [cursor, setCursor]     = useCalState(() => new Date());
-  const [calView, setCalView]   = useCalState('month');
+  const [cursor, setCursor]         = useCalState(() => new Date());
+  const [calView, setCalView]       = useCalState('month');
   const [rangeStart, setRangeStart] = useCalState(null);
   const [hoverDate, setHoverDate]   = useCalState(null);
-  const [barTooltip, setBarTooltip] = useCalState(null); // {text, x, y}
-  const [onlyMine, setOnlyMine] = useCalState(() => localStorage.getItem('stoa.calMine') === 'true');
+  const [barTooltip, setBarTooltip] = useCalState(null);
+  const [onlyMine, setOnlyMine]     = useCalState(() => localStorage.getItem('stoa.calMine') === 'true');
+  const [selectedDate, setSelectedDate] = useCalState(null);
+
   React.useEffect(() => { localStorage.setItem('stoa.calMine', onlyMine ? 'true' : 'false'); }, [onlyMine]);
-  const meId = window.CURRENT_USER?.id;
+
+  const meId  = window.CURRENT_USER?.id;
+  const myId  = meId;
   const tasks = onlyMine && meId
     ? rawTasks.filter(t => (t.assignees || []).includes(meId))
     : rawTasks;
 
-  const today    = new Date().toISOString().slice(0, 10);
-  const myId     = window.CURRENT_USER?.id;
-  const year     = cursor.getFullYear();
-  const month    = cursor.getMonth();
+  const today     = new Date().toISOString().slice(0, 10);
+  const year      = cursor.getFullYear();
+  const month     = cursor.getMonth();
   const monthName = CAL_MONTHS()[month];
 
   // ── Month grid cells ──────────────────────────────────────────────────────
-  const firstDay    = new Date(year, month, 1);
-  const startDOW    = (firstDay.getDay() + 6) % 7;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay      = new Date(year, month, 1);
+  const startDOW      = (firstDay.getDay() + 6) % 7;
+  const daysInMonth   = new Date(year, month + 1, 0).getDate();
   const prevMonthDays = new Date(year, month, 0).getDate();
 
   const cells = [];
   for (let i = startDOW - 1; i >= 0; i--)
     cells.push({ day: prevMonthDays - i, other: true, dateStr: null });
   for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    cells.push({ day: d, other: false, dateStr, isToday: dateStr === today });
+    const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells.push({ day: d, other: false, dateStr: ds, isToday: ds === today });
   }
   while (cells.length < 42)
     cells.push({ day: cells.length - daysInMonth - startDOW + 1, other: true, dateStr: null });
@@ -93,7 +104,7 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
     d.setDate(weekStart.getDate() + i);
     return d;
   });
-  const wEnd = weekDays[6];
+  const wEnd      = weekDays[6];
   const weekTitle = weekStart.getMonth() === wEnd.getMonth()
     ? `${weekStart.getDate()}–${wEnd.getDate()} ${CAL_MONTHS()[wEnd.getMonth()]} ${wEnd.getFullYear()}`
     : `${weekStart.getDate()} ${CAL_MONTHS()[weekStart.getMonth()]} – ${wEnd.getDate()} ${CAL_MONTHS()[wEnd.getMonth()]} ${wEnd.getFullYear()}`;
@@ -107,79 +118,110 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
     else last.tasks.push(t);
   }
 
-  // ── Navigation ────────────────────────────────────────────────────────────
-  const moveMonth = (d) => setCursor(new Date(year, month + d, 1));
-  const moveWeek  = (d) => { const n = new Date(cursor); n.setDate(n.getDate() + d * 7); setCursor(n); };
-  const nav = (d) => calView === 'week' ? moveWeek(d) : moveMonth(d);
+  // ── Navigation — stopPropagation so rangeStart survives month changes ─────
+  const moveMonth = (d, e) => { e?.stopPropagation(); setCursor(new Date(year, month + d, 1)); };
+  const moveWeek  = (d, e) => { e?.stopPropagation(); const n = new Date(cursor); n.setDate(n.getDate() + d * 7); setCursor(n); };
+  const nav       = (d, e) => calView === 'week' ? moveWeek(d, e) : moveMonth(d, e);
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   const tasksFor = (ds) => tasks.filter(t => t.due === ds && !t.start);
   const overdue  = tasks.filter(t => DATA.isOverdue(t.due, t.col)).length;
   const chipTone = (t) => DATA.LABELS[(t.labels || [])[0]]?.tone || 'slate';
-  const dateStr  = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
-  // ── Date range bars ───────────────────────────────────────────────────────
+  // ── Date range bars with palette color rotation ───────────────────────────
   const dateRangeBars = useCalMemo(() => {
     const bars = [];
     for (const t of tasks) {
-      const ad = t.assignee_dates;
+      const ad    = t.assignee_dates;
       const hasAd = ad && Object.keys(ad).length > 0;
       if (hasAd) {
         for (const [slug, d] of Object.entries(ad)) {
           if (!d || (!d.start && !d.end)) continue;
-          const s = d.start || d.end;
-          const e = d.end   || d.start;
+          const s      = d.start || d.end;
+          const e      = d.end   || d.start;
           const member = DATA.MEMBERS.find(m => m.id === slug);
           bars.push({
             id: `${t.id}_${slug}`,
             task: t,
             start: s <= e ? s : e,
             end:   s <= e ? e : s,
-            color: member?.color || 'var(--accent)',
             tooltip: `${member?.name || slug}: ${fmtDateRange(s, e)}`,
           });
         }
       } else if (t.start) {
-        const s = t.start;
-        const e = t.due || t.start;
+        const s     = t.start;
+        const e     = t.due || t.start;
         const start = s <= e ? s : e;
         const end   = s <= e ? e : s;
-        const firstSlug = (t.assignees || [])[0];
-        const member = firstSlug ? DATA.MEMBERS.find(m => m.id === firstSlug) : null;
         bars.push({
           id: String(t.id),
           task: t,
           start, end,
-          color: member?.color || 'var(--accent)',
           tooltip: `${t.title}: ${fmtDateRange(start, end)}`,
         });
       }
+    }
+
+    // Assign palette colors so overlapping bars on the same day get different colors
+    bars.sort((a, b) => a.start.localeCompare(b.start));
+    for (const bar of bars) {
+      const usedColors = new Set(
+        bars
+          .filter(b => b !== bar && b.paletteColor && b.start <= bar.end && b.end >= bar.start)
+          .map(b => b.paletteColor)
+      );
+      bar.paletteColor = CAL_COLOR_PALETTE.find(c => !usedColors.has(c)) || CAL_COLOR_PALETTE[0];
     }
     return bars;
   }, [tasks]);
 
   const barsFor = (ds) => dateRangeBars.filter(b => b.start <= ds && b.end >= ds);
 
-  // ── Range selection logic ─────────────────────────────────────────────────
+  // ── Max-5 validation ──────────────────────────────────────────────────────
+  const countTasksOnDay = (ds) =>
+    tasks.filter(t => t.due === ds && !t.start).length +
+    dateRangeBars.filter(b => b.start <= ds && b.end >= ds).length;
+
+  const validateRange = (start, end) => {
+    let d = new Date(start + 'T00:00:00');
+    const endD = new Date(end + 'T00:00:00');
+    let safety = 0;
+    while (d <= endD && safety < 400) {
+      if (countTasksOnDay(toDateStr(d)) >= 5) {
+        window.showToast?.('Maksimum limite geldiniz! Aynı tarihler arasında en fazla 5 görev atanabilir.', 'error');
+        return false;
+      }
+      d.setDate(d.getDate() + 1);
+      safety++;
+    }
+    return true;
+  };
+
+  // ── Range selection ───────────────────────────────────────────────────────
   const rangeEnd = rangeStart && hoverDate && hoverDate >= rangeStart ? hoverDate : null;
 
   const handleDayClick = useCalCb((ds, e) => {
     if (!ds) return;
     if (e.target.closest('.cal-chip') || e.target.closest('.cal-bar')) return;
 
+    setSelectedDate(ds);
+
     if (!rangeStart) {
       setRangeStart(ds);
     } else if (ds === rangeStart) {
       setRangeStart(null);
-      if (onOpenModal && canCreateTasks) onOpenModal('todo', { start: ds, end: ds });
+      if (onOpenModal && canCreateTasks && validateRange(ds, ds))
+        onOpenModal('todo', { start: ds, end: ds });
     } else if (ds > rangeStart) {
       const s = rangeStart;
       setRangeStart(null);
-      if (onOpenModal && canCreateTasks) onOpenModal('todo', { start: s, end: ds });
+      if (onOpenModal && canCreateTasks && validateRange(s, ds))
+        onOpenModal('todo', { start: s, end: ds });
     } else {
+      // Clicked a date before rangeStart → reset start to new date
       setRangeStart(ds);
     }
-  }, [rangeStart, onOpenModal, canCreateTasks]);
+  }, [rangeStart, onOpenModal, canCreateTasks, tasks, dateRangeBars]);
 
   const isInRange = (ds) => {
     if (!ds || !rangeStart) return false;
@@ -193,9 +235,8 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
     if (!ds) return null;
     const bars = barsFor(ds);
     if (bars.length === 0) return null;
-    // Limit to 3 bars per cell, show "+N" if more
     const visible = bars.slice(0, 3);
-    const extra = bars.length - 3;
+    const extra   = bars.length - 3;
     return (
       <>
         {visible.map(b => {
@@ -208,7 +249,7 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
               data-start={isStart}
               data-end={isEnd}
               data-mine={!!(myId && (b.task.assignees||[]).includes(myId))}
-              style={{ background: b.color }}
+              style={{ background: b.paletteColor }}
               title={b.tooltip}
               onMouseEnter={(e) => setBarTooltip({ text: b.tooltip, x: e.clientX, y: e.clientY })}
               onMouseMove={(e)  => setBarTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
@@ -237,29 +278,114 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
     );
   };
 
-  // ── Mini-calendar (right panel) ──────────────────────────────────────────
-  const miniRef = React.useRef(null);
+  // ── Mini calendar ─────────────────────────────────────────────────────────
   const [miniCursor, setMiniCursor] = useCalState(() => new Date());
   React.useEffect(() => { setMiniCursor(new Date(year, month, 1)); }, [year, month]);
-  const miniY = miniCursor.getFullYear();
-  const miniM = miniCursor.getMonth();
+
+  const miniY        = miniCursor.getFullYear();
+  const miniM        = miniCursor.getMonth();
   const miniFirstDOW = (new Date(miniY, miniM, 1).getDay() + 6) % 7;
   const miniDaysIn   = new Date(miniY, miniM + 1, 0).getDate();
   const miniPrevDays = new Date(miniY, miniM, 0).getDate();
+
   const miniCells = [];
-  for (let i = miniFirstDOW - 1; i >= 0; i--) miniCells.push({ day: miniPrevDays - i, other: true, dateStr: null });
+  for (let i = miniFirstDOW - 1; i >= 0; i--)
+    miniCells.push({ day: miniPrevDays - i, other: true, dateStr: null });
   for (let d = 1; d <= miniDaysIn; d++) {
     const ds = `${miniY}-${String(miniM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     miniCells.push({ day: d, other: false, dateStr: ds });
   }
-  while (miniCells.length < 42) miniCells.push({ day: miniCells.length - miniDaysIn - miniFirstDOW + 1, other: true, dateStr: null });
+  while (miniCells.length < 42)
+    miniCells.push({ day: miniCells.length - miniDaysIn - miniFirstDOW + 1, other: true, dateStr: null });
 
-  const todayTasksList = tasks.filter(t => {
-    if (t.due === today) return true;
-    if (t.start && t.start <= today && (t.due || t.start) >= today) return true;
-    return false;
-  });
+  // Pre-compute all dates that have at least one task (for mini calendar dots)
+  const allTaskDates = useCalMemo(() => {
+    const set = new Set();
+    for (const t of tasks) {
+      if (t.due) set.add(t.due);
+      if (t.start) set.add(t.start);
+      // Fill every day inside a range
+      if (t.start && t.due && t.due !== t.start) {
+        let d = new Date(t.start + 'T00:00:00');
+        const endD = new Date(t.due + 'T00:00:00');
+        let guard = 0;
+        while (d <= endD && guard < 400) {
+          set.add(toDateStr(d));
+          d.setDate(d.getDate() + 1);
+          guard++;
+        }
+      }
+      // Assignee date ranges
+      if (t.assignee_dates) {
+        for (const ad of Object.values(t.assignee_dates)) {
+          if (!ad) continue;
+          const s = ad.start || ad.end;
+          const e = ad.end   || ad.start;
+          if (!s) continue;
+          let d = new Date(s + 'T00:00:00');
+          const endD = new Date(e + 'T00:00:00');
+          let guard = 0;
+          while (d <= endD && guard < 400) {
+            set.add(toDateStr(d));
+            d.setDate(d.getDate() + 1);
+            guard++;
+          }
+        }
+      }
+    }
+    return set;
+  }, [tasks]);
 
+  // ── Right panel: tasks for the whole week the cursor sits in ──────────────
+  const cursorWeekMon = new Date(cursor);
+  cursorWeekMon.setDate(cursor.getDate() - (cursor.getDay() + 6) % 7);
+  const cursorWeekSun = new Date(cursorWeekMon);
+  cursorWeekSun.setDate(cursorWeekMon.getDate() + 6);
+  const weekPanelStart = toDateStr(cursorWeekMon);
+  const weekPanelEnd   = toDateStr(cursorWeekSun);
+
+  const contextTasksList = useCalMemo(() => {
+    return tasks
+      .filter(t => {
+        const due   = t.due   || '';
+        const start = t.start || due;
+        if (!due && !start) return false;
+        return (due >= weekPanelStart && due <= weekPanelEnd)
+            || (start >= weekPanelStart && start <= weekPanelEnd)
+            || (start < weekPanelStart && due > weekPanelEnd);
+      })
+      .sort((a, b) => ((a.start || a.due) || '').localeCompare((b.start || b.due) || ''));
+  }, [tasks, weekPanelStart, weekPanelEnd]);
+
+  // ── Tasks for the specifically selected date ──────────────────────────────
+  const selectedDateTasks = useCalMemo(() => {
+    if (!selectedDate) return [];
+    return tasks.filter(t => {
+      const due   = t.due || '';
+      const start = t.start || due;
+      if (!due && !start) return false;
+      // Task range spans the selected date
+      if (start && due && start <= selectedDate && due >= selectedDate) return true;
+      if (!start && due === selectedDate) return true;
+      // Assignee date ranges
+      const adVals = t.assignee_dates ? Object.values(t.assignee_dates) : [];
+      return adVals.some(d => {
+        if (!d) return false;
+        const s = d.start || d.end;
+        const e = d.end   || d.start;
+        return s && e && s <= selectedDate && e >= selectedDate;
+      });
+    }).sort((a, b) => ((a.start || a.due) || '').localeCompare((b.start || b.due) || ''));
+  }, [tasks, selectedDate]);
+
+  // ── Guidance text (dynamically changes when rangeStart is set) ────────────
+  const guidanceText = canCreateTasks
+    ? (rangeStart
+        ? 'Bitiş tarihini seçin — aynı güne tıklarsanız tek günlük görev oluşturulur.'
+        : '+ Yeni görev oluşturmak için takvimde bir başlangıç tarihi seçin.')
+    : null;
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="cal-wrap" onClick={() => { if (rangeStart) setRangeStart(null); }}>
 
@@ -287,21 +413,21 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
         <div className="cal-header-actions">
           {calView !== 'agenda' && (
             <div className="cal-nav">
-              <button className="icon-btn" onClick={() => nav(-1)}><Icon name="chevronLeft" size={15} /></button>
-              <button className="icon-btn" onClick={() => nav(1)}><Icon name="chevronRight" size={15} /></button>
+              <button className="icon-btn" onClick={(e) => nav(-1, e)}><Icon name="chevronLeft" size={15} /></button>
+              <button className="icon-btn" onClick={(e) => nav(1, e)}><Icon name="chevronRight" size={15} /></button>
             </div>
           )}
-          <button className="btn btn-ghost" onClick={() => setCursor(new Date())}>{window.t('cal_today')}</button>
+          <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setCursor(new Date()); }}>{window.t('cal_today')}</button>
           <button
             className="filter-priority-chip"
             data-active={onlyMine}
-            onClick={() => setOnlyMine(v => !v)}
+            onClick={(e) => { e.stopPropagation(); setOnlyMine(v => !v); }}
           >
             <Icon name="user" size={11} />
             {window.t('cal_only_mine')}
           </button>
           {canCreateTasks && (
-            <button className="btn btn-primary" onClick={() => onOpenModal?.('todo')}>
+            <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); onOpenModal?.('todo'); }}>
               <Icon name="plus" size={13} /> {window.t('cal_new_task')}
             </button>
           )}
@@ -315,19 +441,37 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
           <div className="cal-stat"><span>{window.t('cal_today')}</span><strong>{tasksFor(today).length}</strong></div>
           <div className="cal-stat"><span>{window.t('cal_overdue')}</span><strong>{overdue}</strong></div>
         </div>
-        <div className="cal-filter-row">
+        <div className="cal-filter-row" onClick={(e) => e.stopPropagation()}>
           <span>{window.t('cal_view')}</span>
           {[['month',window.t('cal_month')],['week',window.t('cal_week')],['agenda',window.t('cal_agenda')]].map(([v, label]) => (
             <button key={v} className="filter-chip" data-active={calView === v} onClick={() => setCalView(v)}>
               {label}
             </button>
           ))}
-          {rangeStart && (
-            <span style={{ fontSize:12, color:'var(--accent)', marginLeft:8 }}>
-              {window.t('cal_range_start')} {DATA.fmtDate(rangeStart)} · {window.t('cal_range_pick')}
-              <button style={{ marginLeft:6, fontSize:11, color:'var(--ink-muted)' }} onClick={(e) => { e.stopPropagation(); setRangeStart(null); }}>
-                ✕
-              </button>
+          {guidanceText && (
+            <span
+              className="cal-guidance-text"
+              style={{
+                marginLeft: 'auto',
+                fontSize: 11.5,
+                color: rangeStart ? 'var(--accent)' : 'var(--ink-muted)',
+                fontStyle: 'italic',
+                transition: 'color 0.25s ease, opacity 0.25s ease',
+                opacity: rangeStart ? 1 : 0.75,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              {guidanceText}
+              {rangeStart && (
+                <button
+                  style={{ fontSize: 11, color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1 }}
+                  onClick={(e) => { e.stopPropagation(); setRangeStart(null); }}
+                >
+                  ✕
+                </button>
+              )}
             </span>
           )}
         </div>
@@ -338,13 +482,14 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
         <div className="cal-grid" onClick={(e) => e.stopPropagation()}>
           {CAL_DAYS_SHORT().map(w => <div key={w} className="cal-weekday">{w}</div>)}
           {cells.map((c, i) => {
-            const dayTasks = c.dateStr ? tasksFor(c.dateStr) : [];
+            const dayTasks   = c.dateStr ? tasksFor(c.dateStr) : [];
             const MAX_VISIBLE = 2;
-            const visible = dayTasks.slice(0, MAX_VISIBLE);
-            const rest    = dayTasks.length - MAX_VISIBLE;
-            const holiday = c.dateStr ? getHoliday(c.dateStr) : null;
-            const inRange = c.dateStr && isInRange(c.dateStr);
-            const isRS    = c.dateStr === rangeStart;
+            const visible    = dayTasks.slice(0, MAX_VISIBLE);
+            const rest       = dayTasks.length - MAX_VISIBLE;
+            const holiday    = c.dateStr ? getHoliday(c.dateStr) : null;
+            const inRange    = c.dateStr && isInRange(c.dateStr);
+            const isRS       = c.dateStr === rangeStart;
+            const dayCount   = c.dateStr ? countTasksOnDay(c.dateStr) : 0;
             return (
               <div
                 key={i}
@@ -353,6 +498,7 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
                 data-today={c.isToday}
                 data-range-start={isRS || undefined}
                 data-in-range={inRange || undefined}
+                data-full={dayCount >= 5 || undefined}
                 style={canCreateTasks && c.dateStr ? { cursor: 'pointer' } : undefined}
                 onClick={(e) => c.dateStr && handleDayClick(c.dateStr, e)}
                 onMouseEnter={() => c.dateStr && setHoverDate(c.dateStr)}
@@ -361,10 +507,22 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                   <div className="day-num">{c.day}</div>
                   {holiday && renderHoliday(c.dateStr)}
+                  {dayCount >= 5 && (
+                    <span title="Bu gün dolu (maks. 5 görev)" style={{ fontSize: 9, color: 'var(--status-rose)', fontWeight: 600, lineHeight: 1 }}>
+                      DOLU
+                    </span>
+                  )}
                 </div>
                 {c.dateStr && renderBars(c.dateStr)}
                 {visible.map(t => (
-                  <div key={t.id} className="cal-chip" data-tone={chipTone(t)} data-mine={myId && (t.assignees||[]).includes(myId)} onClick={(e) => { e.stopPropagation(); onOpenTask(t); }} title={t.title}>
+                  <div
+                    key={t.id}
+                    className="cal-chip"
+                    data-tone={chipTone(t)}
+                    data-mine={myId && (t.assignees||[]).includes(myId)}
+                    onClick={(e) => { e.stopPropagation(); onOpenTask(t); }}
+                    title={t.title}
+                  >
                     {t.title}
                   </div>
                 ))}
@@ -379,7 +537,7 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
       {calView === 'week' && (
         <div className="cal-week-grid" onClick={(e) => e.stopPropagation()}>
           {weekDays.map((d, idx) => {
-            const ds        = dateStr(d);
+            const ds        = toDateStr(d);
             const dayTasks  = tasksFor(ds);
             const isToday   = ds === today;
             const isWeekend = idx >= 5;
@@ -403,14 +561,14 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
                   <span className="cal-week-dow">{CAL_DAYS_SHORT()[idx]}</span>
                   <span className="cal-week-date" data-today={isToday}>{d.getDate()}</span>
                   {holiday && (
-                    <div className="cal-holiday-dot"
+                    <div
+                      className="cal-holiday-dot"
                       title={holiday}
                       onMouseEnter={(e) => setBarTooltip({ text: holiday, x: e.clientX, y: e.clientY })}
                       onMouseLeave={() => setBarTooltip(null)}
                     />
                   )}
                 </div>
-                {/* Bars */}
                 <div style={{ padding:'2px 4px' }}>
                   {barsFor(ds).slice(0, 4).map(b => {
                     const isStart = b.start === ds;
@@ -422,7 +580,7 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
                         data-start={isStart}
                         data-end={isEnd}
                         data-mine={!!(myId && (b.task.assignees||[]).includes(myId))}
-                        style={{ background: b.color }}
+                        style={{ background: b.paletteColor }}
                         onMouseEnter={(e) => setBarTooltip({ text: b.tooltip, x: e.clientX, y: e.clientY })}
                         onMouseMove={(e)  => setBarTooltip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
                         onMouseLeave={()  => setBarTooltip(null)}
@@ -435,7 +593,14 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
                   {dayTasks.map(t => {
                     const overdueT = DATA.isOverdue(t.due, t.col);
                     return (
-                      <div key={t.id} className="cal-week-chip" data-tone={chipTone(t)} data-overdue={overdueT} data-mine={myId && (t.assignees||[]).includes(myId)} onClick={(e) => { e.stopPropagation(); onOpenTask(t); }}>
+                      <div
+                        key={t.id}
+                        className="cal-week-chip"
+                        data-tone={chipTone(t)}
+                        data-overdue={overdueT}
+                        data-mine={myId && (t.assignees||[]).includes(myId)}
+                        onClick={(e) => { e.stopPropagation(); onOpenTask(t); }}
+                      >
                         <span className="cal-week-chip-title">{t.title}</span>
                         {t.priority === 'high' && <Icon name="arrowUp" size={10} style={{ color:'var(--status-rose)', flexShrink:0 }} />}
                       </div>
@@ -448,61 +613,79 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
         </div>
       )}
 
-      {/* ── Right side panel: mini calendar + today list ── */}
+      {/* ── Right side panel ── */}
       <aside className="cal-side">
+
+        {/* Mini calendar */}
         <div className="cal-side-card">
           <div className="cal-side-head">
-            <button className="cal-side-nav" onClick={() => setMiniCursor(new Date(miniY, miniM - 1, 1))} title={window.t('cal_prev_month')}>
+            <button
+              className="cal-side-nav"
+              onClick={(e) => { e.stopPropagation(); setMiniCursor(new Date(miniY, miniM - 1, 1)); }}
+              title={window.t('cal_prev_month')}
+            >
               <Icon name="chevronLeft" size={13} />
             </button>
             <div className="cal-side-title">{CAL_MONTHS()[miniM]} {miniY}</div>
-            <button className="cal-side-nav" onClick={() => setMiniCursor(new Date(miniY, miniM + 1, 1))} title={window.t('cal_next_month')}>
+            <button
+              className="cal-side-nav"
+              onClick={(e) => { e.stopPropagation(); setMiniCursor(new Date(miniY, miniM + 1, 1)); }}
+              title={window.t('cal_next_month')}
+            >
               <Icon name="chevronRight" size={13} />
             </button>
           </div>
           <div className="cal-side-mini">
             {CAL_DAYS_SHORT().map(d => <div key={d} className="cal-side-dow">{d[0]}</div>)}
             {miniCells.map((c, i) => {
-              const isCurMonth = !c.other;
-              const isToday = c.dateStr === today;
-              const isSelected = c.dateStr && c.dateStr === dateStr(cursor);
-              const hasTasks = c.dateStr && (tasksFor(c.dateStr).length > 0 || barsFor(c.dateStr).length > 0);
+              const isToday    = c.dateStr === today;
+              const isSelected = c.dateStr && c.dateStr === toDateStr(cursor);
+              const hasTasks   = c.dateStr && allTaskDates.has(c.dateStr);
               return (
                 <button
                   key={i}
                   className="cal-side-day"
-                  data-other={!isCurMonth}
-                  data-today={isToday}
-                  data-selected={isSelected}
-                  data-has-tasks={hasTasks}
+                  data-other={c.other || undefined}
+                  data-today={isToday || undefined}
+                  data-selected={isSelected || undefined}
+                  data-has-tasks={hasTasks || undefined}
                   disabled={!c.dateStr}
-                  onClick={() => { if (c.dateStr) { setCursor(new Date(c.dateStr + 'T00:00:00')); } }}
+                  onClick={(e) => { e.stopPropagation(); if (c.dateStr) { setCursor(new Date(c.dateStr + 'T00:00:00')); setSelectedDate(c.dateStr); } }}
                 >
                   {c.day}
+                  {hasTasks && !c.other && <span className="mini-task-dot" />}
                 </button>
               );
             })}
           </div>
         </div>
 
+        {/* Weekly context task list */}
         <div className="cal-side-card">
           <div className="cal-side-card-head">
             <Icon name="clock" size={13} />
-            <span>{window.t('cal_today')}</span>
-            <span className="cal-side-count">{todayTasksList.length}</span>
+            <span style={{ flex: 1 }}>
+              {weekPanelStart === weekPanelEnd
+                ? DATA.fmtDate(weekPanelStart)
+                : `${DATA.fmtDate(weekPanelStart)} – ${DATA.fmtDate(weekPanelEnd)}`}
+            </span>
+            <span className="cal-side-count">{contextTasksList.length}</span>
           </div>
           <div className="cal-side-list">
-            {todayTasksList.length === 0 && (
+            {contextTasksList.length === 0 && (
               <div className="cal-side-empty">{window.t('cal_no_tasks_today')}</div>
             )}
-            {todayTasksList.map(t => {
-              const col = DATA.COLUMNS.find(c => c.id === t.col);
-              const isMine = meId && (t.assignees || []).includes(meId);
-              const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
-              const firstMember = members[0];
+            {contextTasksList.map(t => {
+              const col       = DATA.COLUMNS.find(c => c.id === t.col);
+              const isMine    = meId && (t.assignees || []).includes(meId);
+              const members   = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+              const barColor  = dateRangeBars.find(b => String(b.task.id) === String(t.id))?.paletteColor
+                             || members[0]?.color
+                             || col?.color
+                             || 'var(--accent)';
               return (
                 <div key={t.id} className="cal-side-item" data-mine={isMine} onClick={() => onOpenTask(t)}>
-                  <div className="cal-side-item-bar" style={{ background: firstMember?.color || col?.color || 'var(--accent)' }} />
+                  <div className="cal-side-item-bar" style={{ background: barColor }} />
                   <div className="cal-side-item-body">
                     <div className="cal-side-item-title">{t.title}</div>
                     <div className="cal-side-item-meta">
@@ -520,6 +703,55 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
             })}
           </div>
         </div>
+
+        {/* Day-specific panel — appears when a date is selected */}
+        {selectedDate && (
+          <div className="cal-side-card cal-day-panel">
+            <div className="cal-side-card-head">
+              <Icon name="calendar" size={13} />
+              <span style={{ flex: 1 }}>{DATA.fmtDate(selectedDate)}</span>
+              <span className="cal-side-count">{selectedDateTasks.length}</span>
+              <button
+                className="cal-side-clear"
+                onClick={(e) => { e.stopPropagation(); setSelectedDate(null); }}
+                title="Kapat"
+              >
+                <Icon name="x" size={11} />
+              </button>
+            </div>
+            <div className="cal-side-list">
+              {selectedDateTasks.length === 0 && (
+                <div className="cal-side-empty">{window.t('cal_no_tasks_today')}</div>
+              )}
+              {selectedDateTasks.map(t => {
+                const col      = DATA.COLUMNS.find(c => c.id === t.col);
+                const isMine   = meId && (t.assignees || []).includes(meId);
+                const members  = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+                const barColor = dateRangeBars.find(b => String(b.task.id) === String(t.id))?.paletteColor
+                              || members[0]?.color
+                              || col?.color
+                              || 'var(--accent)';
+                return (
+                  <div key={t.id} className="cal-side-item" data-mine={isMine} onClick={() => onOpenTask(t)}>
+                    <div className="cal-side-item-bar" style={{ background: barColor }} />
+                    <div className="cal-side-item-body">
+                      <div className="cal-side-item-title">{t.title}</div>
+                      <div className="cal-side-item-meta">
+                        <span>{col?.title_tr || t.col}</span>
+                        {t.start && t.due && t.start !== t.due && (
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+                            {DATA.fmtDate(t.start)} – {DATA.fmtDate(t.due)}
+                          </span>
+                        )}
+                        {members.length > 0 && <AvatarStack members={members} size="sm" max={3} />}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* ── Agenda view ── */}
@@ -528,7 +760,7 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
           {agendaGroups.length === 0
             ? <div className="cal-empty">{window.t('cal_no_tasks_due')}</div>
             : agendaGroups.map(g => {
-              const isPast  = g.date < today;
+              const isPast   = g.date < today;
               const isTodayG = g.date === today;
               return (
                 <div key={g.date} className="agenda-group">
@@ -538,14 +770,24 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
                     </span>
                     {isPast && !isTodayG && <span className="agenda-badge agenda-badge-late">{window.t('cal_past')}</span>}
                     {isTodayG           && <span className="agenda-badge agenda-badge-today">{window.t('cal_today')}</span>}
-                    {getHoliday(g.date) && <span className="agenda-badge" style={{ background:'oklch(62% 0.15 30 / 0.15)', color:'oklch(52% 0.15 30)' }}>{getHoliday(g.date)}</span>}
+                    {getHoliday(g.date) && (
+                      <span className="agenda-badge" style={{ background:'oklch(62% 0.15 30 / 0.15)', color:'oklch(52% 0.15 30)' }}>
+                        {getHoliday(g.date)}
+                      </span>
+                    )}
                     <span className="agenda-task-count">{g.tasks.length} {window.t('cal_task')}</span>
                   </div>
                   {g.tasks.map(t => {
                     const colObj     = DATA.COLUMNS.find(c => c.id === t.col);
                     const rowMembers = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
                     return (
-                      <div key={t.id} className="agenda-item" data-tone={chipTone(t)} data-mine={myId && (t.assignees||[]).includes(myId)} onClick={() => onOpenTask(t)}>
+                      <div
+                        key={t.id}
+                        className="agenda-item"
+                        data-tone={chipTone(t)}
+                        data-mine={myId && (t.assignees||[]).includes(myId)}
+                        onClick={() => onOpenTask(t)}
+                      >
                         <div className="agenda-item-bar" />
                         <div className="agenda-item-body">
                           <div className="agenda-item-title">{t.title}</div>

@@ -201,6 +201,15 @@ window.API = {
   taskLinkedNotes: (taskId)        => apiFetch(`/api/tasks/${taskId}/linked-notes`),
   workspaceTasks:  ()              => apiFetch('/api/workspaces/me/tasks'),
 
+  // Task attachments
+  listAttachments:   (taskId)          => apiFetch(`/api/tasks/${taskId}/attachments`),
+  deleteAttachment:  (attachmentId)    => apiFetch(`/api/attachments/${attachmentId}`, { method: 'DELETE' }),
+  renameAttachment:  (attachmentId, displayName) => apiFetch(`/api/attachments/${attachmentId}`, { method: 'PATCH', body: { display_name: displayName } }),
+  uploadAttachment:  (taskId, formData) => {
+    return fetch(`/api/tasks/${taskId}/attachments`, { method: 'POST', body: formData, credentials: 'include' })
+      .then(r => { if (!r.ok) return r.json().then(e => Promise.reject(new Error(e.error || 'Yükleme başarısız'))); return r.json(); });
+  },
+
   // Workspace setup & switching
   createWorkspace:   (data)  => apiFetch('/api/workspaces',              { method: 'POST', body: data }),
   joinWorkspace:     (code)  => apiFetch('/api/workspaces/join',          { method: 'POST', body: { code } }),
@@ -317,6 +326,7 @@ window.APP_I18N = {
     set_mem_cannot_change:'Kendi rolünüzü değiştiremezsiniz',
     set_mem_remove:'Çıkar', set_mem_cancel:'İptal',
     set_mem_remove_title:'Üyeyi çıkar',
+    set_mem_new_role:'Rol Oluştur', set_mem_role_name_ph:'Rol adı…',
     // Settings — Labels
     set_lbl_title:'Etiketler', set_lbl_desc:'Görevleri kategorize etmek için etiketleri yönetin.',
     set_lbl_none:'Henüz etiket yok.', set_lbl_save:'Kaydet', set_lbl_cancel:'İptal',
@@ -588,6 +598,7 @@ window.APP_I18N = {
     drawer_comments:'Yorumlar',
     drawer_comment_placeholder:'Yorum yaz… @ ile bahset',
     drawer_sending:'Gönderiliyor…', drawer_send:'Gönder',
+    drawer_attachments:'Dosyalar', drawer_attach:'+ Ekle', drawer_drop_files:'Dosyayı buraya sürükle veya tıkla', drawer_uploading:'Yükleniyor…',
     drawer_description:'Açıklama',
     drawer_no_description:'Bu kart için henüz detaylı açıklama eklenmedi.',
     drawer_copy_suffix:'kopya',
@@ -661,7 +672,7 @@ window.APP_I18N = {
     chat_channel_created:'kanalı oluşturuldu',
     chat_send_msg:'Mesaj gönder',
     chat_make_admin:'Yönetici yap', chat_revoke_admin:'Yöneticiyi geri al',
-    chat_role_owner:'Sahip', chat_role_admin:'Yönetici', chat_role_member:'Üye',
+    chat_role_owner:'Sahip', chat_role_admin:'Yönetici', chat_role_member:'Üye', chat_founder:'Kurucu',
     chat_role_changed:'rolü: ',
     chat_member_kicked:'kanaldan çıkarıldı',
     chat_transfer_confirm:'kanal sahipliğini devralsın mı? Sen yönetici olursun.',
@@ -820,6 +831,7 @@ window.APP_I18N = {
     set_mem_cannot_change:'You cannot change your own role',
     set_mem_remove:'Remove', set_mem_cancel:'Cancel',
     set_mem_remove_title:'Remove member',
+    set_mem_new_role:'New Role', set_mem_role_name_ph:'Role name…',
     // Settings — Labels
     set_lbl_title:'Labels', set_lbl_desc:'Manage labels to categorize tasks.',
     set_lbl_none:'No labels yet.', set_lbl_save:'Save', set_lbl_cancel:'Cancel',
@@ -1091,6 +1103,7 @@ window.APP_I18N = {
     drawer_comments:'Comments',
     drawer_comment_placeholder:'Write a comment… @ to mention',
     drawer_sending:'Sending…', drawer_send:'Send',
+    drawer_attachments:'Files', drawer_attach:'+ Add', drawer_drop_files:'Drag a file here or click', drawer_uploading:'Uploading…',
     drawer_description:'Description',
     drawer_no_description:'No detailed description added yet.',
     drawer_copy_suffix:'copy',
@@ -1163,7 +1176,7 @@ window.APP_I18N = {
     chat_channel_created:'channel created',
     chat_send_msg:'Send message',
     chat_make_admin:'Make admin', chat_revoke_admin:'Revoke admin',
-    chat_role_owner:'Owner', chat_role_admin:'Admin', chat_role_member:'Member',
+    chat_role_owner:'Owner', chat_role_admin:'Admin', chat_role_member:'Member', chat_founder:'Founder',
     chat_role_changed:'role: ',
     chat_member_kicked:'removed from channel',
     chat_transfer_confirm:'take over channel ownership? You will become admin.',
