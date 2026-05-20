@@ -1582,11 +1582,10 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
         setDmWith(initialDmWith);
         setMessages([]);
         setTab('dm');
-        // Pick up any task reference set by @mention click
-        if (window.__CHAT_MENTION_TASK__) {
-          setMentionTaskRef(window.__CHAT_MENTION_TASK__);
-          window.__CHAT_MENTION_TASK__ = null;
-        }
+      }
+      if (window.__CHAT_MENTION_TASK__) {
+        setMentionTaskRef(window.__CHAT_MENTION_TASK__);
+        window.__CHAT_MENTION_TASK__ = null;
       }
     } else if (!wasOpen) {
       // opened via sidebar chat button without a DM target → reset to general

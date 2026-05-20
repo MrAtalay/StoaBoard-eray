@@ -164,6 +164,17 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
   const [titleError, setTitleError]   = useModalState(false);
   const [startError, setStartError]   = useModalState(false);
   const [dueError, setDueError]       = useModalState(false);
+  const [checklistItems, setChecklistItems] = useModalState([]);
+  const [checklistInput, setChecklistInput] = useModalState('');
+  const checklistRef = useModalRef(null);
+
+  const addChecklistItem = () => {
+    const text = checklistInput.trim();
+    if (!text) return;
+    setChecklistItems(prev => [...prev, text]);
+    setChecklistInput('');
+    setTimeout(() => checklistRef.current?.focus(), 0);
+  };
   const [colOpen, setColOpen] = useModalState(false);
   const [colPos, setColPos]   = useModalState({ top: 0, left: 0, width: 0 });
   const colBtnRef  = useModalRef(null);
@@ -196,6 +207,7 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
     if (!open) {
       setTitle(''); setDesc(''); setLabels([]); setBusy(false); setTitleError(false); setDueError(false);
       setDue(''); setStartDate(''); setAssigneeDates({}); setShowPerAssignee(false);
+      setChecklistItems([]); setChecklistInput('');
     }
     if (open) {
       const me = window.CURRENT_USER;
@@ -225,12 +237,17 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
       if (d.start || d.end) cleanAd[slug] = d;
     }
     try {
-      await onCreate({
+      const created = await onCreate({
         title: title.trim(), desc, col, priority,
         start: startDate || null, due: due || null,
         labels, assignees,
         assignee_dates: Object.keys(cleanAd).length ? cleanAd : null,
       });
+      if (created?.id && checklistItems.length > 0) {
+        for (const item of checklistItems) {
+          try { await API.addSubtask(created.id, item); } catch (_) {}
+        }
+      }
       onClose();
     } catch (e) {
       window.showToast?.(window.t('app_err_create_task') + e.message, 'error');
@@ -366,6 +383,35 @@ function AddTaskModal({ open, onClose, defaultCol, onCreate, initialDates }) {
                   {m.name.split(' ')[0]}
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="field">
+            <label>{window.t?.('modal_checklist_label') || 'Yapılacaklar'}</label>
+            {checklistItems.length > 0 && (
+              <div className="modal-checklist">
+                {checklistItems.map((item, i) => (
+                  <div key={i} className="modal-checklist-item">
+                    <span className="modal-checklist-dot" />
+                    <span style={{ flex: 1, fontSize: 13 }}>{item}</span>
+                    <button className="modal-checklist-del" onClick={() => setChecklistItems(prev => prev.filter((_, j) => j !== i))}>
+                      <Icon name="x" size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="modal-checklist-input-row">
+              <input
+                ref={checklistRef}
+                placeholder={window.t?.('modal_checklist_placeholder') || 'Madde ekle…'}
+                value={checklistInput}
+                onChange={e => setChecklistInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addChecklistItem(); } }}
+              />
+              <button className="btn btn-ghost" onClick={addChecklistItem} disabled={!checklistInput.trim()}>
+                {window.t?.('modal_checklist_add') || '+ Ekle'}
+              </button>
             </div>
           </div>
         </div>

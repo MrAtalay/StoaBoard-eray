@@ -569,10 +569,9 @@ function App() {
 
   const createTask = async (formData) => {
     const projectId = window.CURRENT_PROJECT_ID || 1;
-    try {
-      const created = await API.createTask(projectId, formData);
-      setTasks(prev => [created, ...prev]);
-    } catch (e) { window.showToast?.(window.t('app_err_create_task') + e.message, 'error'); }
+    const created = await API.createTask(projectId, formData);
+    setTasks(prev => [created, ...prev]);
+    return created;
   };
 
   const deleteTask = async (id) => {

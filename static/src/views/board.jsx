@@ -557,19 +557,54 @@ function TimelineView({ tasks, onOpenTask }) {
   const [zoom, setZoom] = useBoardState(() => localStorage.getItem('stoa.tlZoom') || 'week');
   useBoardEf(() => localStorage.setItem('stoa.tlZoom', zoom), [zoom]);
 
-  const dayWidth = { day: 60, week: 36, month: 22, quarter: 12 }[zoom] || 36;
+  const [collapsedTlGroups, setCollapsedTlGroups] = useBoardState(new Set());
+  const [tlAssigneeFilter, setTlAssigneeFilter] = useBoardState(new Set());
+  const gridRef = useBoardRef(null);
 
-  // Build date range: earliest start → latest end (with padding); fallback to ±30 days from today
+  const dayWidth = { day: 60, week: 36, month: 22, quarter: 12 }[zoom] || 36;
+  const lang = localStorage.getItem('stoa.lang') || 'tr';
+  const DAYS_SHORT = lang === 'en'
+    ? ['Su','Mo','Tu','We','Th','Fr','Sa']
+    : ['Pz','Pt','Sa','Çr','Pr','Cu','Ct'];
+
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const dated = tasks.filter(t => t.start || t.due);
+  const taskDates = tasks.filter(t => t.start || t.due)
+    .flatMap(t => [t.start, t.due].filter(Boolean).map(d => new Date(d)));
+  const rawMin = taskDates.length > 0 ? new Date(Math.min(...taskDates)) : new Date(today);
+  const rawMax = taskDates.length > 0 ? new Date(Math.max(...taskDates)) : new Date(today);
+
   let minDate, maxDate;
-  if (dated.length === 0) {
-    minDate = new Date(today); minDate.setDate(today.getDate() - 14);
-    maxDate = new Date(today); maxDate.setDate(today.getDate() + 30);
+  if (zoom === 'day') {
+    // ±7 day padding, always include today, minimum 3 weeks
+    minDate = new Date(Math.min(rawMin, today)); minDate.setDate(minDate.getDate() - 7);
+    maxDate = new Date(rawMax); maxDate.setDate(rawMax.getDate() + 7);
+    const minEnd = new Date(minDate); minEnd.setDate(minDate.getDate() + 21);
+    if (maxDate < minEnd) maxDate = minEnd;
+  } else if (zoom === 'week') {
+    // Snap to Mon–Sun week boundaries, minimum 5 weeks
+    const toMonday = d => { const r = new Date(d), dow = r.getDay(); r.setDate(r.getDate() - (dow === 0 ? 6 : dow - 1)); return r; };
+    const toSunday = d => { const r = new Date(d), dow = r.getDay(); r.setDate(r.getDate() + (dow === 0 ? 0 : 7 - dow)); return r; };
+    minDate = toMonday(new Date(Math.min(rawMin, today))); minDate.setDate(minDate.getDate() - 7);
+    maxDate = toSunday(rawMax); maxDate.setDate(maxDate.getDate() + 7);
+    const minEnd = new Date(minDate); minEnd.setDate(minDate.getDate() + 35);
+    if (maxDate < minEnd) maxDate = minEnd;
+  } else if (zoom === 'month') {
+    // Snap to 1st–last of month, include today's month, minimum 3 months
+    minDate = new Date(Math.min(
+      new Date(rawMin.getFullYear(), rawMin.getMonth(), 1),
+      new Date(today.getFullYear(), today.getMonth(), 1)
+    ));
+    maxDate = new Date(rawMax.getFullYear(), rawMax.getMonth() + 1, 0);
+    const minEnd = new Date(minDate.getFullYear(), minDate.getMonth() + 3, 0);
+    if (maxDate < minEnd) maxDate = minEnd;
   } else {
-    const dates = dated.flatMap(t => [t.start, t.due].filter(Boolean).map(d => new Date(d)));
-    minDate = new Date(Math.min(...dates)); minDate.setDate(minDate.getDate() - 3);
-    maxDate = new Date(Math.max(...dates)); maxDate.setDate(maxDate.getDate() + 3);
+    // quarter: snap to quarter start/end, include today's quarter, minimum 3 full quarters
+    const qStart = d => new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1);
+    const qEnd   = d => new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3 + 3, 0);
+    minDate = new Date(Math.min(qStart(rawMin), qStart(today)));
+    maxDate = qEnd(rawMax);
+    const minEnd = new Date(qStart(today).getFullYear(), qStart(today).getMonth() + 9, 0);
+    if (maxDate < minEnd) maxDate = minEnd;
   }
   minDate.setHours(0,0,0,0); maxDate.setHours(0,0,0,0);
   const totalDays = Math.max(7, Math.round((maxDate - minDate) / 86400000) + 1);
@@ -582,23 +617,120 @@ function TimelineView({ tasks, onOpenTask }) {
     const d = new Date(iso); d.setHours(0,0,0,0);
     return Math.round((d - minDate) / 86400000);
   };
-
   const todayIdx = dayIndex(today.toISOString());
 
-  // Group tasks by column (status)
+  const SIDE = 220;
+
+  const scrollToToday = () => {
+    if (gridRef.current && todayIdx >= 0) {
+      const el = gridRef.current;
+      const targetLeft = todayIdx * dayWidth - (el.clientWidth - SIDE) / 2;
+      el.scrollLeft = Math.max(0, targetLeft);
+    }
+  };
+  useBoardEf(scrollToToday, [zoom]);
+
+  // Header row 1: month or quarter groups
+  const headerGroups = (() => {
+    const groups = [];
+    let cur = null;
+    const months = lang === 'en' ? DATA.EN_MONTHS : DATA.TR_MONTHS;
+    days.forEach(d => {
+      let key, label;
+      if (zoom === 'quarter') {
+        const q = Math.ceil((d.getMonth() + 1) / 3);
+        key = `${q}-${d.getFullYear()}`;
+        label = lang === 'en' ? `Q${q} ${d.getFullYear()}` : `Ç${q} ${d.getFullYear()}`;
+      } else {
+        key = `${d.getMonth()}-${d.getFullYear()}`;
+        label = `${months[d.getMonth()]} ${d.getFullYear()}`;
+      }
+      if (!cur || cur.key !== key) {
+        if (cur) groups.push(cur);
+        cur = { key, label, count: 0 };
+      }
+      cur.count++;
+    });
+    if (cur) groups.push(cur);
+    return groups;
+  })();
+
+  // Day cell label based on zoom level
+  const dayLabel = (d, i) => {
+    if (zoom === 'day') return (
+      <>
+        <div className="tl-day-wd">{DAYS_SHORT[d.getDay()]}</div>
+        <div className="tl-day-num">{d.getDate()}</div>
+      </>
+    );
+    if (zoom === 'week') return <div className="tl-day-num">{d.getDate()}</div>;
+    if (zoom === 'month') return <div className="tl-day-num">{[1,8,15,22].includes(d.getDate()) ? d.getDate() : ''}</div>;
+    // quarter: show abbreviated month name only on 1st of each month
+    return <div className="tl-day-num">{d.getDate() === 1 ? (lang === 'en' ? DATA.EN_MONTHS : DATA.TR_MONTHS)[d.getMonth()].slice(0,3) : ''}</div>;
+  };
+
+  // Assignee filter
+  const allAssignees = (() => {
+    const ids = new Set(tasks.flatMap(t => t.assignees || []));
+    return [...ids].map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+  })();
+
+  const toggleTlAssignee = (id) => setTlAssigneeFilter(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const toggleTlGroup = (colId) => setCollapsedTlGroups(prev => {
+    const next = new Set(prev);
+    if (next.has(colId)) next.delete(colId); else next.add(colId);
+    return next;
+  });
+
+  const filteredTasks = tlAssigneeFilter.size === 0
+    ? tasks
+    : tasks.filter(t => (t.assignees || []).some(id => tlAssigneeFilter.has(id)));
+
   const groups = DATA.COLUMNS.map(col => ({
     col,
-    tasks: tasks.filter(t => t.col === col.id && (t.start || t.due))
+    tasks: filteredTasks.filter(t => t.col === col.id && (t.start || t.due))
   })).filter(g => g.tasks.length > 0);
 
-  const SIDE = 220;
+  const undatedTasks = filteredTasks.filter(t => !t.start && !t.due);
   const totalW = totalDays * dayWidth;
+  const weekendIndices = days.reduce((acc, d, i) => {
+    if (d.getDay() === 0 || d.getDay() === 6) acc.push(i);
+    return acc;
+  }, []);
+
+  const weekendCols = weekendIndices.map(wi => (
+    <div key={wi} className="tl-weekend-col" style={{ left: wi * dayWidth, width: dayWidth }} />
+  ));
+  const todayLine = todayIdx >= 0 && todayIdx < totalDays
+    ? <div className="tl-today-line" style={{ left: todayIdx * dayWidth + dayWidth / 2 }} />
+    : null;
 
   return (
     <div className="timeline-view">
       <div className="timeline-toolbar">
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-muted)' }}>
-          {DATA.fmtDate(minDate.toISOString())} – {DATA.fmtDate(maxDate.toISOString())}
+        <div className="tl-toolbar-left">
+          <button className="tl-today-btn" onClick={scrollToToday}>
+            <Icon name="target" size={13} />
+            {window.t('board_tl_today')}
+          </button>
+          {allAssignees.length > 1 && (
+            <div className="tl-filter-avatars">
+              {allAssignees.map(m => (
+                <button key={m.id} className="tl-filter-avatar" data-active={tlAssigneeFilter.has(m.id)}
+                  onClick={() => toggleTlAssignee(m.id)} title={m.name}>
+                  <Avatar member={m} size="sm" />
+                </button>
+              ))}
+              {tlAssigneeFilter.size > 0 && (
+                <button className="tl-filter-clear" onClick={() => setTlAssigneeFilter(new Set())}>×</button>
+              )}
+            </div>
+          )}
         </div>
         <div className="tl-zoom">
           {[['day', window.t('board_tl_day')],['week', window.t('board_tl_week')],['month', window.t('board_tl_month')],['quarter', window.t('board_tl_quarter')]].map(([k,l]) => (
@@ -607,75 +739,103 @@ function TimelineView({ tasks, onOpenTask }) {
         </div>
       </div>
 
-      <div className="timeline-grid" style={{ '--tl-side': `${SIDE}px`, '--tl-cw': `${dayWidth}px` }}>
-        <div className="tl-corner">{window.t('board_tl_task')}</div>
-        <div className="tl-header" style={{ width: totalW }}>
-          {days.map((d, i) => (
-            <div key={i} className="tl-day" data-today={i === todayIdx} data-weekend={d.getDay() === 0 || d.getDay() === 6}>
-              <div className="tl-day-num">{d.getDate()}</div>
-              <div className="tl-day-mo">{i === 0 || d.getDate() === 1 ? DATA.TR_MONTHS[d.getMonth()] : ''}</div>
-            </div>
-          ))}
+      <div className="timeline-grid" ref={gridRef} style={{ '--tl-side': `${SIDE}px`, '--tl-cw': `${dayWidth}px` }}>
+        <div className="tl-corner">
+          <span>{window.t('board_tl_task')}</span>
+          {tlAssigneeFilter.size > 0 && <span className="tl-corner-badge">{tlAssigneeFilter.size}</span>}
         </div>
 
-        {groups.map(({ col, tasks: gTasks }) => (
-          <React.Fragment key={col.id}>
-            <div className="tl-side tl-group">
-              <span className="col-dot" style={{ background: col.color }} /> {col.title_tr}
-              <span className="col-count" style={{ marginLeft: 'auto' }}>{gTasks.length}</span>
-            </div>
-            <div className="tl-track tl-group-track" style={{ width: totalW }}>
-              {todayIdx >= 0 && todayIdx < totalDays && (
-                <div className="tl-today-line" style={{ left: todayIdx * dayWidth + dayWidth/2 }} />
-              )}
-            </div>
-            {gTasks.map(t => {
-              const startIdx = dayIndex(t.start) ?? dayIndex(t.due);
-              const endIdx = dayIndex(t.due) ?? dayIndex(t.start);
-              const sIdx = Math.max(0, Math.min(startIdx, endIdx));
-              const eIdx = Math.min(totalDays - 1, Math.max(startIdx, endIdx));
-              const span = Math.max(1, eIdx - sIdx + 1);
-              const isDone = col.is_done;
-              const offscreenLeft = startIdx < 0;
-              const offscreenRight = endIdx > totalDays - 1;
-              const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
-              return (
-                <React.Fragment key={t.id}>
-                  <div className="tl-side" onClick={() => onOpenTask(t)}>
-                    <div className="tl-side-title" data-done={isDone}>{t.title}</div>
-                    {members.length > 0 && <AvatarStack members={members} size="sm" max={3} />}
-                  </div>
-                  <div className="tl-track" style={{ width: totalW }}>
-                    {todayIdx >= 0 && todayIdx < totalDays && (
-                      <div className="tl-today-line" style={{ left: todayIdx * dayWidth + dayWidth/2 }} />
-                    )}
-                    {/* per-assignee stacked bars (or single fallback) */}
-                    {(members.length > 0 ? members : [null]).map((m, mi) => (
-                      <div
-                        key={mi}
-                        className="tl-bar"
-                        data-done={isDone}
-                        data-off-l={offscreenLeft}
-                        data-off-r={offscreenRight}
-                        onClick={() => onOpenTask(t)}
-                        title={`${m ? m.name + ' · ' : ''}${t.title}${t.start ? ' · ' + DATA.fmtDate(t.start) : ''}${t.due ? ' – ' + DATA.fmtDate(t.due) : ''}`}
-                        style={{
-                          left: sIdx * dayWidth,
-                          width: span * dayWidth - 4,
-                          top: 6 + mi * 22,
-                          background: isDone ? 'var(--bg-sunken)' : (m?.color || col.color),
-                          color: isDone ? 'var(--ink-faint)' : 'var(--ink)',
-                        }}
-                      >
-                        <span className="tl-bar-text">{m ? m.name.split(' ')[0] + ' · ' : ''}{t.title}</span>
+        <div className="tl-header" style={{ width: totalW }}>
+          <div className="tl-header-groups">
+            {headerGroups.map(g => (
+              <div key={g.key} className="tl-header-group" style={{ width: g.count * dayWidth }}>
+                {g.label}
+              </div>
+            ))}
+          </div>
+          <div className="tl-header-days">
+            {days.map((d, i) => (
+              <div key={i} className="tl-day" data-today={i === todayIdx} data-weekend={d.getDay() === 0 || d.getDay() === 6}>
+                {dayLabel(d, i)}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {groups.map(({ col, tasks: gTasks }) => {
+          const isCollapsed = collapsedTlGroups.has(col.id);
+          return (
+            <React.Fragment key={col.id}>
+              <div className="tl-side tl-group" style={{ cursor: 'pointer' }} onClick={() => toggleTlGroup(col.id)}>
+                <Icon name={isCollapsed ? 'chevronRight' : 'chevronDown'} size={12} strokeWidth={2.5} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
+                <span className="col-dot" style={{ background: col.color }} />
+                {col.title_tr}
+                <span className="col-count" style={{ marginLeft: 'auto' }}>{gTasks.length}</span>
+              </div>
+              <div className="tl-track tl-group-track" style={{ width: totalW }}>
+                {weekendCols}{todayLine}
+              </div>
+              {!isCollapsed && gTasks.map(t => {
+                const startIdx = dayIndex(t.start) ?? dayIndex(t.due);
+                const endIdx = dayIndex(t.due) ?? dayIndex(t.start);
+                const sIdx = Math.max(0, Math.min(startIdx, endIdx));
+                const eIdx = Math.min(totalDays - 1, Math.max(startIdx, endIdx));
+                const span = Math.max(1, eIdx - sIdx + 1);
+                const isDone = col.is_done;
+                const offscreenLeft = startIdx < 0;
+                const offscreenRight = endIdx > totalDays - 1;
+                const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+                const isMilestone = t.start && t.due && t.start === t.due;
+                return (
+                  <React.Fragment key={t.id}>
+                    <div className="tl-side" onClick={() => onOpenTask(t)}>
+                      <div className="tl-side-inner">
+                        {t.priority && <span className="priority-dot" data-p={t.priority} style={{ flexShrink: 0 }} />}
+                        <div className="tl-side-title" data-done={isDone}>{t.title}</div>
                       </div>
-                    ))}
-                  </div>
-                </React.Fragment>
-              );
-            })}
-          </React.Fragment>
-        ))}
+                      {members.length > 0 && <AvatarStack members={members} size="sm" max={3} />}
+                    </div>
+                    <div className="tl-track" style={{ width: totalW }}>
+                      {weekendCols}{todayLine}
+                      {isMilestone ? (
+                        <div
+                          className="tl-milestone"
+                          onClick={() => onOpenTask(t)}
+                          title={`${t.title} · ${DATA.fmtDate(t.due)}`}
+                          style={{ left: sIdx * dayWidth + dayWidth / 2 - 8, background: isDone ? 'var(--ink-faint)' : col.color }}
+                        />
+                      ) : (
+                        <div
+                          className="tl-bar"
+                          data-done={isDone}
+                          data-off-l={offscreenLeft}
+                          data-off-r={offscreenRight}
+                          onClick={() => onOpenTask(t)}
+                          title={`${t.title}${t.start ? ' · ' + DATA.fmtDate(t.start) : ''}${t.due ? ' – ' + DATA.fmtDate(t.due) : ''}`}
+                          style={{
+                            left: sIdx * dayWidth,
+                            width: span * dayWidth - 4,
+                            top: 6,
+                            background: isDone ? 'var(--bg-sunken)' : col.color,
+                            color: isDone ? 'var(--ink-faint)' : 'white',
+                          }}
+                        >
+                          {t.priority === 'high' && !isDone && <span className="tl-bar-priority" />}
+                          <span className="tl-bar-text">{t.title}</span>
+                          {members.length > 0 && (
+                            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                              <AvatarStack members={members} size="xs" max={2} />
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </React.Fragment>
+          );
+        })}
       </div>
 
       {groups.length === 0 && (
@@ -683,6 +843,29 @@ function TimelineView({ tasks, onOpenTask }) {
           <Icon name="calendar" size={28} strokeWidth={1.2} />
           <div>{window.t('board_tl_empty')}</div>
           <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>{window.t('board_tl_empty_sub')}</div>
+        </div>
+      )}
+
+      {undatedTasks.length > 0 && (
+        <div className="tl-undated">
+          <div className="tl-undated-title">
+            <Icon name="calendar" size={13} />
+            {window.t?.('board_tl_undated') || 'Tarihi belirsiz'} · {undatedTasks.length}
+          </div>
+          <div className="tl-undated-list">
+            {undatedTasks.map(t => {
+              const col = DATA.COLUMNS.find(c => c.id === t.col);
+              const isDone = col?.is_done;
+              const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+              return (
+                <div key={t.id} className="tl-undated-chip" data-done={isDone} onClick={() => onOpenTask(t)}>
+                  <span className="col-dot" style={{ background: col?.color || 'var(--ink-faint)', flexShrink: 0 }} />
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+                  {members.length > 0 && <AvatarStack members={members} size="xs" max={2} />}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -705,6 +888,18 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
   const [overColId, setOverColId] = useBoardState(null);
   const [trashHover, setTrashHover] = useBoardState(false);
   const [filterOpen, setFilterOpen] = useBoardState(false);
+  const [listSort, setListSort]     = useBoardState('title');
+  const [listSortDir, setListSortDir] = useBoardState('asc');
+  const [collapsedGroups, setCollapsedGroups] = useBoardState(new Set());
+  const toggleListSort = (k) => {
+    if (listSort === k) setListSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setListSort(k); setListSortDir('asc'); }
+  };
+  const toggleGroupCollapse = (id) => setCollapsedGroups(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const [activeLabels, setActiveLabels] = useBoardState(new Set());
   const [activePriority, setActivePriority] = useBoardState(null);
   const [activeOverdue, setActiveOverdue] = useBoardState(false);
@@ -1146,100 +1341,140 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
 
     {subView === 'list' && (
       <div className="list-view">
-        {DATA.COLUMNS.map(col => {
-          const colTasks = visibleTasks.filter(t => t.col === col.id);
-          if (colTasks.length === 0) return null;
-          return (
-            <div className="list-group" key={col.id}>
-              <div className="list-group-header">
-                <div className="col-dot" style={{ background: col.color }} />
-                <span style={{ color: 'var(--ink)' }}>{col.title_tr}</span>
-                <span className="col-count">{colTasks.length}</span>
-              </div>
-              <table className="list-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 36 }} />
-                    <th>{window.t('list_title')}</th>
-                    <th style={{ width: 130 }}>{window.t('list_labels')}</th>
-                    <th style={{ width: 100 }}>{window.t('list_assignee')}</th>
-                    <th style={{ width: 130 }}>{window.t('list_date_range')}</th>
-                    <th style={{ width: 110 }}>{window.t('list_progress')}</th>
-                    <th style={{ width: 100 }}>{window.t('list_activity')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {colTasks.map(t => {
-                    const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
-                    const isDone = col.is_done;
-                    const overdue = DATA.isOverdue(t.due, t.col);
-                    const subParts = String(t.subtasks || '0/0').split('/');
-                    const sDone = parseInt(subParts[0]) || 0;
-                    const sTotal = parseInt(subParts[1]) || 0;
-                    const pct = sTotal > 0 ? Math.round(sDone / sTotal * 100) : (t.progress || 0);
-                    return (
-                      <tr key={t.id} data-done={isDone} onClick={() => onOpenTask(t)} style={{ cursor: 'pointer' }}>
-                        <td onClick={(e) => {
-                          e.stopPropagation();
-                          if (!canManageTasks) return;
-                          const doneCol = DATA.COLUMNS.find(c => c.is_done);
-                          const firstCol = DATA.COLUMNS[0];
-                          if (isDone) onMoveTask(t.id, firstCol?.id || 'todo');
-                          else if (doneCol) onMoveTask(t.id, doneCol.id);
-                        }}>
-                          <div className="list-check" data-checked={isDone}>
-                            {isDone && <Icon name="check" size={10} strokeWidth={2.5} />}
-                          </div>
-                        </td>
-                        <td className="title" style={{ fontWeight: 500 }}>
-                          {t.title}
-                          <div style={{ fontSize: 10, color: 'var(--ink-faint)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-                            #{String(t.id).padStart(3,'0')}
-                          </div>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            {(t.labels || []).slice(0, 2).map(l => {
-                              const lab = DATA.LABELS[l];
-                              return lab && <span key={l} className="tag" data-tone={lab.tone}>{lab.tr}</span>;
-                            })}
-                          </div>
-                        </td>
-                        <td><AvatarStack members={members} size="sm" max={3} /></td>
-                        <td>
-                          {(t.start || t.due) && (
-                            <span className="meta-item" data-warn={overdue && !isDone}>
-                              <Icon name="calendar" size={11} />
-                              {t.start ? `${DATA.fmtDate(t.start)} – ${t.due ? DATA.fmtDate(t.due) : '?'}` : DATA.fmtDate(t.due)}
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          {(sTotal > 0 || t.progress > 0) ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <div className="progress-bar" style={{ width: 60 }}>
-                                <div className="progress-fill" style={{ width: `${pct}%` }} />
-                              </div>
-                              <span style={{ fontSize: 10, color: 'var(--ink-muted)', whiteSpace: 'nowrap' }}>
-                                {sTotal > 0 ? `${sDone}/${sTotal}` : `${pct}%`}
-                              </span>
-                            </div>
-                          ) : <span style={{ color: 'var(--ink-faint)', fontSize: 12 }}>—</span>}
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)' }}>
-                            {t.comments > 0 && <span><Icon name="msg" size={10} /> {t.comments}</span>}
-                            {t.attachments > 0 && <span><Icon name="paperclip" size={10} /> {t.attachments}</span>}
-                          </div>
-                        </td>
+        {(() => {
+          const SortTh = ({ k, children, w }) => {
+            const active = listSort === k;
+            return (
+              <th style={{ width: w, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                onClick={() => toggleListSort(k)}>
+                {children}
+                {active && <span style={{ marginLeft: 3, fontSize: 9, color: 'var(--accent)' }}>{listSortDir === 'asc' ? '▲' : '▼'}</span>}
+              </th>
+            );
+          };
+          const sortTasks = (arr) => [...arr].sort((a, b) => {
+            let va, vb;
+            if (listSort === 'title')    { va = a.title?.toLowerCase() || ''; vb = b.title?.toLowerCase() || ''; }
+            else if (listSort === 'due') { va = a.due || 'zzz'; vb = b.due || 'zzz'; }
+            else if (listSort === 'priority') {
+              const P = { high: 0, mid: 1, low: 2 };
+              va = P[a.priority] ?? 1; vb = P[b.priority] ?? 1;
+            }
+            if (va < vb) return listSortDir === 'asc' ? -1 : 1;
+            if (va > vb) return listSortDir === 'asc' ? 1 : -1;
+            return 0;
+          });
+          return DATA.COLUMNS.map(col => {
+            const colTasks = visibleTasks.filter(t => t.col === col.id);
+            const collapsed = collapsedGroups.has(col.id);
+            return (
+              <div className="list-group" key={col.id}>
+                <div className="list-group-header" onClick={() => toggleGroupCollapse(col.id)} style={{ cursor: 'pointer' }}>
+                  <Icon name={collapsed ? 'chevronRight' : 'chevronDown'} size={12} style={{ color: 'var(--ink-muted)', flexShrink: 0 }} />
+                  <div className="col-dot" style={{ background: col.color || 'var(--ink-faint)' }} />
+                  <span style={{ color: 'var(--ink)' }}>{col.title_tr}</span>
+                  <span className="col-count">{colTasks.length}</span>
+                  {canManageTasks && !collapsed && (
+                    <button className="list-group-add" onClick={(e) => { e.stopPropagation(); onOpenModal(col.id); }}
+                      title={window.t('board_add_task')}>
+                      <Icon name="plus" size={12} />
+                    </button>
+                  )}
+                </div>
+                {!collapsed && (
+                  <table className="list-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 36 }} />
+                        <SortTh k="title">{window.t('list_title')}</SortTh>
+                        <th style={{ width: 130 }}>{window.t('list_labels')}</th>
+                        <th style={{ width: 100 }}>{window.t('list_assignee')}</th>
+                        <SortTh k="due" w={130}>{window.t('list_date_range')}</SortTh>
+                        <th style={{ width: 110 }}>{window.t('list_progress')}</th>
+                        <SortTh k="priority" w={90}>{window.t('list_priority')}</SortTh>
+                        <th style={{ width: 90 }}>{window.t('list_activity')}</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          );
-        })}
+                    </thead>
+                    <tbody>
+                      {sortTasks(colTasks).map(t => {
+                        const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
+                        const isDone = col.is_done;
+                        const overdue = DATA.isOverdue(t.due, t.col);
+                        const subParts = String(t.subtasks || '0/0').split('/');
+                        const sDone = parseInt(subParts[0]) || 0;
+                        const sTotal = parseInt(subParts[1]) || 0;
+                        const pct = sTotal > 0 ? Math.round(sDone / sTotal * 100) : (t.progress || 0);
+                        return (
+                          <tr key={t.id} data-done={isDone} onClick={() => onOpenTask(t)} style={{ cursor: 'pointer' }}>
+                            <td onClick={(e) => {
+                              e.stopPropagation();
+                              if (!canManageTasks) return;
+                              const doneCol = DATA.COLUMNS.find(c => c.is_done);
+                              const firstCol = DATA.COLUMNS[0];
+                              if (isDone) onMoveTask(t.id, firstCol?.id || 'todo');
+                              else if (doneCol) onMoveTask(t.id, doneCol.id);
+                            }}>
+                              <div className="list-check" data-checked={isDone}>
+                                {isDone && <Icon name="check" size={10} strokeWidth={2.5} />}
+                              </div>
+                            </td>
+                            <td className="title" style={{ fontWeight: 500 }}>
+                              {t.title}
+                              <div style={{ fontSize: 10, color: 'var(--ink-faint)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+                                #{String(t.id).padStart(3,'0')}
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                {(t.labels || []).slice(0, 2).map(l => {
+                                  const lab = DATA.LABELS[l];
+                                  return lab && <span key={l} className="tag" data-tone={lab.tone}>{lab.tr}</span>;
+                                })}
+                              </div>
+                            </td>
+                            <td><AvatarStack members={members} size="sm" max={3} /></td>
+                            <td>
+                              {(t.start || t.due) ? (
+                                <span className="meta-item" data-warn={overdue && !isDone}>
+                                  <Icon name="calendar" size={11} />
+                                  {t.start ? `${DATA.fmtDate(t.start)} – ${t.due ? DATA.fmtDate(t.due) : '?'}` : DATA.fmtDate(t.due)}
+                                </span>
+                              ) : <span style={{ color: 'var(--ink-faint)', fontSize: 12 }}>—</span>}
+                            </td>
+                            <td>
+                              {(sTotal > 0 || t.progress > 0) ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <div className="progress-bar" style={{ width: 60 }}>
+                                    <div className="progress-fill" style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <span style={{ fontSize: 10, color: 'var(--ink-muted)', whiteSpace: 'nowrap' }}>
+                                    {sTotal > 0 ? `${sDone}/${sTotal}` : `${pct}%`}
+                                  </span>
+                                </div>
+                              ) : <span style={{ color: 'var(--ink-faint)', fontSize: 12 }}>—</span>}
+                            </td>
+                            <td>
+                              <span className="priority-pill">
+                                <span className="priority-dot" data-p={t.priority} />
+                                {t.priority === 'high' ? window.t('board_priority_high') : t.priority === 'mid' ? window.t('board_priority_mid') : window.t('board_priority_low')}
+                              </span>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: 8, fontSize: 11, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)' }}>
+                                {t.comments > 0 && <span><Icon name="msg" size={10} /> {t.comments}</span>}
+                                {t.attachments > 0 && <span><Icon name="paperclip" size={10} /> {t.attachments}</span>}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          });
+        })()}
         {visibleTasks.length === 0 && (
           <div className="empty-state">
             <Icon name="list" size={28} strokeWidth={1.2} />

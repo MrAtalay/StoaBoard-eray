@@ -1170,7 +1170,7 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
             <select value={filterAuthor} onChange={(e) => setFilterAuthor(e.target.value)}>
               <option value="">{window.t?.('notes_filter_all') || 'Tümü'}</option>
               <option value="__me__">{window.t?.('notes_filter_only_me') || 'Sadece ben'}</option>
-              {(members || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              {(members || []).map(m => <option key={m.id} value={m.slug || m.id}>{m.name}</option>)}
             </select>
           </label>
           <label className="notes-filter-toggle">

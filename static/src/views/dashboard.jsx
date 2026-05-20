@@ -36,11 +36,23 @@ function DashboardView({ tasks, onOpenTask, onView }) {
     { day: 'H4', done: wkTot.done, review: wkTot.review, progress: wkTot.progress },
   ];
 
-  const chartData = chartPeriod === 'week' ? throughput : monthData;
+  const rawChartData = chartPeriod === 'week' ? throughput : monthData;
+  const chartData = chartPeriod === 'week'
+    ? rawChartData.filter(d => d.done + d.review + d.progress > 0)
+    : rawChartData;
   const maxBar    = Math.max(...chartData.map(d => d.done + d.review + d.progress), 1);
 
   const weeklyDone  = throughput.reduce((s, d) => s + d.done, 0);
   const highPriority = tasks.filter(t => t.priority === 'high' && !doneColIds.has(t.col)).length;
+
+  const getColColor = (col) => col?.is_done ? 'var(--status-green)' : (col?.color || 'var(--ink-faint)');
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const me = window.CURRENT_USER?.id;
+  const myActiveTasks = me
+    ? tasks.filter(t => !doneColIds.has(t.col) && (t.assignees || []).includes(me))
+    : [];
+  const myTodayTasks = myActiveTasks.filter(t => t.due && t.due <= todayStr);
 
   const currentFirstName = (window.CURRENT_USER?.name || DATA.MEMBERS[0]?.name || window.t('dash_user')).split(' ')[0];
 
@@ -80,7 +92,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
       </p>
 
       <div className="dash-grid">
-        <div className="stat-card">
+        <div className="stat-card" data-clickable="true" onClick={() => { localStorage.setItem('stoa.boardSubView', 'list'); onView?.('board'); }}>
           <div className="stat-label">{window.t('dash_stat_active')}</div>
           <div className="stat-value">{total - done}</div>
           <div className="stat-delta" data-up={weeklyDone > 0}>
@@ -89,7 +101,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
               : <span style={{ color: 'var(--ink-dim)' }}>{window.t('dash_stat_no_data')}</span>}
           </div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" data-clickable="true" onClick={() => onView?.('board')}>
           <div className="stat-label">{window.t('dash_stat_completed')}</div>
           <div className="stat-value">{done}</div>
           <div className="stat-delta" data-up={weeklyDone > 0}>
@@ -98,7 +110,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
               : <span style={{ color: 'var(--ink-dim)' }}>{window.t('dash_stat_no_data')}</span>}
           </div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" data-clickable={overdue > 0} onClick={() => { if (overdue > 0) { localStorage.setItem('stoa.boardSubView', 'list'); onView?.('board'); } }}>
           <div className="stat-label">{window.t('dash_stat_overdue')}</div>
           <div className="stat-value" style={overdue > 0 ? { color: 'var(--status-rose)' } : {}}>{overdue}</div>
           <div className="stat-delta" data-down={overdue > 0}>
@@ -107,7 +119,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
               : <><Icon name="check" size={11} strokeWidth={2} /> {window.t('dash_stat_on_time')}</>}
           </div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" data-clickable={highPriority > 0} onClick={() => highPriority > 0 && onView?.('board')}>
           <div className="stat-label">{window.t('dash_stat_high_priority')}</div>
           <div className="stat-value" style={highPriority > 0 ? { color: 'var(--status-rose)' } : {}}>{highPriority}</div>
           <div className="stat-delta" data-down={highPriority > 0}>
@@ -117,6 +129,29 @@ function DashboardView({ tasks, onOpenTask, onView }) {
           </div>
         </div>
       </div>
+
+      {myTodayTasks.length > 0 && (
+        <div className="my-tasks-strip">
+          <div className="my-tasks-strip-head">
+            <Icon name="listChecks" size={14} style={{ color: 'var(--accent)' }} />
+            <div className="my-tasks-strip-title">
+              {window.t?.('dash_my_today') || 'Bugün benim için'}
+              <span style={{ fontSize: 12, fontFamily: 'var(--font-ui)', fontWeight: 400, color: 'var(--ink-muted)', marginLeft: 6 }}>· {myTodayTasks.length}</span>
+            </div>
+          </div>
+          <div className="my-tasks-strip-list">
+            {myTodayTasks.map(t => {
+              const isOverdue = DATA.isOverdue(t.due, t.col);
+              return (
+                <div key={t.id} className="my-task-chip" data-overdue={isOverdue} onClick={() => onOpenTask(t)}>
+                  <span className="my-task-chip-title">{t.title}</span>
+                  {t.due && <span className="my-task-chip-due">{DATA.fmtDate(t.due)}</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="dash-row">
         <div className="panel">
@@ -207,12 +242,19 @@ function DashboardView({ tasks, onOpenTask, onView }) {
               {sortedPeople.map(p => (
                 <div className="person-row" key={p.id}>
                   <Avatar member={p} size="md" />
-                  <div className="person-info">
-                    <div className="person-name">{p.name}</div>
-                    <div className="person-role">{p.role}</div>
-                  </div>
-                  <div className="person-stat">
-                    <span style={{ color: 'var(--ink)' }}>{p.open}</span> {window.t('dash_person_open')} · {p.done} {window.t('dash_person_done')}
+                  <div className="person-bar-wrap">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="person-name">{p.name}</div>
+                        <div className="person-role">{p.role}</div>
+                      </div>
+                      <div className="person-stat">
+                        <span style={{ color: 'var(--ink)' }}>{p.open}</span> {window.t('dash_person_open')} · {p.done} {window.t('dash_person_done')}
+                      </div>
+                    </div>
+                    <div className="person-bar-track">
+                      <div className="person-bar-fill" style={{ width: p.total > 0 ? `${Math.round((p.done / p.total) * 100)}%` : '0%' }} />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -259,7 +301,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
                           <td style={{ fontWeight: 500 }}>{t.title}</td>
                           <td style={{ width: 100 }}><AvatarStack members={rowMembers} size="sm" max={3} /></td>
                           <td style={{ width: 90, paddingRight: 18 }}>
-                            <span className="status-pill">{colObj?.title_tr || t.col}</span>
+                            <span className="col-chip" style={{ '--chip-color': getColColor(colObj) }}>{colObj?.title_tr || t.col}</span>
                           </td>
                         </tr>
                       );

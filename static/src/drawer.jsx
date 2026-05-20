@@ -826,7 +826,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
                   {c.text.split(/(@[\w\-çğışöüÇĞİŞÖÜ]+)/g).map((part, pi) => {
                     if (part.startsWith('@')) {
                       const slug = part.slice(1);
-                      const mentioned = DATA.MEMBERS.find(mm => mm.id === slug || mm.name.toLowerCase() === slug.toLowerCase());
+                      const mentioned = DATA.MEMBERS.find(mm => mm.id === slug || mm.name.toLowerCase() === slug.toLowerCase() || mm.name.toLowerCase().split(' ')[0] === slug.toLowerCase());
                       if (mentioned) {
                         return (
                           <span key={pi} className="comment-mention"

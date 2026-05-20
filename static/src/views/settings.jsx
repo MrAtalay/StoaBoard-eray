@@ -356,6 +356,8 @@ function RoleDropdown({ value, roles, onChange, disabled, onRoleCreated }) {
 const PERM_LABELS_KEYS = {
   manage_tasks:    ['set_rol_perm_tasks',    'Görevleri yönet'],
   manage_projects: ['set_rol_perm_projects', 'Projeleri yönet'],
+  manage_labels:   ['set_rol_perm_labels',   'Etiketleri yönet'],
+  invite_members:  ['set_rol_perm_invite',   'Üye davet et'],
   manage_members:  ['set_rol_perm_members',  'Üyeleri yönet'],
 };
 const ALL_PERMS = Object.keys(PERM_LABELS_KEYS);
@@ -801,17 +803,19 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
   // Inner-nav sections (ids match section [data-nav-id])
   const navSections = [
-    { id: 'profile',       label: _t('set_profile','Profil'),              icon: 'user' },
-    { id: 'appearance',    label: _t('set_appearance','Görünüm'),          icon: 'palette' },
-    { id: 'workspace',     label: _t('set_workspace','Çalışma Alanı'),     icon: 'building', ownerOnly: true },
-    { id: 'invite',        label: _t('set_invite','Davet Kodu'),           icon: 'key', ownerOnly: true },
-    { id: 'roles',         label: _t('set_roles','Roller'),                icon: 'shield', membersOnly: true },
-    { id: 'members',       label: _t('set_members','Üyeler'),              icon: 'users', membersOnly: true },
-    { id: 'labels',        label: _t('set_labels','Etiketler'),            icon: 'tag' },
-    { id: 'notifications', label: _t('set_notifications','Bildirimler'),   icon: 'bell' },
-    { id: 'shortcuts',     label: _t('set_shortcuts','Kısayollar'),        icon: 'cmd' },
-    { id: 'language',      label: _t('set_language','Dil & Bölge'),        icon: 'languages' },
-    { id: 'danger',        label: _t('set_danger','Tehlikeli Bölge'),      icon: 'alertTriangle', danger: true },
+    { id: 'profile',        label: _t('set_profile','Profil'),               icon: 'user' },
+    { id: 'appearance',     label: _t('set_appearance','Görünüm'),           icon: 'palette' },
+    { id: 'workspace',      label: _t('set_workspace','Çalışma Alanı'),      icon: 'building', ownerOnly: true },
+    { id: 'join_requests',  label: _t('set_jrq_nav','Katılım İstekleri'),    icon: 'userPlus', ownerOnly: true },
+    { id: 'invite',         label: _t('set_invite','Davet Kodu'),            icon: 'key', ownerOnly: true },
+    { id: 'roles',          label: _t('set_roles','Roller'),                 icon: 'shield', ownerOnly: true },
+    { id: 'projects',       label: _t('set_prj_nav','Projeler'),             icon: 'folder', manageProjOnly: true, hideWhenEmpty: true },
+    { id: 'labels',         label: _t('set_labels','Etiketler'),             icon: 'tag' },
+    { id: 'members',        label: _t('set_members','Üyeler'),               icon: 'users' },
+    { id: 'notifications',  label: _t('set_notifications','Bildirimler'),    icon: 'bell' },
+    { id: 'shortcuts',      label: _t('set_shortcuts','Kısayollar'),         icon: 'cmd' },
+    { id: 'language',       label: _t('set_language','Dil & Bölge'),         icon: 'languages' },
+    { id: 'danger',         label: _t('set_danger','Tehlikeli Bölge'),       icon: 'alertTriangle', danger: true },
   ];
   const [activeNav, setActiveNav] = React.useState('profile');
   const scrollRef = React.useRef(null);
@@ -868,6 +872,8 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           {navSections.map(s => {
             if (s.ownerOnly && !isOwner) return null;
             if (s.membersOnly && !canManageMembers) return null;
+            if (s.manageProjOnly && !canManageProjects) return null;
+            if (s.hideWhenEmpty && projects.length === 0) return null;
             return (
               <button
                 key={s.id}
@@ -1045,7 +1051,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       )}
 
       {/* ── Join Requests ── (owner only) */}
-      {isOwner && <JoinRequestsSection />}
+      {isOwner && <div data-nav-id="join_requests"><JoinRequestsSection /></div>}
 
       {/* ── Workspace / Invite code ── (owner only) */}
       {isOwner && (
@@ -1135,28 +1141,25 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           </div>
           <div className="settings-card settings-panel">
             {/* Role list */}
-            <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:12 }}>
+            <div className="rol-list">
               {roles.map(r => (
-                <div key={r.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'var(--bg-raised)', border:'1px solid var(--line)', borderRadius:9 }}>
-                  <span style={{ width:10, height:10, borderRadius:'50%', background:r.color, flexShrink:0 }} />
-                  <span style={{ fontWeight:500, fontSize:13, flex:1 }}>{r.name}</span>
-                  {r.is_default && <span style={{ fontSize:10, padding:'2px 6px', background:'var(--accent-soft)', color:'var(--accent-ink)', borderRadius:4 }}>{_t('set_rol_default','Varsayılan')}</span>}
-                  <div style={{ display:'flex', gap:4 }}>
+                <div key={r.id} className="rol-item">
+                  <span className="rol-item-dot" style={{ background: r.color }} />
+                  <span className="rol-item-name">{r.name}</span>
+                  {r.is_default && <span className="rol-default-badge">{_t('set_rol_default','Varsayılan')}</span>}
+                  <div className="rol-item-actions">
                     <button className="icon-btn" title={_t('set_rol_edit','Düzenle')} onClick={() => openRoleForm(r)}><Icon name="edit" size={13} /></button>
                     {confirmDeleteRoleId === r.id ? (
-                      <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:11 }}>
+                      <div className="rol-item-confirm">
                         <button className="col-menu-confirm-yes" onClick={() => deleteRoleById(r.id)}>{_t('set_rol_delete','Sil')}</button>
                         <button className="col-menu-confirm-no" onClick={() => setConfirmDeleteRoleId(null)}>{_t('set_rol_cancel','İptal')}</button>
                       </div>
                     ) : (
-                      <button className="icon-btn" title={_t('set_rol_delete','Sil')} onClick={() => setConfirmDeleteRoleId(r.id)} style={{ color:'var(--status-rose)' }}><Icon name="trash" size={13} /></button>
+                      <button className="icon-btn icon-btn-danger" title={_t('set_rol_delete','Sil')} onClick={() => setConfirmDeleteRoleId(r.id)}><Icon name="trash" size={13} /></button>
                     )}
                   </div>
                 </div>
               ))}
-              {roles.length === 0 && (
-                <div style={{ fontSize:13, color:'var(--ink-muted)', padding:'10px 0' }}></div>
-              )}
             </div>
 
             {/* Add role button */}
@@ -1168,41 +1171,39 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
             {/* Role form */}
             {roleForm !== null && (
-              <form onSubmit={saveRole} style={{ marginTop:8, padding:'16px', background:'var(--bg-subtle)', borderRadius:10, border:'1px solid var(--line)' }}>
-                <div style={{ fontWeight:500, fontSize:13, marginBottom:12, color:'var(--ink)' }}>
+              <form onSubmit={saveRole} className="rol-form">
+                <div className="rol-form-title">
                   {roleForm.id ? _t('set_rol_edit_title','Rolü Düzenle') : _t('set_rol_new','Yeni Rol')}
                 </div>
-                <div className="field" style={{ marginBottom:10 }}>
+                <div className="field">
                   <label>{_t('set_rol_name','Rol Adı')}</label>
                   <input autoFocus placeholder={_t('set_rol_name_ph','Örn: Geliştirici, Tasarımcı…')} value={roleName} onChange={e => setRoleName(e.target.value)} required />
                 </div>
-                <div className="field" style={{ marginBottom:10 }}>
+                <div className="field">
                   <label>{_t('set_rol_color','Renk')}</label>
-                  <div style={{ display:'flex', gap:7, flexWrap:'wrap' }}>
+                  <div className="rol-color-picker">
                     {ROLE_COLORS.map(c => (
-                      <button key={c} type="button" onClick={() => setRoleColor(c)}
-                        style={{ width:24, height:24, borderRadius:6, background:c, cursor:'pointer', flexShrink:0,
-                          border: roleColor===c ? '2px solid var(--ink)' : '2px solid transparent',
-                          transform: roleColor===c ? 'scale(1.15)' : 'none' }} />
+                      <button key={c} type="button" className="rol-color-swatch" data-active={roleColor === c}
+                        style={{ background: c }} onClick={() => setRoleColor(c)} />
                     ))}
                   </div>
                 </div>
-                <div className="field" style={{ marginBottom:10 }}>
+                <div className="field">
                   <label>{_t('set_rol_permissions','İzinler')}</label>
-                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  <div className="rol-perms-list">
                     {ALL_PERMS.map(p => (
-                      <label key={p} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer' }}>
-                        <input type="checkbox" checked={rolePerms.includes(p)} onChange={() => togglePerm(p)} style={{ accentColor:'var(--accent)' }} />
+                      <label key={p} className="rol-perm-item">
+                        <input type="checkbox" checked={rolePerms.includes(p)} onChange={() => togglePerm(p)} />
                         {_t(PERM_LABELS_KEYS[p][0], PERM_LABELS_KEYS[p][1])}
                       </label>
                     ))}
                   </div>
                 </div>
-                <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer', marginBottom:14 }}>
-                  <input type="checkbox" checked={roleDefault} onChange={e => setRoleDefault(e.target.checked)} style={{ accentColor:'var(--accent)' }} />
+                <label className="rol-perm-item rol-default-item">
+                  <input type="checkbox" checked={roleDefault} onChange={e => setRoleDefault(e.target.checked)} />
                   {_t('set_rol_default_for_new','Yeni üyeler için varsayılan rol')}
                 </label>
-                <div style={{ display:'flex', gap:8 }}>
+                <div className="rol-form-actions">
                   <button type="submit" className="btn btn-primary" disabled={roleBusy || !roleName.trim()}>
                     {roleBusy ? _t('set_rol_saving','Kaydediliyor…') : _t('set_rol_save','Kaydet')}
                   </button>
@@ -1216,7 +1217,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
       {/* ── Projects ── */}
       {canManageProjects && projects.length > 0 && (
-        <div className="settings-section">
+        <div className="settings-section" data-nav-id="projects">
           <div>
             <h3>{_t('set_prj_title','Projeler')}</h3>
             <p className="desc">{_t('set_prj_desc','Her projenin ikon ve rengini özelleştirin.')}</p>
