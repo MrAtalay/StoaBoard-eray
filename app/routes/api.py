@@ -1169,6 +1169,10 @@ def update_task(task_id):
         task.assignee_dates = data['assignee_dates'] or None
     if 'doc' in data:
         task.doc = data['doc'] if isinstance(data['doc'], list) else None
+        # Sync description from doc's text blocks so card previews stay up to date
+        if isinstance(task.doc, list):
+            text_parts = [b.get('text', '') for b in task.doc if b.get('kind') in ('p', 'h1', 'h2', 'h3') and b.get('text')]
+            task.description = ' '.join(text_parts)[:1000]
 
     if 'col' in data:
         new_col = BoardColumn.query.filter_by(
@@ -1892,6 +1896,11 @@ def delete_me():
     ).delete(synchronize_session=False)
     ActivityLog.query.filter_by(user_id=user.id).update({'user_id': None})
     Task.query.filter_by(created_by=user.id).update({'created_by': None})
+    # Remove user from notes they co-authored (before deleting their own notes)
+    NoteCollaborator.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    # Delete notes authored by the user (cascades to NoteCollaborator / NoteLinkedTask)
+    for note in Note.query.filter_by(author_id=user.id).all():
+        db.session.delete(note)
     WorkspaceMember.query.filter_by(user_id=user.id).delete()
 
     online_state.set_offline(user.id)

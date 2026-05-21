@@ -181,8 +181,48 @@ function _prefixLines(ta, prefix) {
   return { next, newStart: lineStart, newEnd: lineStart + replaced.length };
 }
 
-function MarkdownEditor({ body, onChange, onKeyShortcut, disabled }) {
+const NOTE_EMOJI_CATS = [
+  { label: 'Sık Kullanılan', emojis: ['👍','❤️','😂','😮','🔥','🎉','✨','💯','🙌','👏','🤔','😊'] },
+  { label: 'Yüzler',         emojis: ['😀','😁','😃','😄','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😎','🥳','🤗','😏','😒','😞','😔','😟','😕','🫤','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤯','😱','😨','😰','😥','😓','🫣','🤫','🤭','🧐','🤓','😴','🥴','🤢','🤧','🥵','🥶','😵','🫠','🤖','👻','💀','👽'] },
+  { label: 'El & Vücut',     emojis: ['👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','👐','🤲','🤝','🙏','💪','🦾','🦿'] },
+  { label: 'Nesneler',       emojis: ['🔥','⭐','✨','💫','🌟','🎯','🏆','🥇','🎊','🎉','🎈','🎁','💎','🔑','💡','⚡','🌈','🌺','🍀','🚀','🛸','🎭','🎨','🎵','🎸','🎮','🎲','📌','📎','🔔','🔒','📱','💻','📷','🎬','🔭','🔬','⚙️','🛠️','💊','🧬','🧪','📚','✏️','📝'] },
+  { label: 'Yiyecek',        emojis: ['🍕','🍔','🍟','🌮','🌯','🥪','🍣','🍱','🍜','🍝','🍛','🍲','🥗','🥘','🍗','🍖','🥩','🥚','🍳','🧀','🥞','🧇','🥓','🍞','🥐','🥨','🧁','🎂','🍰','🍫','🍬','🍭','🍦','🍧','🍨','☕','🍵','🧃','🥤','🍺','🍻','🥂','🍷','🍸','🍹'] },
+  { label: 'Doğa',           emojis: ['🐶','🐱','🦊','🐼','🦁','🐸','🦄','🐉','🌍','🌊','🏔️','🌅','🌃','🏠','🏖️','🌵','🌲','🌳','🌴','🌱','🌿','🍀','🌺','🌸','🌼','🌻','🌞','🌝','🌛','⭐','🌙','☀️','🌤️','⛅','🌧️','⛈️','🌨️','❄️','🌬️','🌪️','🌈'] },
+];
+
+function NoteEmojiPicker({ onSelect, onClose }) {
+  const [activeTab, setActiveTab] = useNS(0);
+  const ref = useNR(null);
+  useNE(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [onClose]);
+  return (
+    <div className="note-emoji-picker" ref={ref}>
+      <div className="note-emoji-tabs">
+        {NOTE_EMOJI_CATS.map((cat, i) => (
+          <button key={i} type="button" className="note-emoji-tab" data-active={activeTab === i} onClick={() => setActiveTab(i)} title={cat.label}>
+            {cat.emojis[0]}
+          </button>
+        ))}
+      </div>
+      <div className="note-emoji-cat-label">{NOTE_EMOJI_CATS[activeTab].label}</div>
+      <div className="note-emoji-grid">
+        {NOTE_EMOJI_CATS[activeTab].emojis.map((em, i) => (
+          <button key={i} type="button" className="note-emoji-btn" onClick={() => { onSelect(em); onClose(); }} title={em}>
+            {em}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MarkdownEditor({ body, onChange, onBlur, onKeyShortcut, disabled }) {
   const taRef = useNR(null);
+  const [emojiOpen, setEmojiOpen] = useNS(false);
+  const emojiAnchorRef = useNR(null);
 
   const apply = (mut) => {
     const ta = taRef.current; if (!ta) return;
@@ -197,6 +237,20 @@ function MarkdownEditor({ body, onChange, onKeyShortcut, disabled }) {
 
   const wrap   = (b, a, ph) => apply(ta => _wrapAtCursor(ta, b, a, ph));
   const prefix = (p)         => apply(ta => _prefixLines(ta, p));
+
+  const insertEmoji = (emoji) => {
+    const ta = taRef.current;
+    if (!ta) { onChange(body + emoji); return; }
+    const start = ta.selectionStart;
+    const end   = ta.selectionEnd;
+    const next  = body.slice(0, start) + emoji + body.slice(end);
+    onChange(next);
+    requestAnimationFrame(() => {
+      ta.focus();
+      const pos = start + emoji.length;
+      try { ta.setSelectionRange(pos, pos); } catch (_) {}
+    });
+  };
 
   const handleKey = (e) => {
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
@@ -266,6 +320,15 @@ function MarkdownEditor({ body, onChange, onKeyShortcut, disabled }) {
         <button type="button" className="md-tb-btn" title="Yapılacaklar" onClick={() => prefix('- [ ] ')}><Icon name="listChecks" size={14} /></button>
         <button type="button" className="md-tb-btn" title="Alıntı" onClick={() => prefix('> ')}><Icon name="quote" size={14} /></button>
         <button type="button" className="md-tb-btn" title="Ayırıcı" onClick={() => { const ta = taRef.current; if (!ta) return; const v = ta.value; const next = v + (v.endsWith('\n') || v === '' ? '' : '\n') + '\n---\n'; onChange(next); }}><Icon name="divider" size={14} /></button>
+        <div className="md-tb-sep" />
+        <div style={{ position: 'relative' }} ref={emojiAnchorRef}>
+          <button type="button" className="md-tb-btn md-tb-emoji-btn" title="Emoji ekle" disabled={disabled} onClick={() => setEmojiOpen(v => !v)}>
+            <span style={{ fontSize: 14, lineHeight: 1 }}>😊</span>
+          </button>
+          {emojiOpen && !disabled && (
+            <NoteEmojiPicker onSelect={insertEmoji} onClose={() => setEmojiOpen(false)} />
+          )}
+        </div>
       </div>
       <textarea
         ref={taRef}
@@ -276,6 +339,7 @@ function MarkdownEditor({ body, onChange, onKeyShortcut, disabled }) {
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKey}
+        onBlur={onBlur}
       />
     </div>
   );
@@ -568,14 +632,12 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
     }
   }, [note.id, onPatch, canEdit]);
 
-  const debouncedSave = useNoteDebounce(doSave, 500);
+  const isDirty = title !== (note.title || '') || body !== (note.body || '');
 
-  // Auto-save on title/body change
-  useNE(() => {
-    if (!canEdit) return;
-    if (title === (note.title || '') && body === (note.body || '')) return;
-    debouncedSave({ title, body });
-  }, [title, body, canEdit]);
+  // Auto-save only on blur (when user leaves the field), not on every keystroke
+  const handleBodyBlur = useNCB(() => {
+    if (canEdit && isDirty) doSave({ title, body });
+  }, [canEdit, isDirty, title, body, doSave]);
 
   // Keyboard: ⌘+S = save now, ⌘+Enter = publish, Esc = back
   useNE(() => {
@@ -657,12 +719,25 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
           <Icon name="chevronLeft" size={14} /> {window.t?.('notes_back') || 'Notlar'}
         </button>
         <div className="note-status-pill">
-          {saving ? <><Icon name="clock" size={11} /> Kaydediliyor…</>
-            : error ? <span style={{ color: 'var(--status-rose)' }}>{error}</span>
-            : <><Icon name="check" size={11} /> Kaydedildi · {savedAt}</>
+          {error
+            ? <span style={{ color: 'var(--status-rose)' }}>{error}</span>
+            : isDirty
+              ? <span style={{ color: 'var(--ink-faint)', fontSize: 11 }}>Kaydedilmemiş değişiklikler</span>
+              : <><Icon name="check" size={11} /> Kaydedildi · {savedAt}</>
           }
           {note.status === 'draft' && <span className="note-draft-pill">Taslak</span>}
         </div>
+        {canEdit && (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => doSave({ title, body })}
+            disabled={saving || !isDirty}
+            title="Kaydet (Ctrl+S)"
+          >
+            {saving ? <><Icon name="clock" size={11} /> Kaydediliyor…</> : <><Icon name="check" size={11} /> Kaydet</>}
+          </button>
+        )}
         <div style={{ flex: 1 }} />
 
         {/* Visibility */}
@@ -792,7 +867,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
 
       <div className="note-detail-body">
         {mode === 'edit' && canEdit
-          ? <MarkdownEditor body={body} onChange={setBody} disabled={!canEdit} />
+          ? <MarkdownEditor body={body} onChange={setBody} onBlur={handleBodyBlur} disabled={!canEdit} />
           : <MarkdownRender body={body} />
         }
       </div>

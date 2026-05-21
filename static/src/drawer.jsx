@@ -171,8 +171,8 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
     const progress = total > 0 ? Math.round((done / total) * 100) : (task.progress || 0);
     setCheckSaving(true);
     try {
-      await API.updateTask(task.id, { doc: newDoc, progress });
-      onTaskUpdate && onTaskUpdate({ id: task.id, progress });
+      const updated = await API.updateTask(task.id, { doc: newDoc, progress });
+      onTaskUpdate && onTaskUpdate({ id: task.id, ...updated });
     } catch (e) { window.showToast?.('Checklist kaydedilemedi: ' + e.message, 'error'); }
     finally { setCheckSaving(false); }
   };
@@ -257,7 +257,10 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
   const saveDocBlock = async (index, newText) => {
     const newDoc = doc.map((b, i) => i === index ? { ...b, text: newText } : b);
     setDocState(newDoc);
-    try { await API.updateTask(task.id, { doc: newDoc }); }
+    try {
+      const updated = await API.updateTask(task.id, { doc: newDoc });
+      onTaskUpdate && onTaskUpdate({ id: task.id, ...updated });
+    }
     catch (e) { window.showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
   };
 
