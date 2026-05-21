@@ -8620,3 +8620,297 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
 }
 .img-preview-close:hover { background: rgba(255,255,255,0.25); }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE — Tablet & Mobile Refinements
+   Standard breakpoints used throughout:
+     ≤1280px  small laptop
+     ≤1024px  tablet
+     ≤768px   phone
+     ≤480px   small phone
+   All rules here are additive — they do NOT alter desktop layout.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tablet (≤1024px) ───────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  /* Drawer becomes wider since available width is less */
+  .drawer { width: min(620px, 92vw); }
+  /* Settings shell still 2-col on tablet, but tighter */
+  .settings-wrap { padding: 24px 28px 64px; }
+  /* Calendar: drop sidebar earlier so main grid breathes */
+  .cal-wrap { grid-template-columns: minmax(0, 1fr); }
+  .cal-side { display: none; }
+  /* Dashboard: 4-col stat cards → 2-col when squeezed */
+  .dash-grid { grid-template-columns: repeat(2, 1fr); }
+  /* Topbar invite code is space-greedy on tablets too */
+  .topbar-invite { display: none; }
+}
+
+/* ── Phone (≤768px) — Refinements on top of existing rules ──────────────── */
+@media (max-width: 768px) {
+  /* Topbar/notif-panel vertical alignment fix
+     Existing @media sets topbar min-height to 52px but .notif-panel still
+     targets top:58px from desktop rule. Re-anchor below mobile topbar. */
+  .notif-panel { top: 56px; }
+
+  /* ── Chat compact dropdown: don't bleed onto background views.
+     Adds a backdrop so settings/notes underneath aren't visible. ── */
+  .chat-panel:not([data-full-page="true"])[data-open="true"]::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  /* ── Chat full-page conv-head: prevent the long meta line from wrapping
+       into a column on narrow screens. ── */
+  .chat-fp-conv-head { padding: 10px 12px; min-height: 50px; gap: 8px; }
+  .chat-fp-conv-title-wrap {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .chat-fp-conv-title {
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-fp-conv-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10.5px;
+  }
+  /* Hide the recent participants stack on tight headers (already shown in side panel) */
+  .chat-fp-conv-head > .avatar-stack { display: none; }
+
+  /* ── Dashboard upcoming-deadlines: keep avatars and status pill inline ── */
+  /* The list-table-as-cards rule turns each row into 2-col grid; here we
+     guarantee the date pill, avatars, and column chip all share one wrap row */
+  .panel .list-table tr {
+    grid-template-columns: 1fr;
+    row-gap: 6px;
+  }
+  .panel .list-table td.title {
+    grid-column: 1;
+    grid-row: 1;
+    padding-right: 0;
+  }
+  .panel .list-table td:nth-child(n + 2) {
+    grid-column: 1;
+    flex-wrap: wrap;
+  }
+
+  /* ── Calendar week-view: keep titles readable, taller min-width ── */
+  .cal-week-col { min-width: 104px; }
+  .cal-week-chip { padding: 3px 5px; gap: 3px; }
+  .cal-week-chip-title { font-size: 10.5px; }
+  /* Hide avatar stack inside week chips on narrow screens */
+  .cal-week-chip .avatar-stack { display: none; }
+
+  /* ── Settings page: hide background when chat opens on top (safety) ── */
+  body:has(.chat-panel[data-open="true"]) .topbar { z-index: 0; }
+
+  /* Sidebar overlay: add a close affordance via small swipe hint
+     (no JSX change — purely visual hint that the backdrop is tappable) */
+  .sidebar-backdrop { cursor: pointer; }
+
+  /* Topbar crumbs: make sure long workspace names truncate */
+  .topbar-crumbs { flex: 1; min-width: 0; overflow: hidden; }
+  .topbar-crumbs .current {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  /* ── List view as cards (no JSX change) ───────────────────────────────
+     Table → card stack. Each row becomes a card; cells become labeled rows.
+     Header is hidden because labels travel via td::before pseudo-element. */
+  .list-table,
+  .list-table thead,
+  .list-table tbody,
+  .list-table tr,
+  .list-table td { display: block; }
+  .list-table thead { display: none; }
+  .list-table {
+    border: none;
+  }
+  .list-table tr {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    column-gap: 10px;
+    row-gap: 4px;
+  }
+  .list-table tr:hover td { background: transparent; }
+  /* Cell 1: check stays top-left */
+  .list-table td:nth-child(1) {
+    grid-row: 1 / span 2;
+    grid-column: 1;
+    padding: 2px 0;
+    border-bottom: none;
+  }
+  /* Cell 2: title is the visual heading */
+  .list-table td.title {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 0;
+    border-bottom: none;
+  }
+  /* Remaining cells (labels/priority/due/assignee/subtasks) wrap below as meta */
+  .list-table td:nth-child(n + 3) {
+    grid-column: 2;
+    padding: 0;
+    border-bottom: none;
+    font-size: 12px;
+    color: var(--ink-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  /* Hide totally empty cells (no children, e.g. no labels) to save space */
+  .list-table td:nth-child(n + 3):empty,
+  .list-table td:nth-child(n + 3) > :only-child:empty { display: none; }
+
+  /* Notes grid: force single column on phones */
+  .notes-grid-grid { grid-template-columns: 1fr; }
+  .notes-header { padding: 16px 16px 12px; }
+  .notes-title { font-size: 22px; }
+  .notes-toolbar > * { font-size: 13px; }
+  .notes-search-wrap { max-width: 100%; min-width: 0; }
+  .notes-filters { padding: 8px 16px; gap: 10px; }
+  .notes-scroll { padding: 14px 16px 24px; }
+
+  /* Note detail header: tight grid, hide some controls on phone */
+  .note-detail-head {
+    padding: 10px 14px;
+    gap: 6px;
+  }
+  .note-detail-head .note-collab-trigger,
+  .note-detail-head .note-mode-toggle {
+    display: none;
+  }
+  .note-detail-head .note-visibility-toggle {
+    font-size: 10px;
+  }
+  .note-detail-head .note-status-pill {
+    font-size: 10.5px;
+    padding: 2px 6px;
+  }
+  .note-detail-meta {
+    padding: 12px 16px 6px;
+  }
+  .note-title-input { font-size: 22px; }
+  .note-detail-body { padding: 14px 16px; }
+  .note-detail-linked { padding: 12px 16px 18px; }
+  /* Emoji picker: anchor to viewport edge on small screens so it never overflows */
+  .note-emoji-picker {
+    width: min(280px, calc(100vw - 32px));
+    right: 0;
+  }
+
+  /* Drawer body & task page tighter padding */
+  .drawer-body { padding: 14px 16px 60px; }
+  .task-page-body { padding: 20px 16px 60px; }
+  .doc-title { font-size: 24px; margin-bottom: 14px; }
+  /* Props grid: narrower label column, allow wrap */
+  .props-grid {
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 4px 10px;
+    margin-bottom: 20px;
+  }
+  .prop-label { font-size: 11.5px; padding: 4px 0; }
+  .prop-value { font-size: 12.5px; min-height: 30px; }
+
+  /* Dashboard h1 sizing on phones */
+  .dash-h1 { font-size: 24px; }
+
+  /* Calendar week view: narrower cols so days don't get cramped */
+  .cal-week-col { min-width: 92px; }
+
+  /* Chat full-page: when reduced to single column, give a back button
+     by surfacing the (existing but hidden on desktop) toggle */
+  .chat-fp-grid:not(:has(.chat-fp-left)) .chat-fp-main-back { display: inline-flex; }
+
+  /* Settings cards: smaller padding, full-width controls */
+  .settings-section { padding: 18px 0; gap: 12px; }
+  .settings-section h3 { font-size: 17px; }
+  .settings-section .desc { font-size: 12.5px; }
+
+  /* Touch hit target: bump small icon-only buttons in topbar to 36px */
+  .topbar .icon-btn { width: 36px; height: 36px; }
+
+  /* Modal foot buttons stack neatly */
+  .modal-foot { flex-wrap: wrap; gap: 8px; }
+  .modal-foot .btn { flex: 1; min-width: 120px; justify-content: center; }
+
+  /* Auth form: shorter top spacing on small screens */
+  .auth-form-wrap { padding: 24px 18px; }
+  .auth-form h2 { font-size: 26px; }
+  .auth-form p.sub { font-size: 13.5px; margin-bottom: 24px; }
+}
+
+/* ── Small phone (≤480px) ───────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  /* Topbar gets even tighter */
+  .topbar { padding: 8px 10px; gap: 6px; min-height: 50px; }
+  .topbar-crumbs { font-size: 12px; }
+  .topbar-crumbs .current { font-size: 13px; }
+  .topbar-right { gap: 2px; }
+  .topbar .icon-btn { width: 34px; height: 34px; }
+
+  /* Notif panel reposition relative to smaller topbar */
+  .notif-panel { top: 54px; }
+
+  /* Notes title block compact */
+  .notes-title { font-size: 19px; }
+  .notes-count { font-size: 11px; }
+  .notes-filters { font-size: 11px; padding: 6px 12px; }
+
+  /* List-as-card: even tighter on tiny screens */
+  .list-table tr { padding: 9px 10px; row-gap: 3px; }
+  .list-table td.title { font-size: 13.5px; }
+
+  /* Dashboard: 1-col grid + smaller stat values */
+  .dash-grid { grid-template-columns: 1fr; gap: 8px; }
+  .stat-value { font-size: 26px; }
+  .stat-card { padding: 14px; }
+  .dash-h1 { font-size: 22px; }
+
+  /* Calendar month view: hide chip text, show only dot indicators */
+  .cal-day { min-height: 42px; max-height: 56px; padding: 2px; }
+  .cal-day .day-num { font-size: 11px; }
+
+  /* Drawer/task-page typography */
+  .doc-title { font-size: 22px; }
+  .props-grid { grid-template-columns: 82px minmax(0, 1fr); }
+
+  /* Note detail: stack title and toolbar */
+  .note-title-input { font-size: 20px; }
+  .note-detail-head .note-back-btn span { display: none; }
+  .note-detail-head .btn-primary .btn-label,
+  .note-detail-head .btn-primary span { display: inline; }
+
+  /* Auth on tiny screens */
+  .auth-form h2 { font-size: 22px; }
+  .auth-form-wrap { padding: 20px 14px; }
+
+  /* Settings card padding */
+  .settings-wrap { padding: 14px; }
+  .settings-card { padding: 12px; }
+  .settings-section h3 { font-size: 16px; }
+
+  /* Modal foot full-width single column on tiny screens */
+  .modal-foot .btn { flex-basis: 100%; }
+}
+

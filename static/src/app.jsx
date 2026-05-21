@@ -657,9 +657,35 @@ function App() {
   window.__APP_TASKS__ = tasks;
   window.__SWITCH_VIEW__ = setView;
   window.__NOTIF_BADGE_RESET__ = () => setNotifCount(0);
-  window.__OPEN_TASK_BY_ID__ = (taskId) => {
-    const t = tasks.find(x => String(x.id) === String(taskId));
-    if (t) { setDrawerTask(t); setNotifOpen(false); setView('board'); }
+  window.__OPEN_TASK_BY_ID__ = async (taskId) => {
+    if (!taskId) return;
+    // Fast path: task is in the current project's list
+    const local = tasks.find(x => String(x.id) === String(taskId));
+    if (local) {
+      setDrawerTask(local);
+      setNotifOpen(false);
+      setView('board');
+      return;
+    }
+    // Slow path: fetch from backend; switch project if needed
+    try {
+      const detail = await API.getTaskDetail(taskId);
+      if (!detail) return;
+      const targetProjectId = detail.project_id;
+      const inCurrentProject = currentProject && String(currentProject.id) === String(targetProjectId);
+      if (!inCurrentProject && targetProjectId) {
+        await switchProject(targetProjectId);
+        // After project switch, find the task again from the freshly loaded list
+        const fresh = (window.__APP_TASKS__ || []).find(x => String(x.id) === String(taskId));
+        setDrawerTask(fresh || detail);
+      } else {
+        setDrawerTask(detail);
+        setView('board');
+      }
+      setNotifOpen(false);
+    } catch (e) {
+      window.showToast?.(window.t?.('app_err_open_task') || 'Görev açılamadı: ' + (e.message || ''), 'error');
+    }
   };
 
   const handleCmd = (action) => {
