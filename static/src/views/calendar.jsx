@@ -1,4 +1,4 @@
-// Calendar view — month / week / agenda with date-range bars & Turkish holidays
+// Calendar view — month / week / agenda with date-range bars & locale-aware holidays
 
 const { useState: useCalState, useMemo: useCalMemo, useCallback: useCalCb } = React;
 
@@ -37,9 +37,77 @@ const TR_VAR_HOL_NAMES = {
           '2027-05-16':'Kurban Bayramı','2027-05-17':'Kurban Bayramı','2027-05-18':'Kurban Bayramı','2027-05-19':'Kurban Bayramı' },
 };
 
+// ── International holidays (English locale) ───────────────────────────────────
+const EN_FIXED_HOL = [
+  [1,  1,  'New Year\'s Day'],
+  [2,  14, 'Valentine\'s Day'],
+  [3,  17, 'St. Patrick\'s Day'],
+  [5,  1,  'International Workers\' Day'],
+  [10, 31, 'Halloween'],
+  [11, 11, 'Veterans Day'],
+  [12, 24, 'Christmas Eve'],
+  [12, 25, 'Christmas Day'],
+  [12, 26, 'Boxing Day'],
+  [12, 31, 'New Year\'s Eve'],
+];
+
+// Easter Sunday, Good Friday, Easter Monday, Mother's Day, Thanksgiving
+const EN_VAR_HOL_NAMES = {
+  2024: {
+    '2024-03-29':'Good Friday', '2024-03-31':'Easter Sunday', '2024-04-01':'Easter Monday',
+    '2024-05-12':'Mother\'s Day', '2024-11-28':'Thanksgiving',
+  },
+  2025: {
+    '2025-04-18':'Good Friday', '2025-04-20':'Easter Sunday', '2025-04-21':'Easter Monday',
+    '2025-05-11':'Mother\'s Day', '2025-11-27':'Thanksgiving',
+  },
+  2026: {
+    '2026-04-03':'Good Friday', '2026-04-05':'Easter Sunday', '2026-04-06':'Easter Monday',
+    '2026-05-10':'Mother\'s Day', '2026-11-26':'Thanksgiving',
+  },
+  2027: {
+    '2027-03-26':'Good Friday', '2027-03-28':'Easter Sunday', '2027-03-29':'Easter Monday',
+    '2027-05-09':'Mother\'s Day', '2027-11-25':'Thanksgiving',
+  },
+};
+
+// ── German holidays ───────────────────────────────────────────────────────────
+const DE_FIXED_HOL = [
+  [1,  1,  'Neujahr'],
+  [5,  1,  'Tag der Arbeit'],
+  [10, 3,  'Tag der Deutschen Einheit'],
+  [12, 24, 'Heiligabend'],
+  [12, 25, '1. Weihnachtstag'],
+  [12, 26, '2. Weihnachtstag'],
+  [12, 31, 'Silvester'],
+];
+const DE_VAR_HOL_NAMES = {
+  2024: { '2024-03-29':'Karfreitag','2024-03-31':'Ostersonntag','2024-04-01':'Ostermontag','2024-05-09':'Christi Himmelfahrt','2024-05-19':'Pfingstsonntag','2024-05-20':'Pfingstmontag' },
+  2025: { '2025-04-18':'Karfreitag','2025-04-20':'Ostersonntag','2025-04-21':'Ostermontag','2025-05-29':'Christi Himmelfahrt','2025-06-08':'Pfingstsonntag','2025-06-09':'Pfingstmontag' },
+  2026: { '2026-04-03':'Karfreitag','2026-04-05':'Ostersonntag','2026-04-06':'Ostermontag','2026-05-14':'Christi Himmelfahrt','2026-05-24':'Pfingstsonntag','2026-05-25':'Pfingstmontag' },
+  2027: { '2027-03-26':'Karfreitag','2027-03-28':'Ostersonntag','2027-03-29':'Ostermontag','2027-05-06':'Christi Himmelfahrt','2027-05-16':'Pfingstsonntag','2027-05-17':'Pfingstmontag' },
+};
+
+function _calLang() {
+  return localStorage.getItem('stoa.lang') || 'tr';
+}
+
 function getHoliday(dateStr) {
   if (!dateStr) return null;
+  const lang = _calLang();
   const [y, m, d] = dateStr.split('-').map(Number);
+  if (lang === 'de') {
+    for (const [fm, fd, name] of DE_FIXED_HOL) {
+      if (fm === m && fd === d) return name;
+    }
+    return (DE_VAR_HOL_NAMES[y] || {})[dateStr] || null;
+  }
+  if (lang !== 'tr') {
+    for (const [fm, fd, name] of EN_FIXED_HOL) {
+      if (fm === m && fd === d) return name;
+    }
+    return (EN_VAR_HOL_NAMES[y] || {})[dateStr] || null;
+  }
   for (const [fm, fd, name] of TR_FIXED_HOL) {
     if (fm === m && fd === d) return name;
   }
@@ -188,7 +256,7 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
     let safety = 0;
     while (d <= endD && safety < 400) {
       if (countTasksOnDay(toDateStr(d)) >= 5) {
-        window.showToast?.('Maksimum limite geldiniz! Aynı tarihler arasında en fazla 5 görev atanabilir.', 'error');
+        window.showToast?.(window.t?.('cal_max_tasks') || 'Maksimum limite geldiniz! Aynı tarihler arasında en fazla 5 görev atanabilir.', 'error');
         return false;
       }
       d.setDate(d.getDate() + 1);
@@ -508,8 +576,8 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
                   <div className="day-num">{c.day}</div>
                   {holiday && renderHoliday(c.dateStr)}
                   {dayCount >= 5 && (
-                    <span title="Bu gün dolu (maks. 5 görev)" style={{ fontSize: 9, color: 'var(--status-rose)', fontWeight: 600, lineHeight: 1 }}>
-                      DOLU
+                    <span title={window.t?.('cal_day_full') || 'Bu gün dolu (maks. 5 görev)'} style={{ fontSize: 9, color: 'var(--status-rose)', fontWeight: 600, lineHeight: 1 }}>
+                      {window.t?.('cal_day_full_short') || 'DOLU'}
                     </span>
                   )}
                 </div>

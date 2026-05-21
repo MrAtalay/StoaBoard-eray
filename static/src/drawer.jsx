@@ -90,7 +90,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
       fd.append('file', file);
       const att = await API.uploadAttachment(task.id, fd);
       setAttachments(prev => [att, ...prev]);
-      window.showToast?.(`"${att.file_name}" yüklendi.`, 'success');
+      window.showToast?.(`"${att.file_name}" ${window.t?.('drawer_file_uploaded') || 'yüklendi'}.`, 'success');
     } catch (e) { window.showToast?.(e.message, 'error'); }
     finally { setUploading(false); setUploadProgress(0); }
   };
@@ -173,7 +173,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
     try {
       const updated = await API.updateTask(task.id, { doc: newDoc, progress });
       onTaskUpdate && onTaskUpdate({ id: task.id, ...updated });
-    } catch (e) { window.showToast?.('Checklist kaydedilemedi: ' + e.message, 'error'); }
+    } catch (e) { window.showToast?.((window.t?.('drawer_err_checklist') || 'Checklist kaydedilemedi: ') + e.message, 'error'); }
     finally { setCheckSaving(false); }
   };
 
@@ -250,7 +250,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
     .filter(Boolean);
   const col = DATA.COLUMNS.find(c => c.id === task.col) || { title_tr: task.col };
 
-  const doc        = docState || detail?.doc || _basicDoc(task);
+  const doc        = _patchDocI18n(docState || detail?.doc || _basicDoc(task));
   const comments   = detail?.comments_list || [];
   const subsDetail = detail?.subtasks_detail || [];
 
@@ -261,7 +261,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
       const updated = await API.updateTask(task.id, { doc: newDoc });
       onTaskUpdate && onTaskUpdate({ id: task.id, ...updated });
     }
-    catch (e) { window.showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+    catch (e) { window.showToast?.((window.t?.('drawer_err_save') || 'Kaydedilemedi: ') + e.message, 'error'); }
   };
 
   // ── Submit comment ──────────────────────────────────────────────────────
@@ -523,13 +523,13 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
       {/* ── Checklist ── */}
       <div className="comments-section" style={{ marginBottom: 18 }}>
         <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '-0.005em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-          Yapılacaklar
+          {window.t?.('drawer_checklist') || 'Yapılacaklar'}
           {checklist.length > 0 && (
             <span style={{ fontSize: 12, color: 'var(--ink-muted)', fontFamily: 'var(--font-ui)', fontWeight: 400 }}>
               {checklist.filter(i => i.done).length}/{checklist.length}
             </span>
           )}
-          {checkSaving && <span style={{ fontSize: 11, color: 'var(--ink-faint)', fontFamily: 'var(--font-ui)', fontWeight: 400 }}>kaydediliyor…</span>}
+          {checkSaving && <span style={{ fontSize: 11, color: 'var(--ink-faint)', fontFamily: 'var(--font-ui)', fontWeight: 400 }}>{window.t?.('drawer_saving') || 'kaydediliyor…'}</span>}
         </h3>
         {checklist.length > 0 && (
           <div className="checklist-progress-bar" style={{ marginBottom: 10 }}>
@@ -562,7 +562,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
                     className="drawer-check-action save"
                     onMouseDown={e => e.preventDefault()}
                     onClick={() => renameCheckItem(it.id, editingCheckText || it.text)}
-                    title="Kaydet"
+                    title={window.t?.('notes_save') || 'Kaydet'}
                   >
                     <Icon name="check" size={11} />
                   </button>
@@ -570,7 +570,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
                     className="drawer-check-action cancel"
                     onMouseDown={e => e.preventDefault()}
                     onClick={() => setEditingCheckId(null)}
-                    title="İptal"
+                    title={window.t?.('drawer_cancel') || 'İptal'}
                   >
                     <Icon name="x" size={11} />
                   </button>
@@ -579,12 +579,12 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
                 <span className="drawer-check-text">{it.text}</span>
               )}
               {canManageTasks && editingCheckId !== it.id && (
-                <button className="drawer-check-del" onClick={() => { setEditingCheckId(it.id); setEditingCheckText(it.text); }} title="Düzenle">
+                <button className="drawer-check-del" onClick={() => { setEditingCheckId(it.id); setEditingCheckText(it.text); }} title={window.t?.('notes_edit') || 'Düzenle'}>
                   <Icon name="pen" size={10} />
                 </button>
               )}
               {canManageTasks && editingCheckId !== it.id && (
-                <button className="drawer-check-del" onClick={() => deleteCheckItem(it.id)} title="Kaldır">
+                <button className="drawer-check-del" onClick={() => deleteCheckItem(it.id)} title={window.t?.('notes_unlink_task') || 'Kaldır'}>
                   <Icon name="x" size={11} />
                 </button>
               )}
@@ -593,13 +593,13 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
           {canManageTasks && (
             <div className="drawer-check-add">
               <input
-                placeholder="Yeni madde ekle…"
+                placeholder={window.t?.('modal_checklist_placeholder') || 'Yeni madde ekle…'}
                 value={checkInput}
                 onChange={e => setCheckInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') addCheckItem(); }}
               />
               <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={addCheckItem} disabled={!checkInput.trim()}>
-                + Ekle
+                {window.t?.('modal_checklist_add') || '+ Ekle'}
               </button>
             </div>
           )}
@@ -623,20 +623,20 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
                   if (!allNotes) API.listNotes().then(setAllNotes).catch(() => setAllNotes([]));
                 }}
               >
-                <Icon name="plus" size={11} /> Not bağla
+                <Icon name="plus" size={11} /> {window.t?.('drawer_link_note') || 'Not bağla'}
               </button>
               {noteLinkOpen && (
                 <div className="note-link-dropdown">
                   <input
                     autoFocus
-                    placeholder="Not ara…"
+                    placeholder={window.t?.('drawer_note_search_ph') || 'Not ara…'}
                     value={noteSearch}
                     onChange={e => setNoteSearch(e.target.value)}
                     className="note-link-search"
                   />
                   <div className="note-link-list">
                     {allNotes === null
-                      ? <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--ink-faint)' }}>Yükleniyor…</div>
+                      ? <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--ink-faint)' }}>{window.t?.('drawer_loading') || 'Yükleniyor…'}</div>
                       : (allNotes || [])
                           .filter(n => !linkedNotes.some(ln => ln.id === n.id))
                           .filter(n => !noteSearch || (n.title || '').toLowerCase().includes(noteSearch.toLowerCase()))
@@ -650,17 +650,17 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
                                   await API.linkNoteTask(n.id, task.id);
                                   setLinkedNotes(prev => [n, ...prev]);
                                   setNoteLinkOpen(false);
-                                  window.showToast?.('Not bağlandı.', 'success');
+                                  window.showToast?.(window.t?.('drawer_note_linked') || 'Not bağlandı.', 'success');
                                 } catch (e) { window.showToast?.(e.message, 'error'); }
                               }}
                             >
                               <Icon name="note" size={12} />
-                              <span>{n.title || '(başlıksız)'}</span>
+                              <span>{n.title || window.t?.('drawer_untitled_note') || '(başlıksız)'}</span>
                             </button>
                           ))
                     }
                     {allNotes !== null && (allNotes || []).filter(n => !linkedNotes.some(ln => ln.id === n.id)).length === 0 && (
-                      <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--ink-faint)' }}>Bağlanacak not yok.</div>
+                      <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--ink-faint)' }}>{window.t?.('drawer_no_linkable_notes') || 'Bağlanacak not yok.'}</div>
                     )}
                   </div>
                 </div>
@@ -781,12 +781,12 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
                   </div>
                   {canManageTasks && !isEditingThis && (
                     <button className="drawer-check-del" style={{ opacity: 0.6 }}
-                      onClick={() => { setEditingAttId(att.id); setEditingAttName(displayName); }} title="Yeniden adlandır">
+                      onClick={() => { setEditingAttId(att.id); setEditingAttName(displayName); }} title={window.t?.('board_col_rename') || 'Yeniden adlandır'}>
                       <Icon name="pen" size={11} />
                     </button>
                   )}
                   {canManageTasks && !isEditingThis && (
-                    <button className="drawer-check-del" style={{ opacity: 1 }} onClick={() => handleDeleteAttachment(att.id)} title="Sil">
+                    <button className="drawer-check-del" style={{ opacity: 1 }} onClick={() => handleDeleteAttachment(att.id)} title={window.t?.('notes_delete') || 'Sil'}>
                       <Icon name="trash" size={12} />
                     </button>
                   )}
@@ -988,8 +988,8 @@ function DrawerDocBlock({ block, subsDetail, onSubtaskToggle, canManageTasks = t
   const checks = localChecks || (block.items || []).map(it => !!it.done);
 
   switch (block.kind) {
-    case 'h2':    return <h2>{block.text}</h2>;
-    case 'h3':    return <h3>{block.text}</h3>;
+    case 'h2':    return <h2>{block._i18n ? (window.t?.(block._i18n) || block.text) : block.text}</h2>;
+    case 'h3':    return <h3>{block._i18n ? (window.t?.(block._i18n) || block.text) : block.text}</h3>;
     case 'p':     return (
       <div style={{ position: 'relative' }}>
         {pEditing && onUpdate && (
@@ -1073,11 +1073,28 @@ function DrawerDocBlock({ block, subsDetail, onSubtaskToggle, canManageTasks = t
   }
 }
 
+// Known i18n keys by their possible stored text values (legacy fix for docs saved in Turkish)
+const _DOC_I18N_MAP = {
+  'Açıklama': 'drawer_description',
+  'Description': 'drawer_description',
+  'Beschreibung': 'drawer_description',
+};
+
+function _patchDocI18n(blocks) {
+  if (!Array.isArray(blocks)) return blocks;
+  return blocks.map(b => {
+    if ((b.kind === 'h2' || b.kind === 'h3') && !b._i18n && _DOC_I18N_MAP[b.text]) {
+      return { ...b, _i18n: _DOC_I18N_MAP[b.text] };
+    }
+    return b;
+  });
+}
+
 // Generate basic doc from task description when no stored doc
 function _basicDoc(task) {
   const doc = [];
   if (task?.desc) {
-    doc.push({ kind: 'h2', text: window.t?.('drawer_description') || 'Açıklama' });
+    doc.push({ kind: 'h2', text: window.t?.('drawer_description') || 'Description', _i18n: 'drawer_description' });
     doc.push({ kind: 'p', text: task.desc });
   }
   if (!doc.length) {

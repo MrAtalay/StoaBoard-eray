@@ -207,7 +207,7 @@ function RoleDropdown({ value, roles, onChange, disabled, onRoleCreated }) {
       onRoleCreated?.(r);
       onChange(r.id);
       setQName(''); setQOpen(false); setOpen(false);
-      window.showToast?.(`"${r.name}" rolü oluşturuldu.`, 'success');
+      window.showToast?.(`"${r.name}"${_t('set_rol_created',' rolü oluşturuldu.')}`, 'success');
     } catch (e) { window.showToast?.(e.message, 'error'); }
     finally { setQBusy(false); }
   };
@@ -396,7 +396,7 @@ function JoinRequestsSection() {
     try {
       await API.approveJoinRequest(id);
       setRequests(prev => prev.filter(r => r.id !== id));
-      window.showToast?.('Katılım isteği onaylandı.', 'success');
+      window.showToast?.(_t('set_jrq_approved','Katılım isteği onaylandı.'), 'success');
     } catch (e) { window.showToast?.(e.message, 'error'); }
   };
 
@@ -404,7 +404,7 @@ function JoinRequestsSection() {
     try {
       await API.rejectJoinRequest(id);
       setRequests(prev => prev.filter(r => r.id !== id));
-      window.showToast?.('Katılım isteği reddedildi.', 'info');
+      window.showToast?.(_t('set_jrq_rejected_msg','Katılım isteği reddedildi.'), 'info');
     } catch (e) { window.showToast?.(e.message, 'error'); }
   };
 
@@ -528,7 +528,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
   const resetShortcuts = () => {
     setCustomShortcuts({});
     localStorage.removeItem('stoa.shortcuts');
-    window.showToast?.('Kısayollar varsayılana sıfırlandı.', 'success');
+    window.showToast?.(window.t?.('set_sct_reset_done') || 'Kısayollar varsayılana sıfırlandı.', 'success');
   };
 
   React.useEffect(() => {
@@ -575,7 +575,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       ws.name = res.name;
       setWsNameSaved(true);
       setTimeout(() => setWsNameSaved(false), 2000);
-    } catch (e) { window.showToast?.(e.message || 'İsim güncellenemedi', 'error'); }
+    } catch (e) { window.showToast?.(e.message || window.t?.('set_err_name_update') || 'İsim güncellenemedi', 'error'); }
     finally { setWsNameBusy(false); }
   };
 
@@ -590,7 +590,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       setLogoUrl(res.logo_url);
       window.DATA.WORKSPACE = { ...window.DATA.WORKSPACE, logo_url: res.logo_url };
       if (onWsLogoChange) onWsLogoChange(res.logo_url);
-    } catch (err) { window.showToast?.('Logo yüklenemedi: ' + err.message, 'error'); }
+    } catch (err) { window.showToast?.((window.t?.('set_err_logo_upload') || 'Logo yüklenemedi: ') + err.message, 'error'); }
     finally { setLogoBusy(false); }
   };
 
@@ -603,7 +603,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       if (idx >= 0) DATA.MEMBERS[idx] = { ...DATA.MEMBERS[idx], ...updated };
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch (e) { window.showToast?.('Kaydedilemedi: ' + e.message, 'error'); }
+    } catch (e) { window.showToast?.((window.t?.('set_err_save') || 'Kaydedilemedi: ') + e.message, 'error'); }
     finally { setBusy(false); }
   };
 
@@ -619,7 +619,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       window.CURRENT_USER = { ...window.CURRENT_USER, avatar_photo_url: res.avatar_photo_url };
       const idx = DATA.MEMBERS.findIndex(m => m.id === me.id);
       if (idx >= 0) DATA.MEMBERS[idx] = { ...DATA.MEMBERS[idx], avatar_photo_url: res.avatar_photo_url };
-    } catch (err) { window.showToast?.('Fotoğraf yüklenemedi: ' + err.message, 'error'); }
+    } catch (err) { window.showToast?.((window.t?.('set_err_photo_upload') || 'Fotoğraf yüklenemedi: ') + err.message, 'error'); }
     finally { setAvatarBusy(false); if (avatarInputRef.current) avatarInputRef.current.value = ''; }
   };
 
@@ -631,7 +631,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
       window.CURRENT_USER = { ...window.CURRENT_USER, avatar_photo_url: null };
       const idx = DATA.MEMBERS.findIndex(m => m.id === me.id);
       if (idx >= 0) DATA.MEMBERS[idx] = { ...DATA.MEMBERS[idx], avatar_photo_url: null };
-    } catch (err) { window.showToast?.('Fotoğraf silinemedi: ' + err.message, 'error'); }
+    } catch (err) { window.showToast?.((window.t?.('set_err_photo_delete') || 'Fotoğraf silinemedi: ') + err.message, 'error'); }
     finally { setAvatarBusy(false); }
   };
 
@@ -758,7 +758,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
     setTransferBusy(true);
     try {
       await API.transferOwnership(transferSlug);
-      window.showToast?.('Sahiplik aktarıldı. Yetkiniz güncellendi.', 'success');
+      window.showToast?.(window.t?.('set_transfer_done') || 'Sahiplik aktarıldı. Yetkiniz güncellendi.', 'success');
       setTransferOpen(false);
       setTimeout(() => window.location.reload(), 1200);
     } catch (e) {

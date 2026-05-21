@@ -44,6 +44,7 @@ function App() {
   const [modalInitialDates, setModalInitialDates] = useS(null);
   const [cmdOpen, setCmdOpen]               = useS(false);
   const [notifOpen, setNotifOpen]           = useS(false);
+  const [preNotifView, setPreNotifView]     = useS('dashboard');
   const [chatOpen, setChatOpen]             = useS(false);
   const [chatDmWith, setChatDmWith]         = useS(null);
   const [chatChannel, setChatChannel]       = useS(null);
@@ -650,8 +651,13 @@ function App() {
     setChatDmWith(slug);
     setChatChannel(slug ? null : (channelSlug || null));
     setChatHighlightMsgId(msgId || null);
-    setChatOpen(true);
-    window.__CHAT_OPEN__ = true;
+    if (view === 'chat') {
+      // Full-page chat is already open; let it react to initialDmWith change
+      window.__CHAT_OPEN__ = true;
+    } else {
+      setChatOpen(true);
+      window.__CHAT_OPEN__ = true;
+    }
   };
   window.__OPEN_CHAT__ = openChat;
   window.__APP_TASKS__ = tasks;
@@ -867,7 +873,7 @@ function App() {
         myTasksOpenCount={myTasksOpenCount}
         notifCount={notifCount}
         notesCount={notesCount}
-        onOpenNotifs={() => { setView('notifications'); setNotifCount(0); }}
+        onOpenNotifs={() => { if (view !== 'notifications') setPreNotifView(view); setView('notifications'); setNotifCount(0); }}
       />
       <div className="main" key={_appLang}>
         <Topbar
@@ -916,7 +922,7 @@ function App() {
               <NotifPanel
                 fullPage
                 open
-                onClose={() => setView('dashboard')}
+                onClose={() => setView(preNotifView || 'dashboard')}
                 socket={socket}
                 onOpenTask={(task) => { setView('board'); setDrawerTask(task); }}
                 onOpenChat={(slug, msgId, channelSlug) => { openChat(slug, msgId, channelSlug); setView('chat'); }}

@@ -6096,6 +6096,9 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   word-break: break-word;
 }
 
+/* Back button: hidden on desktop (left panel visible), shown on mobile */
+.chat-fp-back-btn { display: none; }
+
 /* Responsive: collapse right panel below 1100px, left below 760px */
 @media (max-width: 1100px) {
   .chat-fp-grid { grid-template-columns: 260px minmax(0, 1fr); }
@@ -6104,6 +6107,7 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
 @media (max-width: 760px) {
   .chat-fp-grid { grid-template-columns: minmax(0, 1fr); }
   .chat-fp-left { display: none; }
+  .chat-fp-back-btn { display: flex; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

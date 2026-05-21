@@ -306,23 +306,23 @@ function MarkdownEditor({ body, onChange, onBlur, onKeyShortcut, disabled }) {
 
   return (
     <div className="md-editor">
-      <div className="md-toolbar" role="toolbar" aria-label="Biçimlendirme">
-        <button type="button" className="md-tb-btn" title="Başlık 1 (⌘1)" onClick={() => prefix('# ')}><Icon name="heading1" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Başlık 2 (⌘2)" onClick={() => prefix('## ')}><Icon name="heading2" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Başlık 3 (⌘3)" onClick={() => prefix('### ')}><Icon name="heading3" size={14} /></button>
+      <div className="md-toolbar" role="toolbar" aria-label={window.t?.('notes_edit_mode') || 'Biçimlendirme'}>
+        <button type="button" className="md-tb-btn" title="H1 (⌘1)" onClick={() => prefix('# ')}><Icon name="heading1" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="H2 (⌘2)" onClick={() => prefix('## ')}><Icon name="heading2" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="H3 (⌘3)" onClick={() => prefix('### ')}><Icon name="heading3" size={14} /></button>
         <div className="md-tb-sep" />
-        <button type="button" className="md-tb-btn" title="Kalın (⌘B)" onClick={() => wrap('**','**','metin')}><Icon name="bold" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="İtalik (⌘I)" onClick={() => wrap('*','*','metin')}><Icon name="italic" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Satır içi kod (⌘E)" onClick={() => wrap('`','`','kod')}><Icon name="code" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Link (⌘K)" onClick={() => wrap('[', '](https://)','metin')}><Icon name="link" size={14} /></button>
+        <button type="button" className="md-tb-btn" title={`${window.t?.('chat_fmt_bold') || 'Kalın (Ctrl+B)'}`} onClick={() => wrap('**','**','text')}><Icon name="bold" size={14} /></button>
+        <button type="button" className="md-tb-btn" title={`${window.t?.('chat_fmt_italic') || 'İtalik (Ctrl+I)'}`} onClick={() => wrap('*','*','text')}><Icon name="italic" size={14} /></button>
+        <button type="button" className="md-tb-btn" title={`${window.t?.('chat_fmt_code') || 'Kod (Ctrl+E)'}`} onClick={() => wrap('`','`','code')}><Icon name="code" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="Link (⌘K)" onClick={() => wrap('[', '](https://)','text')}><Icon name="link" size={14} /></button>
         <div className="md-tb-sep" />
-        <button type="button" className="md-tb-btn" title="Madde işareti" onClick={() => prefix('- ')}><Icon name="listBullet" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Yapılacaklar" onClick={() => prefix('- [ ] ')}><Icon name="listChecks" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Alıntı" onClick={() => prefix('> ')}><Icon name="quote" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Ayırıcı" onClick={() => { const ta = taRef.current; if (!ta) return; const v = ta.value; const next = v + (v.endsWith('\n') || v === '' ? '' : '\n') + '\n---\n'; onChange(next); }}><Icon name="divider" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="Bullet list" onClick={() => prefix('- ')}><Icon name="listBullet" size={14} /></button>
+        <button type="button" className="md-tb-btn" title={window.t?.('drawer_checklist') || 'Yapılacaklar'} onClick={() => prefix('- [ ] ')}><Icon name="listChecks" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="Blockquote" onClick={() => prefix('> ')}><Icon name="quote" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="Divider" onClick={() => { const ta = taRef.current; if (!ta) return; const v = ta.value; const next = v + (v.endsWith('\n') || v === '' ? '' : '\n') + '\n---\n'; onChange(next); }}><Icon name="divider" size={14} /></button>
         <div className="md-tb-sep" />
         <div style={{ position: 'relative' }} ref={emojiAnchorRef}>
-          <button type="button" className="md-tb-btn md-tb-emoji-btn" title="Emoji ekle" disabled={disabled} onClick={() => setEmojiOpen(v => !v)}>
+          <button type="button" className="md-tb-btn md-tb-emoji-btn" title="Emoji" disabled={disabled} onClick={() => setEmojiOpen(v => !v)}>
             <span style={{ fontSize: 14, lineHeight: 1 }}>😊</span>
           </button>
           {emojiOpen && !disabled && (
@@ -334,7 +334,7 @@ function MarkdownEditor({ body, onChange, onBlur, onKeyShortcut, disabled }) {
         ref={taRef}
         className="md-textarea"
         value={body}
-        placeholder="Notunu yaz…"
+        placeholder={window.t?.('notes_empty') || 'Notunu yaz…'}
         spellCheck={false}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
@@ -352,7 +352,7 @@ function NoteLabelChip({ label, onRemove, compact }) {
     <span className="tag" data-tone={label.tone || 'blue'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
       {label.name}
       {onRemove && (
-        <button type="button" onClick={onRemove} aria-label="Etiketi çıkar"
+        <button type="button" onClick={onRemove} aria-label={window.t?.('drawer_label_remove_hint') || 'Etiketi çıkar'}
           style={{ background: 'transparent', border: 0, padding: 0, cursor: 'pointer', display: 'inline-flex', color: 'inherit', opacity: 0.7 }}>
           <Icon name="x" size={10} />
         </button>
@@ -404,12 +404,12 @@ function LabelPickerPopover({ value, onChange, onClose }) {
         ))}
       </div>
       <div className="note-popover-actions">
-        <button type="button" className="btn btn-ghost" onClick={onClose}>Kapat</button>
-        <button type="button" className="btn btn-primary" onClick={add} disabled={!name.trim()}>Ekle</button>
+        <button type="button" className="btn btn-ghost" onClick={onClose}>{window.t?.('drawer_cancel') || 'Kapat'}</button>
+        <button type="button" className="btn btn-primary" onClick={add} disabled={!name.trim()}>{window.t?.('set_lbl_add') || 'Ekle'}</button>
       </div>
       {value.length > 0 && (
         <div className="note-popover-list">
-          <div className="note-popover-sub">Mevcut etiketler</div>
+          <div className="note-popover-sub">{window.t?.('notes_filter_label') || 'Mevcut etiketler'}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {value.map((l, i) => (
               <NoteLabelChip key={i} label={l} onRemove={() => onChange(value.filter((_, j) => j !== i))} />
@@ -458,13 +458,13 @@ function LinkTaskPopover({ workspaceTasks, linkedIds, onPick, onClose }) {
 
   return (
     <div ref={popRef} className="note-popover" style={{ width: 340 }} role="dialog" aria-label="Görev bağla">
-      <div className="note-popover-title">Görev bağla</div>
+      <div className="note-popover-title">{window.t?.('notes_link_task') || 'Görev bağla'}</div>
       <div className="note-popover-row">
-        <input autoFocus placeholder="Görev ara…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input autoFocus placeholder={window.t?.('board_search_placeholder') || 'Görev ara…'} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div style={{ maxHeight: 260, overflowY: 'auto' }}>
-        {loading && <div style={{ padding: '12px 6px', fontSize: 12, color: 'var(--ink-faint)' }}>Yükleniyor…</div>}
-        {!loading && list.length === 0 && <div style={{ padding: '12px 6px', fontSize: 12, color: 'var(--ink-faint)' }}>Eşleşen görev yok</div>}
+        {loading && <div style={{ padding: '12px 6px', fontSize: 12, color: 'var(--ink-faint)' }}>{window.t?.('drawer_loading') || 'Yükleniyor…'}</div>}
+        {!loading && list.length === 0 && <div style={{ padding: '12px 6px', fontSize: 12, color: 'var(--ink-faint)' }}>{window.t?.('board_no_tasks') || 'Eşleşen görev yok'}</div>}
         {!loading && list.map(t => (
           <button key={t.id} type="button" className="note-task-row" onClick={() => onPick(t.id)}>
             <Icon name="layoutBoard" size={12} />
@@ -517,33 +517,33 @@ function NoteCard({ note, author, onOpen, onTogglePin, onArchive, onDelete, canE
         )}
         <div className="note-card-actions" ref={menuRef} onClick={(e) => e.stopPropagation()}>
           {canEdit && (
-            <button type="button" className="note-card-pin" title={note.pinned ? 'Sabitleme kalksın' : 'Sabitle'}
+            <button type="button" className="note-card-pin" title={note.pinned ? (window.t?.('notes_unpin') || 'Sabitleme kalksın') : (window.t?.('notes_pin') || 'Sabitle')}
               data-on={note.pinned ? 'true' : 'false'}
               onClick={() => onTogglePin(note)}>
               <Icon name="pin" size={13} />
             </button>
           )}
-          <button type="button" className="note-card-menu-btn" title="Daha fazla" onClick={() => setMenuOpen(v => !v)}>
+          <button type="button" className="note-card-menu-btn" title={window.t?.('notes_more') || 'Daha fazla'} onClick={() => setMenuOpen(v => !v)}>
             <Icon name="moreH" size={14} />
           </button>
           {menuOpen && (
             <div className="note-card-menu">
               <button type="button" onClick={() => { setMenuOpen(false); onOpen(note.id); }}>
-                <Icon name="edit" size={12} /> Düzenle
+                <Icon name="edit" size={12} /> {window.t?.('notes_edit') || 'Düzenle'}
               </button>
               {canEdit && (
                 <button type="button" onClick={() => { setMenuOpen(false); onTogglePin(note); }}>
-                  <Icon name="pin" size={12} /> {note.pinned ? 'Sabitleme kalksın' : 'Sabitle'}
+                  <Icon name="pin" size={12} /> {note.pinned ? (window.t?.('notes_unpin') || 'Sabitleme kalksın') : (window.t?.('notes_pin') || 'Sabitle')}
                 </button>
               )}
               {canEdit && (
                 <button type="button" onClick={() => { setMenuOpen(false); onArchive(note); }}>
-                  <Icon name="archive" size={12} /> {note.archived ? 'Geri al' : 'Arşivle'}
+                  <Icon name="archive" size={12} /> {note.archived ? (window.t?.('notes_restore') || 'Geri al') : (window.t?.('notes_archive') || 'Arşivle')}
                 </button>
               )}
               {canEdit && (
                 <button type="button" onClick={() => { setMenuOpen(false); onDelete(note); }} className="note-card-menu-danger">
-                  <Icon name="trash" size={12} /> Sil
+                  <Icon name="trash" size={12} /> {window.t?.('notes_delete') || 'Sil'}
                 </button>
               )}
             </div>
@@ -562,7 +562,7 @@ function NoteCard({ note, author, onOpen, onTogglePin, onArchive, onDelete, canE
           <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>—</span>
         )}
         <span style={{ fontSize: 11, color: 'var(--ink-faint)' }} title={window.fmtAbsoluteDateTime?.(note.updated_at) || ''}>{fmtTimeAgo(note.updated_at)}</span>
-        {note.visibility === 'private' && <span title="Sadece sen ve davet ettiklerin" style={{ fontSize: 10, color: 'var(--ink-faint)' }}>Özel</span>}
+        {note.visibility === 'private' && <span title={window.t?.('chat_channel_private_join') || 'Sadece sen ve davet ettiklerin'} style={{ fontSize: 10, color: 'var(--ink-faint)' }}>{window.t?.('notes_private') || 'Özel'}</span>}
       </div>
     </div>
   );
@@ -579,7 +579,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
   const [labelOpen, setLabelOpen] = useNS(false);
   const [linkTaskOpen, setLinkTaskOpen] = useNS(false);
   const [menuOpen, setMenuOpen] = useNS(false);
-  const [mode, setMode]     = useNS('edit'); // 'edit' | 'preview'
+  const [mode, setMode]     = useNS(note.body ? 'preview' : 'edit'); // 'edit' | 'preview'
   const [collabOpen, setCollabOpen] = useNS(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useNS(false);
   const titleRef = useNR(null);
@@ -626,7 +626,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
       onPatch(updated);
       setSavedAt(fmtTimeAgo(updated.updated_at));
     } catch (e) {
-      setError(e.message || 'Kaydedilemedi');
+      setError(e.message || window.t?.('drawer_err_save') || 'Kaydedilemedi');
     } finally {
       setSaving(false);
     }
@@ -722,10 +722,10 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
           {error
             ? <span style={{ color: 'var(--status-rose)' }}>{error}</span>
             : isDirty
-              ? <span style={{ color: 'var(--ink-faint)', fontSize: 11 }}>Kaydedilmemiş değişiklikler</span>
-              : <><Icon name="check" size={11} /> Kaydedildi · {savedAt}</>
+              ? <span style={{ color: 'var(--ink-faint)', fontSize: 11 }}>{window.t?.('notes_unsaved') || 'Kaydedilmemiş değişiklikler'}</span>
+              : <><Icon name="check" size={11} /> {window.t?.('notes_saved') || 'Kaydedildi'} · {savedAt}</>
           }
-          {note.status === 'draft' && <span className="note-draft-pill">Taslak</span>}
+          {note.status === 'draft' && <span className="note-draft-pill">{window.t?.('notes_draft') || 'Taslak'}</span>}
         </div>
         {canEdit && (
           <button
@@ -735,7 +735,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
             disabled={saving || !isDirty}
             title="Kaydet (Ctrl+S)"
           >
-            {saving ? <><Icon name="clock" size={11} /> Kaydediliyor…</> : <><Icon name="check" size={11} /> Kaydet</>}
+            {saving ? <><Icon name="clock" size={11} /> {window.t?.('notes_saving') || 'Kaydediliyor…'}</> : <><Icon name="check" size={11} /> {window.t?.('notes_save') || 'Kaydet'}</>}
           </button>
         )}
         <div style={{ flex: 1 }} />
@@ -743,10 +743,10 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
         {/* Visibility */}
         <div className="note-visibility-toggle">
           <button type="button" data-active={note.visibility === 'private'} onClick={() => handleVisibility('private')} disabled={!canEdit}>
-            <Icon name="lock" size={11} /> Özel
+            <Icon name="lock" size={11} /> {window.t?.('notes_private') || 'Özel'}
           </button>
           <button type="button" data-active={note.visibility === 'workspace'} onClick={() => handleVisibility('workspace')} disabled={!canEdit}>
-            <Icon name="users" size={11} /> Takım
+            <Icon name="users" size={11} /> {window.t?.('notes_team') || 'Takım'}
           </button>
         </div>
 
@@ -773,7 +773,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
                   );
                 })}
                 {members.filter(m => m.id !== note.author).length === 0 && (
-                  <div style={{ padding: '8px 4px', fontSize: 12, color: 'var(--ink-faint)' }}>Eklenecek üye yok.</div>
+                  <div style={{ padding: '8px 4px', fontSize: 12, color: 'var(--ink-faint)' }}>{window.t?.('notes_no_members') || 'Eklenecek üye yok.'}</div>
                 )}
               </div>
             </div>
@@ -782,11 +782,11 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
 
         {/* Mode toggle */}
         <div className="note-mode-toggle">
-          <button type="button" data-active={mode === 'edit'} onClick={() => setMode('edit')} title="Düzenle (⌘E)">
-            <Icon name="edit" size={12} /> Düzenle
+          <button type="button" data-active={mode === 'edit'} onClick={() => setMode('edit')} title={`${window.t?.('notes_edit_mode') || 'Düzenle'} (⌘E)`}>
+            <Icon name="edit" size={12} /> {window.t?.('notes_edit_mode') || 'Düzenle'}
           </button>
-          <button type="button" data-active={mode === 'preview'} onClick={() => setMode('preview')} title="Önizle (⌘E)">
-            <Icon name="eye" size={12} /> Önizle
+          <button type="button" data-active={mode === 'preview'} onClick={() => setMode('preview')} title={`${window.t?.('notes_preview_mode') || 'Önizle'} (⌘E)`}>
+            <Icon name="eye" size={12} /> {window.t?.('notes_preview_mode') || 'Önizle'}
           </button>
         </div>
 
@@ -799,26 +799,26 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
             <div className="note-card-menu" style={{ right: 0, left: 'auto', top: 'calc(100% + 4px)' }}>
               {canEdit && (
                 <button type="button" onClick={() => { handlePin(); setMenuOpen(false); }}>
-                  <Icon name="pin" size={12} /> {note.pinned ? 'Sabitleme kalksın' : 'Sabitle'}
+                  <Icon name="pin" size={12} /> {note.pinned ? (window.t?.('notes_unpin') || 'Sabitleme kalksın') : (window.t?.('notes_pin') || 'Sabitle')}
                 </button>
               )}
               {canEdit && note.status === 'draft' && (
                 <button type="button" onClick={handlePublish}>
-                  <Icon name="check" size={12} /> Yayımla
+                  <Icon name="check" size={12} /> {window.t?.('notes_publish') || 'Yayımla'}
                 </button>
               )}
               {canEdit && (
                 <button type="button" onClick={handleArchive}>
-                  <Icon name="archive" size={12} /> {note.archived ? 'Geri al' : 'Arşivle'}
+                  <Icon name="archive" size={12} /> {note.archived ? (window.t?.('notes_restore') || 'Geri al') : (window.t?.('notes_archive') || 'Arşivle')}
                 </button>
               )}
               {canEdit && (
                 <button type="button" className="note-card-menu-danger" onClick={handleDelete}>
-                  <Icon name="trash" size={12} /> Sil
+                  <Icon name="trash" size={12} /> {window.t?.('notes_delete') || 'Sil'}
                 </button>
               )}
               {!canEdit && (
-                <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--ink-faint)' }}>Yetkin yok</div>
+                <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--ink-faint)' }}>{window.t?.('unknown') || 'Yetkin yok'}</div>
               )}
             </div>
           )}
@@ -830,7 +830,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
           <input
             ref={titleRef}
             className="note-title-input"
-            placeholder="Başlık ekle…"
+            placeholder={window.t?.('notes_untitled') || 'Başlık ekle…'}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={() => { if (canEdit && title !== note.title) doSave({ title }); }}
@@ -845,7 +845,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
         <div className="note-labels-row">
           {labels.length === 0 && canEdit && (
             <button type="button" className="note-add-label" onClick={() => setLabelOpen(true)}>
-              <Icon name="tag" size={11} /> Etiket ekle
+              <Icon name="tag" size={11} /> {window.t?.('notes_add_label') || 'Etiket ekle'}
             </button>
           )}
           {labels.map((l, i) => (
@@ -865,7 +865,12 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
         </div>
       </div>
 
-      <div className="note-detail-body">
+      <div
+        className="note-detail-body"
+        onClick={() => { if (mode === 'preview' && canEdit) setMode('edit'); }}
+        style={{ cursor: mode === 'preview' && canEdit ? 'text' : undefined }}
+        title={mode === 'preview' && canEdit ? (window.t?.('notes_click_edit') || 'Düzenlemek için tıkla') : undefined}
+      >
         {mode === 'edit' && canEdit
           ? <MarkdownEditor body={body} onChange={setBody} onBlur={handleBodyBlur} disabled={!canEdit} />
           : <MarkdownRender body={body} />
@@ -875,12 +880,12 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
       <div className="note-detail-linked">
         <div className="note-linked-head">
           <Icon name="link" size={12} />
-          <span>Bağlı görevler</span>
+          <span>{window.t?.('notes_linked_tasks') || 'Bağlı görevler'}</span>
           <span style={{ color: 'var(--ink-faint)', fontSize: 11 }}>({linkedTasks.length})</span>
           {canEdit && (
             <div style={{ position: 'relative', marginLeft: 'auto' }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLinkTaskOpen(v => !v)}>
-                <Icon name="plus" size={11} /> Görev bağla
+                <Icon name="plus" size={11} /> {window.t?.('notes_link_task') || 'Görev bağla'}
               </button>
               {linkTaskOpen && (
                 <div style={{ position: 'absolute', right: 0, bottom: '100%', marginBottom: 4, zIndex: 50 }}>
@@ -896,7 +901,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
           )}
         </div>
         {linkedTasks.length === 0 ? (
-          <div className="note-linked-empty">Henüz görev bağlanmadı.</div>
+          <div className="note-linked-empty">{window.t?.('notes_no_linked_tasks') || 'Henüz görev bağlanmadı.'}</div>
         ) : (
           <div className="note-linked-list">
             {linkedTasks.map(t => (
@@ -904,7 +909,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
                 <Icon name="layoutBoard" size={12} />
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
                 {canEdit && (
-                  <button type="button" className="icon-btn" onClick={(e) => { e.stopPropagation(); onUnlinkTask(note.id, t.id); }} title="Bağlantıyı kaldır">
+                  <button type="button" className="icon-btn" onClick={(e) => { e.stopPropagation(); onUnlinkTask(note.id, t.id); }} title={window.t?.('notes_unlink_task') || 'Bağlantıyı kaldır'}>
                     <Icon name="x" size={11} />
                   </button>
                 )}
@@ -1070,7 +1075,7 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
       });
       setSelectedId(note.id);
     } catch (e) {
-      window.showToast?.('Not oluşturulamadı: ' + e.message, 'error');
+      window.showToast?.((window.t?.('notes_err_create') || 'Not oluşturulamadı: ') + e.message, 'error');
     } finally {
       setCreating(false);
     }
@@ -1085,7 +1090,7 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
     try {
       const updated = await API.updateNote(note.id, { pinned: !note.pinned });
       handlePatch(updated);
-    } catch (e) { window.showToast?.('Güncellenemedi: ' + e.message, 'error'); }
+    } catch (e) { window.showToast?.((window.t?.('notes_err_update') || 'Güncellenemedi: ') + e.message, 'error'); }
   };
 
   const handleArchive = async (note) => {
@@ -1093,7 +1098,7 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
     try {
       const updated = await API.updateNote(note.id, { archived: !note.archived });
       handlePatch(updated);
-    } catch (e) { window.showToast?.('Güncellenemedi: ' + e.message, 'error'); }
+    } catch (e) { window.showToast?.((window.t?.('notes_err_update') || 'Güncellenemedi: ') + e.message, 'error'); }
   };
 
   const handleDelete = async (note) => {
@@ -1105,7 +1110,7 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
     setSelectedId(prev => (prev === note.id ? null : prev));
     try { await API.deleteNote(note.id); }
     catch (e) {
-      window.showToast?.('Silinemedi: ' + e.message, 'error');
+      window.showToast?.((window.t?.('notes_err_delete') || 'Silinemedi: ') + e.message, 'error');
       // Refetch to restore on failure
       API.listNotes({ archived: showArchived }).then(rows => setNotes(rows || []));
     }
@@ -1120,15 +1125,15 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
     try {
       const updated = await API.linkNoteTask(noteId, taskId);
       handlePatch(updated);
-      window.showToast?.('Görev bağlandı', 'success');
-    } catch (e) { window.showToast?.('Bağlanamadı: ' + e.message, 'error'); }
+      window.showToast?.(window.t?.('notes_task_linked') || 'Görev bağlandı', 'success');
+    } catch (e) { window.showToast?.((window.t?.('notes_err_link') || 'Bağlanamadı: ') + e.message, 'error'); }
   };
 
   const handleUnlinkTask = async (noteId, taskId) => {
     try {
       const updated = await API.unlinkNoteTask(noteId, taskId);
       handlePatch(updated);
-    } catch (e) { window.showToast?.('Kaldırılamadı: ' + e.message, 'error'); }
+    } catch (e) { window.showToast?.((window.t?.('notes_err_unlink') || 'Kaldırılamadı: ') + e.message, 'error'); }
   };
 
   // Expose create globally so command palette can trigger
@@ -1182,7 +1187,7 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
       return (
         <div className="notes-view">
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-muted)' }}>
-            Not bulunamadı. <button type="button" className="btn btn-ghost" onClick={() => setSelectedId(null)}>Listeye dön</button>
+            {window.t?.('notes_not_found') || 'Not bulunamadı.'} <button type="button" className="btn btn-ghost" onClick={() => setSelectedId(null)}>{window.t?.('notes_back_to_list') || 'Listeye dön'}</button>
           </div>
         </div>
       );

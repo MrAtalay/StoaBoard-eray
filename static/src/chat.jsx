@@ -2191,7 +2191,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     const t = text.trim();
     if (!t && !pendingFile) return;
     if (dmWith && dmWith === me) {
-      window.showToast?.('Kendinize mesaj gönderemezsiniz.', 'error');
+      window.showToast?.(window.t?.('chat_err_self_msg') || 'Kendinize mesaj gönderemezsiniz.', 'error');
       return;
     }
 
@@ -2924,6 +2924,9 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
             <div className="chat-fp-conv-head">
               {dmWith ? (
                 <>
+                  <button className="icon-btn chat-fp-back-btn" onClick={() => { setDmWith(null); setMessages([]); setTab('dm'); }} title={window.t?.('chat_back')||'Geri'}>
+                    <Icon name="chevronLeft" size={16} />
+                  </button>
                   <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
                     <Avatar member={dmUser} size="sm" />
                     <span style={{ position: 'absolute', bottom: -1, right: -1 }}>
@@ -3044,7 +3047,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                 </div>
               )}
               {messages.map((msg, i) => {
-                const isMine = dmWith ? msg.to === dmWith : msg.from === me;
+                const isMine = msg.from === me;
                 const sender = allMembers.find(m => m.id === msg.from);
                 const prevMsg = messages[i - 1];
                 const showSender = !isMine && (!prevMsg || prevMsg.from !== msg.from);
@@ -3059,9 +3062,9 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   <React.Fragment key={msg.id || i}>
                   {showDateSep && (
                     <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', margin:'4px 0' }}>
-                      <div style={{ flex:1, height:1, background:'var(--line)' }} />
-                      <span style={{ fontSize:11, color:'var(--ink-faint)', fontWeight:500, flexShrink:0 }}>{fmtDateSep(dateKey)}</span>
-                      <div style={{ flex:1, height:1, background:'var(--line)' }} />
+                      <div style={{ flex:1, height:1, background:'var(--line-strong)' }} />
+                      <span style={{ fontSize:11, color:'var(--ink-muted)', fontWeight:500, flexShrink:0 }}>{fmtDateSep(dateKey)}</span>
+                      <div style={{ flex:1, height:1, background:'var(--line-strong)' }} />
                     </div>
                   )}
                   <div className={`chat-msg ${isMine ? 'mine' : 'theirs'}`} data-msgid={msg.id} style={{ position: 'relative', scrollMarginTop: 60 }}>
@@ -3712,7 +3715,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                 </div>
               )}
               {messages.map((msg, i) => {
-                const isMine = dmWith ? msg.to === dmWith : msg.from === me;
+                const isMine = msg.from === me;
                 const sender = allMembers.find(m => m.id === msg.from);
                 const prevMsg = messages[i - 1];
                 const showSender = !isMine && (!prevMsg || prevMsg.from !== msg.from);
@@ -3727,9 +3730,9 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   <React.Fragment key={msg.id || i}>
                   {showDateSep && (
                     <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', margin:'4px 0' }}>
-                      <div style={{ flex:1, height:1, background:'var(--line)' }} />
-                      <span style={{ fontSize:11, color:'var(--ink-faint)', fontWeight:500, flexShrink:0 }}>{fmtDateSep(dateKey)}</span>
-                      <div style={{ flex:1, height:1, background:'var(--line)' }} />
+                      <div style={{ flex:1, height:1, background:'var(--line-strong)' }} />
+                      <span style={{ fontSize:11, color:'var(--ink-muted)', fontWeight:500, flexShrink:0 }}>{fmtDateSep(dateKey)}</span>
+                      <div style={{ flex:1, height:1, background:'var(--line-strong)' }} />
                     </div>
                   )}
                   <div className={`chat-msg ${isMine ? 'mine' : 'theirs'}`}
@@ -3743,7 +3746,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                     )}
                     <div className="chat-bubble-wrap">
                       {showSender && !isMine && (
-                        <div className="chat-sender-name">{sender?.name || msg.from}</div>
+                        <div className="chat-sender-name">{sender?.name || msg.from} <span style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 400, marginLeft: 4 }}>{fmtMsgTime(msg)}</span></div>
                       )}
                       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: isMine ? 'row-reverse' : 'row' }}>
                         <div className={`chat-bubble ${msg._temp ? 'chat-bubble-sending' : ''} ${msg.deleted ? 'chat-bubble-deleted' : ''}`}>
@@ -3795,7 +3798,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                           ))}
                         </div>
                       )}
-                      <div className="chat-msg-time">{fmtMsgTime(msg)}</div>
+                      {!showSender && <div className="chat-msg-time">{fmtMsgTime(msg)}</div>}
                       {isMine && dmWith && msg.id === lastReadSentId && (
                         <div className="chat-read-receipt">
                           <span className="chat-read-label">{window.t?.('chat_seen')||'Görüldü'}</span>

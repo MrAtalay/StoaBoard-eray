@@ -1015,7 +1015,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
     const projectId = window.CURRENT_PROJECT_ID;
     const orderedIds = newCols.map(c => c.db_id).filter(Boolean);
     try { await API.reorderColumns(projectId, orderedIds); }
-    catch (e) { window.showToast?.('Kolon sırası kaydedilemedi', 'error'); }
+    catch (e) { window.showToast?.(window.t?.('board_err_col_order') || 'Kolon sırası kaydedilemedi', 'error'); }
   };
 
   const handleDragStart = (e, task) => {
@@ -1171,7 +1171,7 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
     } catch (e) {
       setColumns(prevColumns);
       window.DATA.COLUMNS = prevColumns;
-      window.showToast?.('Kolon güncellenemedi: ' + e.message, 'error');
+      window.showToast?.((window.t?.('board_err_col_update') || 'Kolon güncellenemedi: ') + e.message, 'error');
     }
   };
 
