@@ -561,7 +561,7 @@ function NoteCard({ note, author, onOpen, onTogglePin, onArchive, onDelete, canE
         ) : (
           <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>—</span>
         )}
-        <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>{fmtTimeAgo(note.updated_at)}</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-faint)' }} title={window.fmtAbsoluteDateTime?.(note.updated_at) || ''}>{fmtTimeAgo(note.updated_at)}</span>
         {note.visibility === 'private' && <span title="Sadece sen ve davet ettiklerin" style={{ fontSize: 10, color: 'var(--ink-faint)' }}>Özel</span>}
       </div>
     </div>
@@ -718,7 +718,7 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
         <button type="button" className="note-back-btn" onClick={onBack}>
           <Icon name="chevronLeft" size={14} /> {window.t?.('notes_back') || 'Notlar'}
         </button>
-        <div className="note-status-pill">
+        <div className="note-status-pill" title={!error && !isDirty ? (window.fmtAbsoluteDateTime?.(note.updated_at) || '') : ''}>
           {error
             ? <span style={{ color: 'var(--status-rose)' }}>{error}</span>
             : isDirty

@@ -8,6 +8,19 @@ def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _iso_utc(dt):
+    """Serialize a naive-UTC datetime as ISO-8601 with explicit 'Z' suffix.
+
+    All datetimes in the DB are stored as naive UTC (see _now). Without the
+    'Z' suffix, browsers interpret the string as local time and shift the
+    value by the viewer's timezone offset. This helper guarantees a
+    round-trippable UTC string.
+    """
+    if not dt:
+        return ''
+    return dt.isoformat() + 'Z'
+
+
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -309,7 +322,7 @@ class Comment(db.Model):
         return {
             'id': self.id,
             'author': self.user.slug if self.user else 'unknown',
-            'time': self.created_at.isoformat() if self.created_at else '',
+            'time': _iso_utc(self.created_at),
             'text': self.text,
         }
 
@@ -332,7 +345,7 @@ class Notification(db.Model):
         return {
             'id': str(self.id),
             'unread': not self.read,
-            'time': self.created_at.isoformat() if self.created_at else '',
+            'time': _iso_utc(self.created_at),
             'text': self.text,
             'task_id': self.task_id,
             'sender_slug': self.sender_slug,
@@ -356,7 +369,7 @@ class ActivityLog(db.Model):
         who = self.user.name.split()[0] if self.user else ''
         return {
             'who': who,
-            'time': self.created_at.isoformat() if self.created_at else '',
+            'time': _iso_utc(self.created_at),
             'text': self.text,
         }
 
@@ -396,7 +409,7 @@ class TaskAttachment(db.Model):
             'file_type': self.file_type,
             'url': f'/api/attachments/{self.id}',
             'uploader': self.uploader.slug if self.uploader else None,
-            'created_at': self.created_at.isoformat() if self.created_at else '',
+            'created_at': _iso_utc(self.created_at),
         }
 
 
@@ -416,7 +429,7 @@ class WorkspaceJoinRequest(db.Model):
             'id': self.id,
             'user': self.user.to_dict() if self.user else None,
             'status': self.status,
-            'time': self.created_at.isoformat() if self.created_at else '',
+            'time': _iso_utc(self.created_at),
         }
 
 
@@ -479,7 +492,7 @@ class ChannelMember(db.Model):
             'user_db_id': self.user_id,
             'name': u.name if u else '',
             'role': self.role or 'member',
-            'joined_at': self.joined_at.isoformat() if self.joined_at else '',
+            'joined_at': _iso_utc(self.joined_at),
         }
 
 
@@ -552,9 +565,9 @@ class Note(db.Model):
             'collaborators': collab_slugs,
             'linked_tasks': [str(tid) for tid in self.linked_task_ids()],
             'workspace_id': self.workspace_id,
-            'created_at': self.created_at.isoformat() if self.created_at else '',
-            'updated_at': self.updated_at.isoformat() if self.updated_at else '',
-            'updated_ago': self.updated_at.isoformat() if self.updated_at else '',
+            'created_at': _iso_utc(self.created_at),
+            'updated_at': _iso_utc(self.updated_at),
+            'updated_ago': _iso_utc(self.updated_at),
         }
         if include_body:
             d['body'] = self.body or ''
@@ -608,7 +621,7 @@ class ChatMessage(db.Model):
             'from': self.sender.slug if self.sender else 'unknown',
             'to': self.receiver.slug if self.receiver else None,
             'time': self.created_at.strftime('%H:%M') if self.created_at else '',
-            'ts': self.created_at.isoformat() if self.created_at else '',
+            'ts': _iso_utc(self.created_at),
             'channel': self.channel or 'general',
             'pinned': bool(self.pinned),
             'is_read': bool(self.is_read) if self.receiver_id else None,

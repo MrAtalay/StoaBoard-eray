@@ -253,7 +253,7 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
                 </div>
                 <div className="notif-body">
                   <div className="notif-text" dangerouslySetInnerHTML={{ __html: renderNotifText(n.text) }} />
-                  <div className="notif-time">{fmtTimeAgo(n.time)}</div>
+                  <div className="notif-time" title={window.fmtAbsoluteDateTime?.(n.time) || ''}>{fmtTimeAgo(n.time)}</div>
                 </div>
                 {(n.task_id || n.sender_slug || n.chat_channel || ['dm_received','message','mention','task_assigned','comment_added'].includes(n.type || _notifType(n.text))) && (
                   <Icon name="arrowRight" size={11} style={{ color: 'var(--ink-faint)', flexShrink: 0, marginRight: 24 }} />

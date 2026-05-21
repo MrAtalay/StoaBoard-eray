@@ -3,27 +3,51 @@
 const TR_MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 const EN_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+// Backend stores timestamps as naive UTC and emits ISO strings WITHOUT a 'Z'
+// suffix. Without normalization the browser interprets them as local time,
+// which produces a timezone offset on every formatted value. Treat any
+// timestamp lacking explicit zone info as UTC.
+function _parseServerDate(iso) {
+  if (!iso) return null;
+  if (iso instanceof Date) return isNaN(iso) ? null : iso;
+  let s = String(iso);
+  // Only date (YYYY-MM-DD) → keep as-is, JS treats this as UTC midnight already
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(s);
+    return isNaN(d) ? null : d;
+  }
+  // Datetime without timezone info → append 'Z' so JS treats it as UTC
+  const hasZone = /([zZ]|[+\-]\d{2}:?\d{2})$/.test(s);
+  if (!hasZone) s += 'Z';
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+window._parseServerDate = _parseServerDate;
+
 function fmtDate(isoDate) {
-  if (!isoDate) return '';
-  const d = new Date(isoDate);
+  const d = _parseServerDate(isoDate);
+  if (!d) return '';
   const lang = localStorage.getItem('stoa.lang') || 'tr';
   const months = lang === 'en' ? EN_MONTHS : TR_MONTHS;
   return `${d.getDate()} ${months[d.getMonth()]}`;
 }
 
 function isOverdue(isoDate, colId) {
-  if (!isoDate) return false;
+  const d = _parseServerDate(isoDate);
+  if (!d) return false;
   const col = (window.DATA?.COLUMNS || []).find(c => c.id === colId);
   if (col?.is_done) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return new Date(isoDate) < today;
+  return d < today;
 }
 
 function fmtTimeAgo(iso) {
-  if (!iso) return '';
+  const d = _parseServerDate(iso);
+  if (!d) return '';
   const lang = localStorage.getItem('stoa.lang') || 'tr';
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+  // Clock skew tolerance: future timestamps within 60s read as "just now"
   if (diff < 60)  return lang === 'en' ? 'just now'         : 'az önce';
   if (diff < 3600) {
     const m = Math.floor(diff / 60);
@@ -35,9 +59,39 @@ function fmtTimeAgo(iso) {
   }
   if (diff < 172800) return lang === 'en' ? 'yesterday'     : 'dün';
   const days = Math.floor(diff / 86400);
-  return lang === 'en' ? `${days}d ago` : `${days} gün önce`;
+  if (days < 7) return lang === 'en' ? `${days}d ago` : `${days} gün önce`;
+  if (days < 30) {
+    const w = Math.floor(days / 7);
+    return lang === 'en' ? `${w}w ago` : `${w} hf önce`;
+  }
+  // For older items, show absolute date (more useful than "120 gün önce")
+  const months = lang === 'en' ? EN_MONTHS : TR_MONTHS;
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return sameYear
+    ? `${d.getDate()} ${months[d.getMonth()]}`
+    : `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 window.fmtTimeAgo = fmtTimeAgo;
+
+// Absolute HH:MM time in viewer's local timezone (for tooltips, etc.)
+function fmtAbsoluteTime(iso) {
+  const d = _parseServerDate(iso);
+  if (!d) return '';
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+window.fmtAbsoluteTime = fmtAbsoluteTime;
+
+// Full local datetime, useful for tooltips
+function fmtAbsoluteDateTime(iso) {
+  const d = _parseServerDate(iso);
+  if (!d) return '';
+  const lang = localStorage.getItem('stoa.lang') || 'tr';
+  return d.toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR', {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+window.fmtAbsoluteDateTime = fmtAbsoluteDateTime;
 
 function _fillTemplate(tpl, params) {
   return tpl.replace(/\{(\w+)\}/g, (_, k) => params[k] ?? '');

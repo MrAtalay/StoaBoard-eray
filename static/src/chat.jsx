@@ -142,27 +142,25 @@ function fmtSize(bytes) {
   return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
+// ── Local YYYY-MM-DD (uses viewer's timezone, not UTC) ─────────────────────
+function _localDayKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 // ── Time formatter (converts UTC ISO timestamp to local HH:MM) ────────────
 function fmtMsgTime(msg) {
   const raw = msg.ts || msg.created_at;
-  if (raw) {
-    try {
-      const iso = (raw.endsWith('Z') || raw.includes('+')) ? raw : raw + 'Z';
-      return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    } catch(e) {}
-  }
+  const d = window._parseServerDate?.(raw);
+  if (d) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   return msg.time || '';
 }
-// ── Date key (YYYY-MM-DD) for grouping messages ────────────────────────────
+// ── Date key (LOCAL YYYY-MM-DD) for grouping messages ──────────────────────
 function msgDateKey(msg) {
   const raw = msg.ts || msg.created_at;
-  if (raw) {
-    try {
-      const iso = (raw.endsWith('Z') || raw.includes('+')) ? raw : raw + 'Z';
-      return new Date(iso).toISOString().slice(0, 10);
-    } catch(e) {}
-  }
-  return null;
+  const d = window._parseServerDate?.(raw);
+  return d ? _localDayKey(d) : null;
 }
 // ── Date separator label ───────────────────────────────────────────────────
 function fmtDateSep(dateKey) {
@@ -171,8 +169,10 @@ function fmtDateSep(dateKey) {
   const months = lang === 'en'
     ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
     : ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const now = new Date();
+  const today = _localDayKey(now);
+  const yest = new Date(now); yest.setDate(yest.getDate() - 1);
+  const yesterday = _localDayKey(yest);
   if (dateKey === today) return window.t?.('chat_today') || 'Bugün';
   if (dateKey === yesterday) return window.t?.('chat_yesterday') || 'Dün';
   const d = new Date(dateKey + 'T00:00:00');
