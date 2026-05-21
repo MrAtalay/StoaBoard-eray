@@ -11,6 +11,10 @@
 <link rel="stylesheet" href="/static/styles.css?v=42">
 
 <script>
+  window.__GOOGLE_CLIENT_ID__ = {{ config.get('GOOGLE_CLIENT_ID', '') | tojson }};
+</script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
   window.__TWEAKS__ = {
     "theme": "cream",
     "accent": "navy",

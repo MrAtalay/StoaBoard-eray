@@ -124,14 +124,16 @@
 }
 .toast-msg-time {
   font-size: 11px;
-  color: var(--ink-dim);
+  color: var(--ink-muted);
 }
 .toast-msg-text {
   font-size: 13px;
-  color: var(--ink-muted);
+  color: var(--ink-2);
   line-height: 1.45;
   word-break: break-word;
 }
+[data-theme="dark"] .toast-msg-time { color: var(--ink-faint); }
+[data-theme="dark"] .toast-msg-text { color: var(--ink-muted); }
 .toast-see-more {
   color: var(--accent);
   font-size: 12px;
@@ -3862,6 +3864,10 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   margin-bottom: 16px; animation: fadeIn 0.3s ease;
 }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 14px; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--color-line, rgba(0,0,0,0.1)); }
+.auth-divider span { font-size: 11.5px; color: var(--color-ink-muted, #888); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
 
 .auth-foot { text-align: center; margin-top: 24px; font-size: 13.5px; color: var(--color-ink-muted); }
 .auth-foot a { color: var(--auth-theme); font-weight: 500; cursor: pointer; text-decoration: none; }

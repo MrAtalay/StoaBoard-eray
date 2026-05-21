@@ -393,9 +393,9 @@ function CalendarView({ tasks: rawTasks, onOpenTask, onOpenModal, canCreateTasks
       {barTooltip && ReactDOM.createPortal(
         <div style={{
           position: 'fixed', left: barTooltip.x + 10, top: barTooltip.y - 28,
-          background: 'var(--ink)', color: 'white', borderRadius: 6, padding: '4px 10px',
+          background: 'oklch(18% 0.01 250)', color: 'oklch(94% 0 0)', borderRadius: 6, padding: '4px 10px',
           fontSize: 11, pointerEvents: 'none', zIndex: 9999, whiteSpace: 'nowrap',
-          boxShadow: '0 2px 8px oklch(0% 0 0 / 0.25)',
+          boxShadow: '0 2px 8px oklch(0% 0 0 / 0.35)',
         }}>
           {barTooltip.text}
         </div>,

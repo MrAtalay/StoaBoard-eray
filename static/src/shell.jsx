@@ -38,7 +38,7 @@ function ToastContainer() {
   const handleClick = (toast) => {
     removeToast(toast.id);
     if (toast.type === 'message' && window.__OPEN_CHAT__) {
-      window.__OPEN_CHAT__(toast.meta?.dmWith || null);
+      window.__OPEN_CHAT__(toast.meta?.dmWith || null, null, toast.meta?.channelSlug || null);
     }
   };
 

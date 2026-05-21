@@ -111,3 +111,4 @@ class Config:
     PERMANENT_SESSION_LIFETIME = timedelta(days=30)
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024
     PREFERRED_URL_SCHEME = 'https' if SESSION_COOKIE_SECURE else 'http'
+    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')

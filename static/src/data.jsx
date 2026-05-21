@@ -93,7 +93,7 @@ window.API = {
   logout:   ()              => apiFetch('/api/auth/logout',   { method: 'POST' }),
   sendPasswordReset: (email)                => apiFetch('/api/auth/forgot-password', { method: 'POST', body: { email } }),
   resetPassword:     (email, password, code) => apiFetch('/api/auth/reset-password',  { method: 'POST', body: { email, password, code } }),
-  oauthLogin:        (provider)       => Promise.reject(new Error(`${provider} ile giriş henüz desteklenmiyor`)),
+  googleAuth: (credential) => apiFetch('/api/auth/google', { method: 'POST', body: { credential } }),
 
   // Bootstrap (all data for current project)
   bootstrap: (projectId) =>
@@ -321,6 +321,7 @@ window.APP_I18N = {
     set_rol_perm_tasks:'Görevleri yönet', set_rol_perm_projects:'Projeleri yönet',
     set_rol_perm_labels:'Etiketleri yönet', set_rol_perm_invite:'Üye davet et',
     set_rol_perm_members:'Üyeleri yönet',
+    set_rol_perm_channels:'Kanalları yönet', set_rol_perm_del_msgs:'Başkalarının mesajlarını sil',
     set_rol_default_for_new:'Yeni üyeler için varsayılan rol',
     set_rol_saving:'Kaydediliyor…', set_rol_save:'Kaydet',
     // Settings — Members
@@ -656,7 +657,7 @@ window.APP_I18N = {
     chat_channel_private:'Özel', chat_channel_private_desc:'Sadece davetli üyeler.',
     chat_added_members:'üye eklendi',
     chat_write_general:'#genel kanala yaz...',
-    chat_write_dm:'e mesaj yaz...',
+    chat_write_dm:"'e mesaj yaz...",
     chat_write_desc:'Açıklama ekle (isteğe bağlı)…',
     chat_members:'Üyeler', chat_clear:'Temizle', chat_remove:'Kaldır',
     chat_img_not_found:'Görsel bulunamadı',
@@ -843,6 +844,7 @@ window.APP_I18N = {
     set_rol_perm_tasks:'Manage tasks', set_rol_perm_projects:'Manage projects',
     set_rol_perm_labels:'Manage labels', set_rol_perm_invite:'Invite members',
     set_rol_perm_members:'Manage members',
+    set_rol_perm_channels:'Manage channels', set_rol_perm_del_msgs:'Delete others\' messages',
     set_rol_default_for_new:'Default role for new members',
     set_rol_saving:'Saving…', set_rol_save:'Save',
     // Settings — Members

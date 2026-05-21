@@ -6,3 +6,5 @@ python-dotenv==1.0.1
 psycopg2-binary
 gunicorn==22.0.0
 eventlet==0.36.1
+google-auth==2.29.0
+requests==2.34.2

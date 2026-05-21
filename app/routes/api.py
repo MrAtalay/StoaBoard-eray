@@ -53,7 +53,7 @@ def _login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get('user_id'):
-            return jsonify({'error': 'Giriş yapmanız gerekiyor'}), 401
+            return jsonify({'error': 'err_auth_required'}), 401
         return f(*args, **kwargs)
     return decorated
 
@@ -2124,11 +2124,7 @@ def _resolve_workspace_id(user):
 
 
 def _user_can_create_channel(user, workspace_id):
-    """Only workspace owner (or explicitly permitted roles) can create channels.
-
-    Permission keys checked on WorkspaceRole.permissions: 'channel:create'.
-    Owner is always allowed regardless of role permissions.
-    """
+    """Workspace owner or members with manage_channels permission can create channels."""
     if not workspace_id:
         return False
     ws = Workspace.query.get(workspace_id)
@@ -2140,7 +2136,8 @@ def _user_can_create_channel(user, workspace_id):
     if m.role == 'owner':
         return True
     if m.workspace_role and isinstance(m.workspace_role.permissions, list):
-        if 'channel:create' in m.workspace_role.permissions:
+        perms = m.workspace_role.permissions
+        if 'manage_channels' in perms or 'channel:create' in perms:
             return True
     return False
 
@@ -2385,8 +2382,13 @@ def delete_channel(channel_id):
     if channel.is_default:
         return jsonify({'error': 'Varsayılan kanal silinemez'}), 400
     role = _user_channel_role(channel, user.id)
-    if role != 'owner':
-        return jsonify({'error': 'Kanalı sadece sahip silebilir'}), 403
+    ws_member = WorkspaceMember.query.filter_by(workspace_id=channel.workspace_id, user_id=user.id).first()
+    ws_can_manage = ws_member and (
+        ws_member.role == 'owner' or
+        (ws_member.workspace_role and 'manage_channels' in (ws_member.workspace_role.permissions or []))
+    )
+    if role != 'owner' and not ws_can_manage:
+        return jsonify({'error': 'Kanalı sadece kanal sahibi veya yönetici silebilir'}), 403
     member_ids = [m.user_id for m in channel.members]
     ws_id = channel.workspace_id
     slug = channel.slug
@@ -2742,14 +2744,25 @@ def delete_chat_message(msg_id):
 
     is_sender = msg.sender_id == user.id
     is_receiver = msg.receiver_id == user.id
-    if not is_sender and not is_receiver and msg.receiver_id is not None:
+
+    # Check workspace-level delete_messages permission
+    ws_id = msg.workspace_id
+    ws_can_delete = False
+    if ws_id:
+        wm = WorkspaceMember.query.filter_by(workspace_id=ws_id, user_id=user.id).first()
+        ws_can_delete = wm and (
+            wm.role == 'owner' or
+            (wm.workspace_role and 'delete_messages' in (wm.workspace_role.permissions or []))
+        )
+
+    if not is_sender and not is_receiver and msg.receiver_id is not None and not ws_can_delete:
         return jsonify({'error': 'Yetkiniz yok'}), 403
-    if not is_sender and msg.receiver_id is None:
+    if not is_sender and msg.receiver_id is None and not ws_can_delete:
         return jsonify({'error': 'Yetkiniz yok'}), 403
 
     if scope == 'all':
-        if not is_sender:
-            return jsonify({'error': 'Sadece gönderen herkesten silebilir'}), 403
+        if not is_sender and not ws_can_delete:
+            return jsonify({'error': 'Sadece gönderen veya yetkili yönetici herkesten silebilir'}), 403
         msg.is_deleted = True
         db.session.commit()
         from app import socketio as _sio

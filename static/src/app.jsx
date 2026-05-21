@@ -46,6 +46,7 @@ function App() {
   const [notifOpen, setNotifOpen]           = useS(false);
   const [chatOpen, setChatOpen]             = useS(false);
   const [chatDmWith, setChatDmWith]         = useS(null);
+  const [chatChannel, setChatChannel]       = useS(null);
   const [chatHighlightMsgId, setChatHighlightMsgId] = useS(null);
   const [onlineUsers, setOnlineUsers]       = useS(new Map()); // slug → status
   const [members, setMembers]               = useS([]);
@@ -100,6 +101,8 @@ function App() {
   const myPerms = myMember.role_permissions || [];
   const canManageTasks = isOwner || myPerms.includes('manage_tasks');
   const canManageProjects = isOwner || myPerms.includes('manage_projects');
+  const canManageChannels = isOwner || myPerms.includes('manage_channels');
+  const canDeleteMessages = isOwner || myPerms.includes('delete_messages');
 
   useEf(() => localStorage.setItem('stoa.view', view), [view]);
   useEf(() => { document.documentElement.dataset.theme    = tweaks.theme;    }, [tweaks.theme]);
@@ -325,8 +328,8 @@ function App() {
         if (msg.file_url) window.__INCREMENT_UNREAD__('media');
       }
 
-      // Notification sound — not DND, sound enabled, not viewing this conversation
-      if (!isViewingThis && myStatus !== 'dnd' && twks.soundEnabled !== false) {
+      // Notification sound — not DND, sound enabled, messages enabled, not viewing this conversation
+      if (!isViewingThis && myStatus !== 'dnd' && twks.soundEnabled !== false && twks.notifyMessages !== false) {
         _playDing();
       }
 
@@ -470,6 +473,7 @@ function App() {
         time: msg.time || new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
         truncated,
         dmWith: msg.to ? (typeof msg.from === 'string' ? msg.from : null) : null,
+        channelSlug: msg.to ? null : (msg.channel || null),
       },
     };
   }
@@ -624,10 +628,11 @@ function App() {
     } catch (e) { window.showToast?.(window.t('app_err_create_project') + e.message, 'error'); }
   };
 
-  const openChat = (dmWithSlug, msgId) => {
+  const openChat = (dmWithSlug, msgId, channelSlug) => {
     const slug = typeof dmWithSlug === 'string' ? dmWithSlug : null;
     if (slug && slug === window.CURRENT_USER?.id) {
       setChatDmWith(null);
+      setChatChannel(null);
       setChatHighlightMsgId(null);
       setChatOpen(false);
       setView('settings');
@@ -636,12 +641,14 @@ function App() {
     const canOpenDm = !slug || members.some(m => m.id === slug);
     if (slug && !canOpenDm) {
       setChatDmWith(null);
+      setChatChannel(channelSlug || null);
       setChatHighlightMsgId(null);
       setChatOpen(false);
       setView('chat');
       return;
     }
     setChatDmWith(slug);
+    setChatChannel(slug ? null : (channelSlug || null));
     setChatHighlightMsgId(msgId || null);
     setChatOpen(true);
     window.__CHAT_OPEN__ = true;
@@ -886,7 +893,7 @@ function App() {
                 onClose={() => setView('dashboard')}
                 socket={socket}
                 onOpenTask={(task) => { setView('board'); setDrawerTask(task); }}
-                onOpenChat={(slug, msgId) => { openChat(slug, msgId); setView('chat'); }}
+                onOpenChat={(slug, msgId, channelSlug) => { openChat(slug, msgId, channelSlug); setView('chat'); }}
                 currentWsId={currentWsId}
                 tweaks={tweaks}
                 setTweak={setTweak}
@@ -914,6 +921,9 @@ function App() {
                 members={members}
                 socket={socket}
                 initialDmWith={chatDmWith}
+                initialChannel={chatChannel}
+                canManageChannels={canManageChannels}
+                canDeleteMessages={canDeleteMessages}
                 unreadCounts={unreadCounts}
                 markAsRead={markAsRead}
                 wsId={currentWsId}
@@ -944,7 +954,7 @@ function App() {
         onClose={() => { setNotifOpen(false); setNotifCount(0); }}
         socket={socket}
         onOpenTask={(task) => { setNotifOpen(false); setNotifCount(0); setDrawerTask(task); }}
-        onOpenChat={(slug, msgId) => { setNotifOpen(false); setNotifCount(0); openChat(slug, msgId); }}
+        onOpenChat={(slug, msgId, channelSlug) => { setNotifOpen(false); setNotifCount(0); openChat(slug, msgId, channelSlug); }}
         currentWsId={currentWsId}
         tweaks={tweaks}
         setTweak={setTweak}
@@ -955,12 +965,12 @@ function App() {
           open={chatOpen}
           fullPage={false}
           onExpand={() => {
-            setChatOpen(false); setChatDmWith(null); setChatHighlightMsgId(null);
+            setChatOpen(false); setChatDmWith(null); setChatChannel(null); setChatHighlightMsgId(null);
             window.__CHAT_OPEN__ = false;
             setView('chat');
           }}
           onClose={() => {
-            setChatOpen(false); setChatDmWith(null); setChatHighlightMsgId(null);
+            setChatOpen(false); setChatDmWith(null); setChatChannel(null); setChatHighlightMsgId(null);
             window.__CHAT_OPEN__ = false;
           }}
           onlineUsers={onlineSet}
@@ -968,6 +978,9 @@ function App() {
           members={members}
           socket={socket}
           initialDmWith={chatDmWith}
+          initialChannel={chatChannel}
+          canManageChannels={canManageChannels}
+          canDeleteMessages={canDeleteMessages}
           unreadCounts={unreadCounts}
           markAsRead={markAsRead}
           wsId={currentWsId}

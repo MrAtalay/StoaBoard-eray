@@ -359,6 +359,8 @@ const PERM_LABELS_KEYS = {
   manage_labels:   ['set_rol_perm_labels',   'Etiketleri yönet'],
   invite_members:  ['set_rol_perm_invite',   'Üye davet et'],
   manage_members:  ['set_rol_perm_members',  'Üyeleri yönet'],
+  manage_channels: ['set_rol_perm_channels', 'Kanalları yönet'],
+  delete_messages: ['set_rol_perm_del_msgs', 'Başkalarının mesajlarını sil'],
 };
 const ALL_PERMS = Object.keys(PERM_LABELS_KEYS);
 
@@ -1390,13 +1392,12 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
               <div className="toggle" data-on={tweaks.notifyMessages !== false} />
             </div>
             <div className="tweak-toggle"
-              style={{ opacity: tweaks.notifyMessages === false ? 0.4 : 1 }}
-              onClick={() => tweaks.notifyMessages !== false && setTweak('soundEnabled', tweaks.soundEnabled === false)}>
+              onClick={() => setTweak('soundEnabled', tweaks.soundEnabled === false)}>
               <div className="tweak-toggle-info">
                 <span>{_t('set_notif_sound','Bildirim sesi')}</span>
                 <span className="tweak-toggle-desc">{_t('set_notif_sound_desc','Yeni mesajlarda kısa bir ses çalar. Rahatsız Etme modunda çalmaz.')}</span>
               </div>
-              <div className="toggle" data-on={tweaks.notifyMessages !== false && tweaks.soundEnabled !== false} />
+              <div className="toggle" data-on={tweaks.soundEnabled !== false} />
             </div>
             <div className="tweak-toggle"
               style={{ opacity: tweaks.notifyMessages === false ? 0.4 : 1 }}

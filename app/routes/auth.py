@@ -56,7 +56,7 @@ def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get('user_id'):
-            return jsonify({'error': 'Giriş yapmanız gerekiyor'}), 401
+            return jsonify({'error': 'err_auth_required'}), 401
         return f(*args, **kwargs)
     return decorated
 
@@ -65,18 +65,18 @@ def login_required(f):
 def login():
     ip = request.remote_addr or 'unknown'
     if _rate_limited(f'login:{ip}', max_requests=10, window=300):
-        return jsonify({'error': 'Çok fazla giriş denemesi. 5 dakika sonra tekrar deneyin.'}), 429
+        return jsonify({'error': 'err_rate_limit_login'}), 429
 
     data = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
     password = data.get('password') or ''
 
     if not email or not password:
-        return jsonify({'error': 'E-posta ve parola zorunludur'}), 400
+        return jsonify({'error': 'err_fields_required'}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user or not user.check_password(password):
-        return jsonify({'error': 'E-posta veya parola hatalı'}), 401
+        return jsonify({'error': 'err_login_invalid'}), 401
 
     from app.models import _now
     user.last_seen = _now()
@@ -94,7 +94,7 @@ _EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 def register():
     ip = request.remote_addr or 'unknown'
     if _rate_limited(f'register:{ip}', max_requests=5, window=3600):
-        return jsonify({'error': 'Çok fazla kayıt denemesi. 1 saat sonra tekrar deneyin.'}), 429
+        return jsonify({'error': 'err_rate_limit_register'}), 429
 
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()
@@ -102,13 +102,13 @@ def register():
     password = data.get('password') or ''
 
     if not name or not email or not password:
-        return jsonify({'error': 'Ad soyad, e-posta ve parola zorunludur'}), 400
+        return jsonify({'error': 'err_fields_required'}), 400
     if not _EMAIL_RE.match(email):
-        return jsonify({'error': 'Geçersiz e-posta adresi'}), 400
+        return jsonify({'error': 'err_email_invalid'}), 400
     if len(password) < 8:
-        return jsonify({'error': 'Parola en az 8 karakter olmalıdır'}), 400
+        return jsonify({'error': 'err_pass_short'}), 400
     if User.query.filter_by(email=email).first():
-        return jsonify({'error': 'Bu e-posta adresi zaten kayıtlı'}), 409
+        return jsonify({'error': 'err_email_taken'}), 409
 
     base = name.lower().replace(' ', '-')
     import re
@@ -138,7 +138,6 @@ def register():
 
     session['user_id'] = user.id
     session.permanent = True
-    # Return needs_workspace so the frontend shows the setup screen
     return jsonify({'ok': True, 'user': user.to_dict(), 'needs_workspace': True}), 201
 
 
@@ -152,11 +151,11 @@ def logout():
 def me():
     uid = session.get('user_id')
     if not uid:
-        return jsonify({'error': 'Oturum açılmamış'}), 401
+        return jsonify({'error': 'err_auth_required'}), 401
     user = User.query.get(uid)
     if not user:
         session.clear()
-        return jsonify({'error': 'Kullanıcı bulunamadı'}), 401
+        return jsonify({'error': 'err_user_not_found'}), 401
     return jsonify(user.to_dict())
 
 
@@ -196,17 +195,17 @@ def _send_reset_email(to_email: str, code: str) -> None:
 def forgot_password():
     ip = request.remote_addr or 'unknown'
     if _rate_limited(f'forgot:{ip}', max_requests=5, window=300):
-        return jsonify({'error': 'Çok fazla deneme. 5 dakika sonra tekrar deneyin.'}), 429
+        return jsonify({'error': 'err_rate_limit_forgot'}), 429
 
     data  = request.get_json(silent=True) or {}
     email = (data.get('email') or '').strip().lower()
 
     if not email or not _EMAIL_RE.match(email):
-        return jsonify({'error': 'Geçersiz e-posta adresi'}), 400
+        return jsonify({'error': 'err_email_invalid'}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user:
-        return jsonify({'error': 'Bu e-posta adresiyle kayıtlı bir hesap bulunamadı.'}), 404
+        return jsonify({'error': 'err_account_not_found'}), 404
 
     code       = str(secrets.randbelow(900000) + 100000)
     expires_at = time.time() + 900  # 15 minutes
@@ -218,9 +217,83 @@ def forgot_password():
         _send_reset_email(email, code)
     except Exception as exc:
         print(f'[StoaBoard] E-posta gönderilemedi: {exc}', flush=True)
-        return jsonify({'error': 'E-posta gönderilemedi. Lütfen daha sonra tekrar deneyin.'}), 500
+        return jsonify({'error': 'err_email_send_failed'}), 500
 
     return jsonify({'ok': True})
+
+
+@auth_bp.route('/google', methods=['POST'])
+def google_auth():
+    data       = request.get_json(silent=True) or {}
+    credential = data.get('credential', '').strip()
+    client_id  = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
+
+    if not credential:
+        return jsonify({'error': 'err_google_no_credential'}), 400
+    if not client_id:
+        return jsonify({'error': 'err_google_not_configured'}), 503
+
+    try:
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as g_requests
+        idinfo = id_token.verify_oauth2_token(
+            credential, g_requests.Request(), client_id,
+            clock_skew_in_seconds=10,
+        )
+    except Exception as e:
+        print(f'[Google OAuth] Token doğrulama hatası: {e}', flush=True)
+        return jsonify({'error': 'err_google_failed'}), 401
+
+    google_id = idinfo.get('sub', '')
+    email     = (idinfo.get('email') or '').strip().lower()
+    name      = (idinfo.get('name') or email.split('@')[0]).strip()
+    picture   = idinfo.get('picture')
+
+    if not email or not google_id:
+        return jsonify({'error': 'err_google_no_info'}), 400
+
+    user = User.query.filter_by(google_id=google_id).first()
+    if not user:
+        user = User.query.filter_by(email=email).first()
+
+    from app.models import _now
+    needs_workspace = False
+
+    if not user:
+        base = re.sub(r'[^a-z0-9-]', '', name.lower().replace(' ', '-')) or 'user'
+        slug = base
+        counter = 1
+        while User.query.filter_by(slug=slug).first():
+            slug = f'{base}-{counter}'
+            counter += 1
+
+        parts = name.split()
+        initials = (parts[0][0] + (parts[-1][0] if len(parts) > 1 else '')).upper() if parts else 'U'
+        color_idx = User.query.count() % len(AVATAR_COLORS)
+
+        user = User(
+            slug=slug, name=name, email=email, google_id=google_id,
+            avatar_initials=initials, avatar_color=AVATAR_COLORS[color_idx],
+            avatar_photo_url=picture, role_title='Üye',
+        )
+        db.session.add(user)
+        db.session.commit()
+        needs_workspace = True
+    else:
+        if not user.google_id:
+            user.google_id = google_id
+        if picture and not user.avatar_photo_url:
+            user.avatar_photo_url = picture
+        user.last_seen = _now()
+        db.session.commit()
+
+        from app.models import WorkspaceMember
+        if not WorkspaceMember.query.filter_by(user_id=user.id).first():
+            needs_workspace = True
+
+    session['user_id'] = user.id
+    session.permanent = True
+    return jsonify({'ok': True, 'user': user.to_dict(), 'needs_workspace': needs_workspace})
 
 
 @auth_bp.route('/reset-password', methods=['POST'])
@@ -231,22 +304,22 @@ def reset_password():
     new_pass = (data.get('password') or '').strip()
 
     if not email or not code or not new_pass:
-        return jsonify({'error': 'Tüm alanlar zorunludur'}), 400
+        return jsonify({'error': 'err_fields_required'}), 400
     if len(new_pass) < 8:
-        return jsonify({'error': 'Şifre en az 8 karakter olmalıdır'}), 400
+        return jsonify({'error': 'err_pass_short'}), 400
 
     with _reset_codes_lock:
         record = _reset_codes.get(email)
         if not record or record['code'] != code:
-            return jsonify({'error': 'Kod yanlış veya süresi dolmuş. Yeni kod isteyin.'}), 400
+            return jsonify({'error': 'err_reset_fail'}), 400
         if time.time() > record['expires_at']:
             _reset_codes.pop(email, None)
-            return jsonify({'error': 'Kodun süresi dolmuş. Yeni kod isteyin.'}), 400
+            return jsonify({'error': 'err_code_expired'}), 400
         _reset_codes.pop(email, None)
 
     user = User.query.filter_by(email=email).first()
     if not user:
-        return jsonify({'error': 'Kullanıcı bulunamadı'}), 404
+        return jsonify({'error': 'err_user_not_found'}), 404
 
     user.set_password(new_pass)
     db.session.commit()

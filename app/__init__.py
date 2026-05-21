@@ -36,6 +36,7 @@ def _migrate_db():
         ('notifications', 'task_id', "ALTER TABLE notifications ADD COLUMN task_id INTEGER"),
         ('notifications', 'sender_slug', "ALTER TABLE notifications ADD COLUMN sender_slug VARCHAR(80)"),
         ('users', 'avatar_photo_url', "ALTER TABLE users ADD COLUMN avatar_photo_url VARCHAR(300)"),
+        ('users', 'google_id', "ALTER TABLE users ADD COLUMN google_id VARCHAR(100)"),
         ('notifications', 'workspace_id', "ALTER TABLE notifications ADD COLUMN workspace_id INTEGER"),
         ('tasks', 'start_date', "ALTER TABLE tasks ADD COLUMN start_date DATE"),
         ('tasks', 'assignee_dates',

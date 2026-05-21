@@ -203,7 +203,11 @@ function MarkdownEditor({ body, onChange, onKeyShortcut, disabled }) {
       const k = e.key.toLowerCase();
       if (k === 'b') { e.preventDefault(); wrap('**','**','güçlü'); return; }
       if (k === 'i') { e.preventDefault(); wrap('*','*','italik'); return; }
+      if (k === 'e') { e.preventDefault(); e.stopPropagation(); wrap('`','`','kod'); return; }
       if (k === 'k') { e.preventDefault(); wrap('[', '](https://)','link'); return; }
+      if (k === '1') { e.preventDefault(); prefix('# '); return; }
+      if (k === '2') { e.preventDefault(); prefix('## '); return; }
+      if (k === '3') { e.preventDefault(); prefix('### '); return; }
     }
     if (e.key === 'Enter') {
       const ta = taRef.current;
@@ -249,13 +253,13 @@ function MarkdownEditor({ body, onChange, onKeyShortcut, disabled }) {
   return (
     <div className="md-editor">
       <div className="md-toolbar" role="toolbar" aria-label="Biçimlendirme">
-        <button type="button" className="md-tb-btn" title="Başlık 1" onClick={() => prefix('# ')}><Icon name="heading1" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Başlık 2" onClick={() => prefix('## ')}><Icon name="heading2" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Başlık 3" onClick={() => prefix('### ')}><Icon name="heading3" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="Başlık 1 (⌘1)" onClick={() => prefix('# ')}><Icon name="heading1" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="Başlık 2 (⌘2)" onClick={() => prefix('## ')}><Icon name="heading2" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="Başlık 3 (⌘3)" onClick={() => prefix('### ')}><Icon name="heading3" size={14} /></button>
         <div className="md-tb-sep" />
         <button type="button" className="md-tb-btn" title="Kalın (⌘B)" onClick={() => wrap('**','**','metin')}><Icon name="bold" size={14} /></button>
         <button type="button" className="md-tb-btn" title="İtalik (⌘I)" onClick={() => wrap('*','*','metin')}><Icon name="italic" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Satır içi kod" onClick={() => wrap('`','`','kod')}><Icon name="code" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="Satır içi kod (⌘E)" onClick={() => wrap('`','`','kod')}><Icon name="code" size={14} /></button>
         <button type="button" className="md-tb-btn" title="Link (⌘K)" onClick={() => wrap('[', '](https://)','metin')}><Icon name="link" size={14} /></button>
         <div className="md-tb-sep" />
         <button type="button" className="md-tb-btn" title="Madde işareti" onClick={() => prefix('- ')}><Icon name="listBullet" size={14} /></button>

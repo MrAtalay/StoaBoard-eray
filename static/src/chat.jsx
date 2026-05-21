@@ -1664,7 +1664,7 @@ function MediaGallery({ allMembers, onImageClick }) {
 }
 
 // ── Main Chat Panel ───────────────────────────────────────────────────────
-function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith, unreadCounts, markAsRead, wsId, highlightMsgId, fullPage }) {
+function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, members: membersProp, socket, initialDmWith, initialChannel, canManageChannels, canDeleteMessages, unreadCounts, markAsRead, wsId, highlightMsgId, fullPage }) {
   const [askConfirm, ConfirmUI] = useConfirm();
   const [tab, setTab]             = useChatS('general');
   const [dmWith, setDmWith]       = useChatS(null);
@@ -1754,7 +1754,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
       if (!cancelled) setCurrentChannelDetail(detail);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [open, dmWith, activeChannel, channels.length]);
+  }, [open, dmWith, activeChannel, _findCh(activeChannel)?.channel_id]);
 
   const removeChannel = async (id) => {
     if (id === 'general') return;
@@ -1854,7 +1854,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     ? allMembers.filter(m => m.id !== me && (m.name.toLowerCase().includes(mentionQuery.toLowerCase()) || m.id.toLowerCase().includes(mentionQuery.toLowerCase())))
     : allMembers.filter(m => m.id !== me);
 
-  // Handle open/initialDmWith changes
+  // Handle open/initialDmWith/initialChannel changes
   useChatE(() => {
     const wasOpen = prevOpenRef.current;
     prevOpenRef.current = open;
@@ -1875,13 +1875,19 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
         setMentionTaskRef(window.__CHAT_MENTION_TASK__);
         window.__CHAT_MENTION_TASK__ = null;
       }
+    } else if (initialChannel) {
+      // opened via notification → navigate to specific channel
+      setDmWith(null);
+      setMessages([]);
+      setTab('general');
+      setActiveChannel(initialChannel);
     } else if (!wasOpen) {
       // opened via sidebar chat button without a DM target → reset to general
       setDmWith(null);
       setMessages([]);
       setTab('general');
     }
-  }, [open, initialDmWith, members.length]);
+  }, [open, initialDmWith, initialChannel, members.length]);
 
   // Reset general messages when workspace changes
   useChatE(() => {
@@ -2703,7 +2709,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
             >
               <Icon name="eyeOff" size={13} style={{ color: 'var(--ink-muted)' }} /> {window.t?.('chat_delete_self')||'Benden sil'}
             </button>
-            {deleteMenu.isMine && (
+            {(deleteMenu.isMine || canDeleteMessages) && (
               <button className="chat-menu-item" style={{ borderTop: '1px solid var(--line)', color: 'var(--status-rose)' }}
                 onClick={() => handleDeleteMessage(deleteMenu.msgId, 'all')}
               >
@@ -2805,7 +2811,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                     ? `${DATA.WORKSPACE?.name || 'Atlas'} · ${channels.length} kanal`
                     : 'Direkt Mesajlar'}
                 </span>
-                {leftListTab === 'channels' && (DATA.WORKSPACE?.can_create_channel || DATA.WORKSPACE?.is_owner) && (
+                {leftListTab === 'channels' && (DATA.WORKSPACE?.can_create_channel || DATA.WORKSPACE?.is_owner || canManageChannels) && (
                   <button
                     className="icon-btn"
                     title="Yeni kanal"
@@ -3208,7 +3214,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               <textarea
                 ref={inputRef}
                 className="chat-fp-input"
-                placeholder={pendingFile ? (window.t?.('chat_desc_ph')||'Açıklama ekle (isteğe bağlı)…') : (dmWith ? `${window.t?.('chat_write_dm')||'Message'} ${dmUser?.name || dmWith}...` : (window.t?.('chat_write_general')||'#genel kanala yaz...'))}
+                placeholder={pendingFile ? (window.t?.('chat_desc_ph')||'Açıklama ekle (isteğe bağlı)…') : (dmWith ? `${dmUser?.name || dmWith}${window.t?.('chat_write_dm') || ' — mesaj yaz...'}` : (window.t?.('chat_write_general')||'#genel kanala yaz...'))}
                 value={text}
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
@@ -3272,9 +3278,43 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                   const canManage = myRole === 'owner' || myRole === 'admin';
                   const isOwner = myRole === 'owner';
                   const isPrivate = detail?.type === 'private';
+
+                  // DM mode: show self + partner
+                  if (dmWith) {
+                    const dmPartner = allMembers.find(m => m.id === dmWith);
+                    const selfMember = allMembers.find(m => m.id === me);
+                    const dmPair = [dmPartner, selfMember].filter(Boolean);
+                    return (
+                      <div className="chat-fp-members">
+                        <div className="chat-fp-section-title">
+                          {window.t?.('chat_members')||'Üyeler'} <span>{dmPair.length}</span>
+                        </div>
+                        {dmPair.map(m => {
+                          const mStatus = m.id === me ? 'online' : (statuses.get(m.id) || (online.has(m.id) ? 'online' : 'offline'));
+                          return (
+                            <div key={m.id} className="chat-fp-member-row" style={{ cursor: 'default' }}>
+                              <div style={{ position: 'relative', flexShrink: 0, display: 'flex' }}>
+                                <Avatar member={m} size="sm" />
+                                <span style={{ position: 'absolute', bottom: -1, right: -1 }}>
+                                  <StatusDot status={mStatus} />
+                                </span>
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  {m.name}
+                                  {m.id === me && <span style={{ fontSize: 10, color: 'var(--ink-faint)', fontWeight: 400 }}>({window.t?.('chat_you')||'siz'})</span>}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+
                   const memberCount = channelMembers.length || (detail?.member_count ?? allMembers.length);
                   // For public channels with no detail loaded yet, fall back to workspace members
-                  const fallback = !detail && !dmWith;
+                  const fallback = !detail;
                   return (
                     <div className="chat-fp-members">
                       <div className="chat-fp-section-title">
@@ -3289,7 +3329,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                         )}
                       </div>
                       {isPrivate && (
-                        <div style={{ fontSize: 11, color: 'var(--ink-faint)', padding: '0 0 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ fontSize: 11, color: 'var(--ink-faint)', padding: '0 16px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
                           <Icon name="lock" size={10} /> {window.t?.('chat_private_label')||'Özel kanal · sadece davetli üyeler'}
                         </div>
                       )}
@@ -3850,7 +3890,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
               <textarea
                 ref={inputRef}
                 className="chat-input"
-                placeholder={pendingFile ? (window.t?.('chat_desc_ph')||'Açıklama ekle (isteğe bağlı)…') : (dmWith ? `${window.t?.('chat_write_dm')||'Message'} ${dmUser?.name || dmWith}...` : (window.t?.('chat_write_general')||'Genel kanala yaz...'))}
+                placeholder={pendingFile ? (window.t?.('chat_desc_ph')||'Açıklama ekle (isteğe bağlı)…') : (dmWith ? `${dmUser?.name || dmWith}${window.t?.('chat_write_dm') || ' — mesaj yaz...'}` : (window.t?.('chat_write_general')||'Genel kanala yaz...'))}
                 value={text}
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}

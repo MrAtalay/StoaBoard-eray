@@ -19,6 +19,7 @@ class User(db.Model):
     avatar_color = db.Column(db.String(100), default='oklch(58% 0.13 25)')
     avatar_initials = db.Column(db.String(10))
     avatar_photo_url = db.Column(db.String(300), nullable=True)
+    google_id = db.Column(db.String(100), unique=True, nullable=True)
     role_title = db.Column(db.String(100))
     last_seen = db.Column(db.DateTime, default=_now)
     created_at = db.Column(db.DateTime, default=_now)

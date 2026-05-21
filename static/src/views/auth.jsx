@@ -7,6 +7,15 @@ const AUTH_LANGS = [
   { code: 'en', name: 'English', img: 'https://flagcdn.com/20x15/gb.png' },
 ];
 
+const getAuthLang = () => {
+  try { const tw = JSON.parse(localStorage.getItem('stoa.tweaks') || '{}'); if (tw.locale) return tw.locale; } catch {}
+  return localStorage.getItem('stoa.lang') || 'tr';
+};
+const authT = (key, lang) => {
+  const l = lang || getAuthLang();
+  return (AUTH_I18N[l] || AUTH_I18N.tr)[key] || AUTH_I18N.tr[key] || key;
+};
+
 const AUTH_I18N = {
   tr: {
     greet_morning: "Günaydın, StoaBoard'a dön.",
@@ -42,6 +51,24 @@ const AUTH_I18N = {
     err_pass_match: 'Şifreler eşleşmiyor.',
     err_reset_fail: 'Kod yanlış veya süresi dolmuş. Yeni kod isteyin.',
     err_account_not_found: 'Bu e-posta adresiyle kayıtlı bir hesap bulunamadı.',
+    err_rate_limit_login: 'Çok fazla giriş denemesi. 5 dakika sonra tekrar deneyin.',
+    err_rate_limit_register: 'Çok fazla kayıt denemesi. 1 saat sonra tekrar deneyin.',
+    err_rate_limit_forgot: 'Çok fazla deneme. 5 dakika sonra tekrar deneyin.',
+    err_fields_required: 'Tüm alanları doldurun.',
+    err_email_invalid: 'Geçersiz e-posta adresi.',
+    err_login_invalid: 'E-posta veya parola hatalı.',
+    err_email_taken: 'Bu e-posta adresi zaten kayıtlı.',
+    err_email_send_failed: 'E-posta gönderilemedi. Lütfen daha sonra tekrar deneyin.',
+    err_code_expired: 'Kodun süresi dolmuş. Yeni kod isteyin.',
+    err_google_failed: 'Google ile giriş başarısız oldu.',
+    err_google_no_credential: 'Google kimlik bilgisi eksik.',
+    err_google_not_configured: 'Google girişi yapılandırılmamış.',
+    err_google_no_info: 'Google hesabından bilgi alınamadı.',
+    err_auth_required: 'Giriş yapmanız gerekiyor.',
+    err_user_not_found: 'Kullanıcı bulunamadı.',
+    google_signin: 'Google ile devam et',
+    or_divider: 'veya',
+    google_error: 'Google girişi başarısız oldu.',
     invite_text: 'Takıma davet edildiniz.',
     invite_join_signup: 'Hesap oluşturarak', invite_join_signin: 'Giriş yaparak',
     invite_continue: 'katılmaya devam edin.',
@@ -49,9 +76,62 @@ const AUTH_I18N = {
     hero_h1_em: 'hafif',
     hero_h1_after: ' araçlarıyla inşa edin.',
     hero_p: 'Teknoloji dünyası artık ağır ve hantal sistemleri kaldırmıyor. StoaBoard, startup çevikliğini merkeze alarak tasarlandı; 15 saniyede kurulum, sıfır karmaşıklık ve tam senkronizasyon. Pano, liste ve takvim görünümleri arasında pürüzsüzce geçiş yaparken, sistemin ağırlığını değil, ekibinizin yaratıcılığını hissedeceksiniz. Gelecek burada başlıyor, hafiflikten güç alarak.',
-    stat_teams: 'aktif ekip',
-    stat_tasks: 'tamamlanan görev',
-    stat_setup: 'ortalama kurulum',
+    feat_1: 'Pano, Liste ve Takvim — tek çatı altında',
+    feat_2: 'Gerçek zamanlı takım senkronizasyonu',
+    feat_3: 'Dakikalar içinde kurulum, sıfır karmaşıklık',
+    ws_no_network: 'Ağ bağlantısı yok.',
+    ws_invite_length: 'Davet kodu 8 karakter olmalı.',
+    ws_tab_create: 'Yeni Oda Kur',
+    ws_tab_join: 'Odaya Katıl',
+    ws_logout: 'Sistemi Kapat (Çıkış)',
+    ws_net_reconnected: 'Bağlantı yeniden kuruldu',
+    ws_net_connected: 'Bağlantı başarılı, oda bekleniyor...',
+    ws_net_offline_label: 'Ağ bağlantısı kesildi',
+    ws_net_offline_warn: 'İnternet bağlantısı yok. Bağlanmadan oda oluşturulamaz.',
+    ws_user_fallback: 'Kullanıcı',
+    ws_label_name: 'ODA / ÇALIŞMA ALANI ADI',
+    ws_placeholder_name: 'Örn: Flux Labs, Kişisel Projeler…',
+    ws_label_type: 'ODA TÜRÜ — ÇALIŞMA MODU',
+    ws_infra_prefix: 'Oda Altyapısı — ',
+    ws_infra_cols: 'Kolonlar: ',
+    ws_infra_labels: 'Etiketler: ',
+    ws_infra_invite: 'Şifreli davet kodu otomatik oluşturulur.',
+    ws_creating: 'SİSTEM KURULUYOR…',
+    ws_start: 'SİSTEMİ BAŞLAT',
+    ws_label_code: 'GÜVENLİK KODU',
+    ws_verifying: 'DOĞRULANIYOR…',
+    ws_enter: 'İÇERİ GİR',
+    lobby_rejected_title: 'İstek Reddedildi',
+    lobby_rejected_body: 'Takım sahibi katılım isteğinizi reddetti. Farklı bir kod deneyebilirsiniz.',
+    lobby_back: 'Geri Dön',
+    lobby_waiting_title: 'Onay Bekleniyor',
+    lobby_waiting_body: 'Katılım isteğiniz takım sahibine iletildi. Onaylandığında otomatik olarak içeri alınacaksınız.',
+    lobby_wait_label: 'Bekleme Süresi',
+    lobby_wait_hint: 'Bu pencereyi açık tutun — onay geldiğinde otomatik yönlendirilirsiniz.',
+    security_title: 'Güvenlik Protokolü Aktif',
+    security_body: 'Bu işlem uçtan uca şifrelenmiş bir tünel üzerinden gerçekleşir. Kodun geçerlilik süresi oda yöneticisi tarafından belirlenir ve tek kullanımlıktır.',
+    join_checking: 'Kod kontrol ediliyor',
+    join_pending: 'İstek zaten beklemede',
+    join_found: 'Oda bulundu',
+    join_not_found: 'Oda bulunamadı',
+    join_offline_err: 'Bağlantı yok.',
+    join_checking_hint: 'Lütfen bekle, kod gerçek odalar arasında aranıyor.',
+    join_invalid_hint: 'Rastgele ya da hatalı kodlarla giriş yapılmaz.',
+    join_ws_fallback: 'Çalışma alanı',
+    join_member_unit: 'üye',
+    join_already_member: 'Zaten üyesin',
+    ws_err_invalid_code: 'Oda bulunamadı. Davet kodunu kontrol et.',
+    ws_err_code_required: 'Davet kodu zorunludur.',
+    ws_err_generic: 'Bir hata oluştu.',
+    ws_pending_sent_title: 'İsteğin iletildi.',
+    ws_pending_sent_body: 'Takım sahibi isteğini inceledikten sonra otomatik olarak ekleneceksin.',
+    ws_bp_title: 'Çalışma Alanın hazır mı?',
+    ws_bp_subtitle: 'Kendi odanı kur veya bir davet koduyla mevcut takıma katıl. Her şey burada inşa edilir.',
+    ws_bp_footer: 'Güvenli · Hızlı · Ekip odaklı',
+    ws_bp_stat_teams: 'aktif takım',
+    ws_bp_stat_satisfaction: 'memnuniyet',
+    ws_bp_stat_setup: 'başlama süresi',
+    ws_bp_stat_tasks: 'görev tamamlandı',
   },
   en: {
     greet_morning: 'Good morning, welcome back to StoaBoard.',
@@ -87,6 +167,24 @@ const AUTH_I18N = {
     err_pass_match: 'Passwords do not match.',
     err_reset_fail: 'Code is incorrect or expired. Please request a new one.',
     err_account_not_found: 'No account found with this email address.',
+    err_rate_limit_login: 'Too many login attempts. Try again in 5 minutes.',
+    err_rate_limit_register: 'Too many registration attempts. Try again in 1 hour.',
+    err_rate_limit_forgot: 'Too many attempts. Try again in 5 minutes.',
+    err_fields_required: 'Please fill in all required fields.',
+    err_email_invalid: 'Invalid email address.',
+    err_login_invalid: 'Incorrect email or password.',
+    err_email_taken: 'This email address is already registered.',
+    err_email_send_failed: 'Email could not be sent. Please try again later.',
+    err_code_expired: 'Code has expired. Please request a new one.',
+    err_google_failed: 'Google sign-in failed.',
+    err_google_no_credential: 'Google credential missing.',
+    err_google_not_configured: 'Google sign-in is not configured.',
+    err_google_no_info: 'Could not retrieve information from your Google account.',
+    err_auth_required: 'You need to sign in.',
+    err_user_not_found: 'User not found.',
+    google_signin: 'Continue with Google',
+    or_divider: 'or',
+    google_error: 'Google sign-in failed.',
     invite_text: 'You have been invited to a team.',
     invite_join_signup: 'Sign up', invite_join_signin: 'Sign in',
     invite_continue: 'to continue joining.',
@@ -97,6 +195,59 @@ const AUTH_I18N = {
     stat_teams: 'active teams',
     stat_tasks: 'completed tasks',
     stat_setup: 'avg. setup',
+    ws_no_network: 'No network connection.',
+    ws_invite_length: 'Invite code must be 8 characters.',
+    ws_tab_create: 'Create Room',
+    ws_tab_join: 'Join Room',
+    ws_logout: 'Log Out',
+    ws_net_reconnected: 'Connection restored',
+    ws_net_connected: 'Connected, waiting for room…',
+    ws_net_offline_label: 'Network disconnected',
+    ws_net_offline_warn: 'No internet connection. Cannot create a room offline.',
+    ws_user_fallback: 'User',
+    ws_label_name: 'WORKSPACE NAME',
+    ws_placeholder_name: 'E.g.: Flux Labs, Personal Projects…',
+    ws_label_type: 'ROOM TYPE — WORK MODE',
+    ws_infra_prefix: 'Room Structure — ',
+    ws_infra_cols: 'Columns: ',
+    ws_infra_labels: 'Labels: ',
+    ws_infra_invite: 'An encrypted invite code is generated automatically.',
+    ws_creating: 'SETTING UP…',
+    ws_start: 'START SYSTEM',
+    ws_label_code: 'SECURITY CODE',
+    ws_verifying: 'VERIFYING…',
+    ws_enter: 'ENTER',
+    lobby_rejected_title: 'Request Rejected',
+    lobby_rejected_body: 'The team owner rejected your join request. You can try a different code.',
+    lobby_back: 'Go Back',
+    lobby_waiting_title: 'Waiting for Approval',
+    lobby_waiting_body: 'Your join request has been sent to the team owner. You will be admitted automatically once approved.',
+    lobby_wait_label: 'Waiting Time',
+    lobby_wait_hint: 'Keep this window open — you will be redirected automatically when approved.',
+    security_title: 'Security Protocol Active',
+    security_body: 'This operation takes place over an end-to-end encrypted tunnel. The code validity period is set by the room administrator and is single-use.',
+    join_checking: 'Checking code',
+    join_pending: 'Request already pending',
+    join_found: 'Room found',
+    join_not_found: 'Room not found',
+    join_offline_err: 'No connection.',
+    join_checking_hint: 'Please wait, looking for the code among real rooms.',
+    join_invalid_hint: 'Random or invalid codes cannot be used to enter.',
+    join_ws_fallback: 'Workspace',
+    join_member_unit: 'members',
+    join_already_member: 'Already a member',
+    ws_err_invalid_code: 'Room not found. Check the invite code.',
+    ws_err_code_required: 'Invite code is required.',
+    ws_err_generic: 'An error occurred.',
+    ws_pending_sent_title: 'Request sent.',
+    ws_pending_sent_body: 'The team owner will review your request and you will be added automatically.',
+    ws_bp_title: 'Is your Workspace ready?',
+    ws_bp_subtitle: 'Create your own room or join an existing team with an invite code. Everything is built here.',
+    ws_bp_footer: 'Secure · Fast · Team-focused',
+    ws_bp_stat_teams: 'active teams',
+    ws_bp_stat_satisfaction: 'satisfaction',
+    ws_bp_stat_setup: 'setup time',
+    ws_bp_stat_tasks: 'tasks completed',
   },
   de: {
     greet_morning: 'Guten Morgen, willkommen zurück bei StoaBoard.',
@@ -364,6 +515,43 @@ function AuthPage({ onSignIn }) {
     delay: Math.random() * 8 + 's', duration: Math.random() * 8 + 6 + 's',
   })));
 
+  const googleBtnRef = useAuthRef(null);
+  const googleCallbackRef = useAuthRef(null);
+
+  useAuthEffect(() => {
+    googleCallbackRef.current = async (response) => {
+      setBusy(true); setError('');
+      try {
+        await window.API.googleAuth(response.credential);
+        onSignIn();
+      } catch (err) {
+        setError(t(err.message || 'err_google_failed'));
+        setIsShaking(true); setTimeout(() => setIsShaking(false), 500);
+      } finally { setBusy(false); }
+    };
+  });
+
+  useAuthEffect(() => {
+    if (showForgot) return;
+    const clientId = window.__GOOGLE_CLIENT_ID__;
+    if (!clientId) return;
+    const tryInit = () => {
+      if (!window.google?.accounts?.id || !googleBtnRef.current) return false;
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (r) => googleCallbackRef.current?.(r),
+        auto_select: false,
+      });
+      window.google.accounts.id.renderButton(googleBtnRef.current, {
+        theme: 'outline', size: 'large', width: googleBtnRef.current.offsetWidth || 340,
+        text: 'continue_with', logo_alignment: 'left',
+      });
+      return true;
+    };
+    const iv = setInterval(() => { if (tryInit()) clearInterval(iv); }, 150);
+    return () => clearInterval(iv);
+  }, [showForgot]);
+
   const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
 
   const calculatePasswordStrength = (pwd) => {
@@ -386,7 +574,7 @@ function AuthPage({ onSignIn }) {
     try {
       await window.API.sendPasswordReset(forgotEmail);
       setForgotStep('code');
-    } catch (err) { setForgotError(err.message || t('err_account_not_found')); }
+    } catch (err) { setForgotError(t(err.message || 'err_account_not_found')); }
     finally { setForgotBusy(false); }
   };
 
@@ -406,7 +594,7 @@ function AuthPage({ onSignIn }) {
       window.showToast?.('Şifreniz başarıyla güncellendi!', 'success');
       setShowForgot(false); setForgotStep('email');
       setForgotEmail(''); setForgotCode(''); setForgotNewPass(''); setForgotConfirmPass('');
-    } catch (err) { setForgotError(err.message || t('err_reset_fail')); }
+    } catch (err) { setForgotError(t(err.message || 'err_reset_fail')); }
     finally { setForgotBusy(false); }
   };
 
@@ -427,7 +615,7 @@ function AuthPage({ onSignIn }) {
       else { if (!form.name.trim()) throw new Error(t('err_name_required')); await window.API.register(form.name.trim(), form.email, form.password); }
       onSignIn();
     } catch (err) {
-      setError(err.message || t('err_login_fail'));
+      setError(t(err.message || 'err_login_fail'));
       setIsShaking(true); setTimeout(() => setIsShaking(false), 500);
     } finally { setBusy(false); }
   };
@@ -512,7 +700,7 @@ function AuthPage({ onSignIn }) {
                     <input className="glow-input" autoFocus placeholder="123456" value={forgotCode} onChange={e => setForgotCode(e.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={6} style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.3em', fontSize: 20, textAlign: 'center', fontWeight: 'bold' }} required />
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <button type="button" className="auth-submit" style={{ background: 'transparent', color: 'var(--color-ink)', border: '1px solid var(--color-line)', flex: 1 }} onClick={handleContinueWithoutChange}>{t('btn_continue')}</button>
+                    <button type="button" className="auth-submit" style={{ background: 'transparent', color: 'var(--ink)', border: '1px solid var(--line)', flex: 1 }} onClick={handleContinueWithoutChange}>{t('btn_continue')}</button>
                     <button type="submit" className="auth-submit" style={{ flex: 2 }}>{t('btn_change_pass')}</button>
                   </div>
                 </form>
@@ -533,7 +721,7 @@ function AuthPage({ onSignIn }) {
                     <input className="glow-input" type="password" placeholder="••••••••" value={forgotConfirmPass} onChange={e => setForgotConfirmPass(e.target.value)} required />
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <button type="button" className="auth-submit" style={{ background: 'transparent', color: 'var(--color-ink)', border: '1px solid var(--color-line)', flex: 1 }} onClick={handleContinueWithoutChange}>{t('btn_no_change')}</button>
+                    <button type="button" className="auth-submit" style={{ background: 'transparent', color: 'var(--ink)', border: '1px solid var(--line)', flex: 1 }} onClick={handleContinueWithoutChange}>{t('btn_no_change')}</button>
                     <button type="submit" className="auth-submit" disabled={forgotBusy} style={{ flex: 2 }}>{forgotBusy ? t('saving') : t('btn_save')}</button>
                   </div>
                 </form>
@@ -585,6 +773,14 @@ function AuthPage({ onSignIn }) {
                   {busy ? t('checking') : (mode === 'signin' ? t('btn_signin') : t('btn_signup'))}
                 </button>
               </form>
+              {window.__GOOGLE_CLIENT_ID__ && (
+                <>
+                  <div className="auth-divider">
+                    <span>{t('or_divider')}</span>
+                  </div>
+                  <div ref={googleBtnRef} style={{ width: '100%', minHeight: 44, display: 'flex', justifyContent: 'center' }} />
+                </>
+              )}
               <div className="auth-foot">
                 {mode === 'signin'
                   ? <><span>{t('no_account')}</span> <a onClick={() => { setMode('signup'); setError(''); }}>{t('free_signup')}</a></>
@@ -711,16 +907,17 @@ const RoomBadge = ({ name, template }) => {
 // Oda doğrulama kartı (join) gerçek davet kodunu API ile kontrol eder.
 const workspaceJoinErrorText = (err) => {
   const key = err?.message || err || '';
-  if (key === 'invalid_invite_code') return 'Oda bulunamadı. Davet kodunu kontrol et.';
-  if (key === 'invite_code_required') return 'Davet kodu zorunludur.';
+  if (key === 'invalid_invite_code') return authT('ws_err_invalid_code');
+  if (key === 'invite_code_required') return authT('ws_err_code_required');
   const translated = window.t?.('err_' + key);
   if (translated && translated !== 'err_' + key) return translated;
-  return key || 'Bir hata oluştu.';
+  return key || authT('ws_err_generic');
 };
 
 const JoinRoomPreview = ({ code, isOnline }) => {
   const normalizedCode = (code || '').trim().toUpperCase();
   const [state, setState] = React.useState({ status: 'idle', room: null, error: '' });
+  const t = (k) => authT(k);
 
   React.useEffect(() => {
     if (!normalizedCode || normalizedCode.length < 8) {
@@ -729,7 +926,7 @@ const JoinRoomPreview = ({ code, isOnline }) => {
     }
 
     if (!isOnline) {
-      setState({ status: 'offline', room: null, error: 'Bağlantı yok.' });
+      setState({ status: 'offline', room: null, error: authT('join_offline_err') });
       return;
     }
 
@@ -747,7 +944,7 @@ const JoinRoomPreview = ({ code, isOnline }) => {
           setState({
             status: missing ? 'invalid' : 'error',
             room: null,
-            error: missing ? 'Oda bulunamadı. Davet kodunu kontrol et.' : workspaceJoinErrorText(err),
+            error: missing ? authT('ws_err_invalid_code') : workspaceJoinErrorText(err),
           });
         });
     }, 250);
@@ -763,10 +960,10 @@ const JoinRoomPreview = ({ code, isOnline }) => {
   const isValid = state.status === 'valid';
   const isChecking = state.status === 'checking';
   const statusText = isChecking
-    ? 'Kod kontrol ediliyor'
+    ? t('join_checking')
     : isValid
-      ? (state.room?.pending ? 'İstek zaten beklemede' : 'Oda bulundu')
-      : state.error || 'Oda bulunamadı';
+      ? (state.room?.pending ? t('join_pending') : t('join_found'))
+      : state.error || t('join_not_found');
 
   return (
     <div className="join-room-preview" data-status={state.status} style={{ animation: 'fadeIn 0.35s ease' }}>
@@ -776,40 +973,44 @@ const JoinRoomPreview = ({ code, isOnline }) => {
       </div>
       {isValid ? (
         <>
-          <div className="join-room-name">{state.room?.name || 'Çalışma alanı'}</div>
+          <div className="join-room-name">{state.room?.name || t('join_ws_fallback')}</div>
           <div className="join-room-meta">
-            <span>{state.room?.member_count ?? 0} üye</span>
-            {state.room?.is_member && <><span>·</span><span>Zaten üyesin</span></>}
+            <span>{state.room?.member_count ?? 0} {t('join_member_unit')}</span>
+            {state.room?.is_member && <><span>·</span><span>{t('join_already_member')}</span></>}
           </div>
         </>
       ) : (
         <div className="join-room-meta">
-          <span>{isChecking ? 'Lütfen bekle, kod gerçek odalar arasında aranıyor.' : 'Rastgele ya da hatalı kodlarla giriş yapılmaz.'}</span>
+          <span>{isChecking ? t('join_checking_hint') : t('join_invalid_hint')}</span>
         </div>
       )}
     </div>
   );
 };
 
-const SecurityNote = () => (
-  <div className="security-note">
-    <div className="security-note-icon">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        <polyline points="9 12 11 14 15 10" />
-      </svg>
+const SecurityNote = () => {
+  const t = (k) => authT(k);
+  return (
+    <div className="security-note">
+      <div className="security-note-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          <polyline points="9 12 11 14 15 10" />
+        </svg>
+      </div>
+      <div className="security-note-text">
+        <div className="security-note-title">{t('security_title')}</div>
+        <div className="security-note-body">{t('security_body')}</div>
+      </div>
     </div>
-    <div className="security-note-text">
-      <div className="security-note-title">Güvenlik Protokolü Aktif</div>
-      <div className="security-note-body">Bu işlem uçtan uca şifrelenmiş bir tünel üzerinden gerçekleşir. Kodun geçerlilik süresi oda yöneticisi tarafından belirlenir ve tek kullanımlıktır.</div>
-    </div>
-  </div>
-);
+  );
+};
 
 // ── BEKLEME LOBİSİ ───────────────────────────────────────────────────────────────
 function PendingLobby({ joinedAt, onApproved, onRejected }) {
   const [elapsed, setElapsed] = useAuthState(0);
   const [rejected, setRejected] = useAuthState(false);
+  const t = (k) => authT(k);
 
   useAuthEffect(() => {
     const timer = setInterval(() => {
@@ -828,6 +1029,8 @@ function PendingLobby({ joinedAt, onApproved, onRejected }) {
 
   const fmtElapsed = (s) => {
     const m = Math.floor(s / 60);
+    const lang = getAuthLang();
+    if (lang === 'en') return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
     return m > 0 ? `${m} dk ${s % 60} sn` : `${s} saniye`;
   };
 
@@ -835,11 +1038,11 @@ function PendingLobby({ joinedAt, onApproved, onRejected }) {
     return (
       <div style={{ textAlign: 'center', padding: '32px 0' }}>
         <div style={{ fontSize: 56, marginBottom: 16 }}>🚫</div>
-        <h2 style={{ color: '#ef4444', marginBottom: 8 }}>İstek Reddedildi</h2>
-        <p style={{ fontSize: 13, color: 'var(--color-ink-muted, #888)', marginBottom: 28, lineHeight: 1.6 }}>
-          Takım sahibi katılım isteğinizi reddetti.<br />Farklı bir kod deneyebilirsiniz.
+        <h2 style={{ color: '#ef4444', marginBottom: 8 }}>{t('lobby_rejected_title')}</h2>
+        <p style={{ fontSize: 13, color: 'var(--ink-muted)', marginBottom: 28, lineHeight: 1.6 }}>
+          {t('lobby_rejected_body')}
         </p>
-        <button className="auth-submit" onClick={onRejected}>Geri Dön</button>
+        <button className="auth-submit" onClick={onRejected}>{t('lobby_back')}</button>
       </div>
     );
   }
@@ -856,19 +1059,18 @@ function PendingLobby({ joinedAt, onApproved, onRejected }) {
           </svg>
         </div>
       </div>
-      <h2 style={{ marginBottom: 8, fontSize: 20 }}>Onay Bekleniyor</h2>
+      <h2 style={{ marginBottom: 8, fontSize: 20 }}>{t('lobby_waiting_title')}</h2>
       <p style={{ fontSize: 13, lineHeight: 1.65, marginBottom: 22, opacity: 0.65 }}>
-        Katılım isteğiniz takım sahibine iletildi.<br />
-        Onaylandığında otomatik olarak içeri alınacaksınız.
+        {t('lobby_waiting_body')}
       </p>
       <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '12px 28px', borderRadius: 12, background: 'rgba(29,52,97,0.06)', border: '1px solid rgba(29,52,97,0.15)', marginBottom: 22 }}>
-        <div style={{ fontSize: 11, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bekleme Süresi</div>
+        <div style={{ fontSize: 11, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('lobby_wait_label')}</div>
         <div style={{ fontSize: 24, fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: '#1a4a70' }}>
           {fmtElapsed(elapsed)}
         </div>
       </div>
       <div style={{ fontSize: 12, opacity: 0.4 }}>
-        Bu pencereyi açık tutun — onay geldiğinde otomatik yönlendirilirsiniz.
+        {t('lobby_wait_hint')}
       </div>
     </div>
   );
@@ -876,6 +1078,7 @@ function PendingLobby({ joinedAt, onApproved, onRejected }) {
 
 // ── 2. ÇALIŞMA ALANI SAYFASI ─────────────────────────────────────────────────────
 function WorkspaceSetupPage({ onReady, onLogout }) {
+  const t = (k) => authT(k);
   const [tab, setTab] = React.useState(() => {
     try { return new URLSearchParams(window.location.search).get('join') ? 'join' : 'create'; } catch { return 'create'; }
   });
@@ -903,19 +1106,19 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!isOnline) { setError('Ağ bağlantısı yok.'); return; }
+    if (!isOnline) { setError(t('ws_no_network')); return; }
     if (!wsName.trim()) return;
     setError(''); setBusy(true);
     try { await window.API.createWorkspace({ name: wsName.trim(), template: wsTemplate }); onReady(); }
-    catch (err) { setError(err.message || 'Bir hata oluştu'); }
+    catch (err) { setError(t(err.message || 'ws_err_generic')); }
     finally { setBusy(false); }
   };
 
   const handleJoin = async (e) => {
     e.preventDefault();
-    if (!isOnline) { setError('Ağ bağlantısı yok.'); return; }
+    if (!isOnline) { setError(t('ws_no_network')); return; }
     const joinCode = code.trim().toUpperCase();
-    if (joinCode.length !== 8) { setError('Davet kodu 8 karakter olmalı.'); return; }
+    if (joinCode.length !== 8) { setError(t('ws_invite_length')); return; }
     setError(''); setBusy(true);
     try {
       const res = await window.API.joinWorkspace(joinCode);
@@ -953,8 +1156,8 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
             </div>
             <div className="ws-blueprint-drawing"><BlueprintSVG /></div>
             <div className="ws-bp-bottom">
-              <div className="ws-bp-title" style={{ color: 'rgba(200,230,255,0.95)' }}>İsteğin <em style={{ color: 'rgba(120,190,255,0.9)' }}>iletildi.</em></div>
-              <div className="ws-bp-subtitle" style={{ color: 'rgba(160,200,255,0.65)' }}>Takım sahibi isteğini inceledikten sonra otomatik olarak ekleneceksin.</div>
+              <div className="ws-bp-title" style={{ color: 'rgba(200,230,255,0.95)' }}>{t('ws_pending_sent_title')}</div>
+              <div className="ws-bp-subtitle" style={{ color: 'rgba(160,200,255,0.65)' }}>{t('ws_pending_sent_body')}</div>
             </div>
           </div>
         </div>
@@ -968,7 +1171,7 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
             <div className="auth-foot">
               <a onClick={onLogout} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-                Sistemi Kapat (Çıkış)
+                {t('ws_logout')}
               </a>
             </div>
           </div>
@@ -1007,20 +1210,20 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
           {/* Alt metin + istatistikler */}
           <div className="ws-bp-bottom">
             <div className="ws-bp-title" style={{ color: joinActive ? 'rgba(200,230,255,0.95)' : 'rgba(255,255,255,0.9)' }}>
-              Çalışma Alanın <em style={{ color: joinActive ? 'rgba(120,190,255,0.9)' : 'rgba(255,255,255,0.6)' }}>hazır</em> mı?
+              {t('ws_bp_title')}
             </div>
             <div className="ws-bp-subtitle" style={{ color: joinActive ? 'rgba(160,200,255,0.65)' : 'rgba(255,255,255,0.45)' }}>
-              Kendi odanı kur veya bir davet koduyla mevcut takıma katıl. Her şey burada inşa edilir.
+              {t('ws_bp_subtitle')}
             </div>
             <div className="ws-bp-stats" style={{ borderColor: joinActive ? 'rgba(160,200,255,0.12)' : 'rgba(255,255,255,0.08)', background: joinActive ? 'rgba(160,200,255,0.05)' : 'rgba(255,255,255,0.04)' }}>
-              {[['6k+', 'aktif takım'], ['98%', 'memnuniyet'], ['15sn', 'başlama süresi'], ['15m+', 'görev tamamlandı']].map(([v, l]) => (
+              {[['6k+', t('ws_bp_stat_teams')], ['98%', t('ws_bp_stat_satisfaction')], ['15sn', t('ws_bp_stat_setup')], ['15m+', t('ws_bp_stat_tasks')]].map(([v, l]) => (
                 <div key={l}>
                   <strong style={{ color: joinActive ? 'rgba(200,230,255,0.9)' : 'rgba(255,255,255,0.85)' }}>{v}</strong>
                   <span style={{ color: joinActive ? 'rgba(160,200,255,0.55)' : 'rgba(255,255,255,0.35)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{l}</span>
                 </div>
               ))}
             </div>
-            <div className="ws-bp-footer" style={{ color: joinActive ? 'rgba(160,200,255,0.35)' : 'rgba(255,255,255,0.2)' }}>Güvenli · Hızlı · Ekip odaklı</div>
+            <div className="ws-bp-footer" style={{ color: joinActive ? 'rgba(160,200,255,0.35)' : 'rgba(255,255,255,0.2)' }}>{t('ws_bp_footer')}</div>
           </div>
         </div>
       </div>
@@ -1036,14 +1239,14 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
               </div>
             )}
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-ink)' }}>{me.name || 'Kullanıcı'}</div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>{me.name || t('ws_user_fallback')}</div>
               <div style={{ fontSize: 12, color: isOnline ? '#16a34a' : '#dc2626', fontWeight: 500 }}>
                 <span style={{ display:'flex', alignItems:'center', gap:4 }}>
                 {isOnline
                   ? (netFlash
-                      ? <><Icon name="check" size={12} strokeWidth={2.5} /> Bağlantı yeniden kuruldu</>
-                      : 'Bağlantı başarılı, oda bekleniyor...')
-                  : <><Icon name="bolt" size={12} strokeWidth={2} /> Ağ bağlantısı kesildi</>
+                      ? <><Icon name="check" size={12} strokeWidth={2.5} /> {t('ws_net_reconnected')}</>
+                      : t('ws_net_connected'))
+                  : <><Icon name="bolt" size={12} strokeWidth={2} /> {t('ws_net_offline_label')}</>
                 }
               </span>
               </div>
@@ -1054,13 +1257,13 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
           {!isOnline && (
             <div className="error-msg" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-              <span>İnternet bağlantısı yok. Bağlanmadan oda oluşturulamaz.</span>
+              <span>{t('ws_net_offline_warn')}</span>
             </div>
           )}
 
           <div className="auth-tabs">
-            <button className="tab-btn" data-active={tab === 'create'} onClick={() => { setTab('create'); setError(''); }}>Yeni Oda Kur</button>
-            <button className="tab-btn" data-active={tab === 'join'} onClick={() => { setTab('join'); setError(''); }}>Odaya Katıl</button>
+            <button className="tab-btn" data-active={tab === 'create'} onClick={() => { setTab('create'); setError(''); }}>{t('ws_tab_create')}</button>
+            <button className="tab-btn" data-active={tab === 'join'} onClick={() => { setTab('join'); setError(''); }}>{t('ws_tab_join')}</button>
           </div>
 
           {error && <div className="error-msg">{error}</div>}
@@ -1068,20 +1271,20 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
           {tab === 'create' ? (
             <form className="auth-fields" onSubmit={handleCreate}>
               <div className="field">
-                <label className="field-label">ODA / ÇALIŞMA ALANI ADI</label>
-                <input className="glow-input" autoFocus placeholder="Örn: Flux Labs, Kişisel Projeler…" value={wsName} onChange={e => setWsName(e.target.value)} required disabled={!isOnline} />
+                <label className="field-label">{t('ws_label_name')}</label>
+                <input className="glow-input" autoFocus placeholder={t('ws_placeholder_name')} value={wsName} onChange={e => setWsName(e.target.value)} required disabled={!isOnline} />
               </div>
               <RoomBadge name={wsName} template={wsTemplate} />
               <div className="field">
-                <label className="field-label">ODA TÜRÜ — ÇALIŞMA MODU</label>
+                <label className="field-label">{t('ws_label_type')}</label>
                 <div className="template-selector">
-                  {Object.entries(TEMPLATE_META).map(([key, t]) => (
+                  {Object.entries(TEMPLATE_META).map(([key, tmpl]) => (
                     <div key={key} className={`template-card ${wsTemplate === key ? 'selected' : ''}`} onClick={() => setWsTemplate(key)}>
-                      <div className="template-icon" style={{ color: t.color }}>
-                        <Icon name={t.iconName} size={22} strokeWidth={1.8} />
+                      <div className="template-icon" style={{ color: tmpl.color }}>
+                        <Icon name={tmpl.iconName} size={22} strokeWidth={1.8} />
                       </div>
-                      <div className="template-title">{t.label}</div>
-                      <div className="template-desc">{t.cols.slice(0,3).join(' · ')}</div>
+                      <div className="template-title">{tmpl.label}</div>
+                      <div className="template-desc">{tmpl.cols.slice(0,3).join(' · ')}</div>
                       {wsTemplate === key && <div className="template-check"><Icon name="check" size={11} strokeWidth={2.5} /></div>}
                     </div>
                   ))}
@@ -1090,42 +1293,40 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
               <div className="room-blueprint">
                 <strong>
                   <Icon name="layers" size={14} strokeWidth={2} />
-                  Oda Altyapısı — {TEMPLATE_META[wsTemplate]?.label}
+                  {t('ws_infra_prefix')}{TEMPLATE_META[wsTemplate]?.label}
                 </strong>
                 <div style={{ display:'flex', flexDirection:'column', gap:4, marginTop:6 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                     <Icon name="layoutBoard" size={12} strokeWidth={2} />
-                    <span>Kolonlar: {TEMPLATE_META[wsTemplate]?.cols.join(' → ')}</span>
+                    <span>{t('ws_infra_cols')}{TEMPLATE_META[wsTemplate]?.cols.join(' → ')}</span>
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                     <Icon name="tag" size={12} strokeWidth={2} />
-                    <span>Etiketler: {TEMPLATE_META[wsTemplate]?.labels.map(([l]) => l).join(', ')}</span>
+                    <span>{t('ws_infra_labels')}{TEMPLATE_META[wsTemplate]?.labels.map(([l]) => l).join(', ')}</span>
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                     <Icon name="lock" size={12} strokeWidth={2} />
-                    <span>Şifreli davet kodu otomatik oluşturulur.</span>
+                    <span>{t('ws_infra_invite')}</span>
                   </div>
                 </div>
               </div>
               <button type="submit" className="auth-submit" disabled={busy || !wsName.trim() || !isOnline}>
-                {busy ? 'SİSTEM KURULUYOR…' : 'SİSTEMİ BAŞLAT'}
+                {busy ? t('ws_creating') : t('ws_start')}
               </button>
             </form>
           ) : (
             <form className="auth-fields" onSubmit={handleJoin}>
               <div className="field">
-                <label className="field-label">GÜVENLİK KODU</label>
+                <label className="field-label">{t('ws_label_code')}</label>
                 <input className="glow-input" autoFocus placeholder="ABCD1234" value={code}
-                  onChange={e => setCode(e.target.value.toUpperCase())} maxLength={8}
+                  onChange={e => setCode(e.target.value.trim().toUpperCase())} maxLength={8}
                   style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.3em', fontSize: 20, textAlign: 'center', textTransform: 'uppercase', fontWeight: 'bold' }}
                   required disabled={!isOnline} />
               </div>
-              {/* Dinamik oda önizleme */}
               <JoinRoomPreview code={code} isOnline={isOnline} />
-              {/* Güvenlik protokolü notu */}
               <SecurityNote />
               <button type="submit" className="auth-submit" disabled={busy || code.trim().length !== 8 || !isOnline}>
-                {busy ? 'DOĞRULANIYOR…' : 'İÇERİ GİR'}
+                {busy ? t('ws_verifying') : t('ws_enter')}
               </button>
             </form>
           )}
@@ -1133,7 +1334,7 @@ function WorkspaceSetupPage({ onReady, onLogout }) {
           <div className="auth-foot">
             <a onClick={onLogout} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-              Sistemi Kapat (Çıkış)
+              {t('ws_logout')}
             </a>
           </div>
         </div>

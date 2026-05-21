@@ -126,15 +126,29 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
     markRead(n.id);
     const type = n.type || _notifType(n.text);
 
-    // ── DM / channel message → open chat (callback handles navigation+close) ─
-    if (type === 'dm_received' || type === 'message') {
+    // ── DM → open DM conversation ────────────────────────────────────────────
+    if (type === 'dm_received') {
       onOpenChat?.(n.sender_slug || null, n.message_id || null);
       return;
     }
 
-    // ── Chat mention (no task) → open channel/DM ─────────────────────────────
+    // ── Channel message → navigate to that channel ───────────────────────────
+    if (type === 'message') {
+      if (n.chat_channel) {
+        onOpenChat?.(null, n.message_id || null, n.chat_channel);
+      } else {
+        onOpenChat?.(n.sender_slug || null, n.message_id || null);
+      }
+      return;
+    }
+
+    // ── Chat mention (no task) → open channel or DM ──────────────────────────
     if (type === 'mention' && !n.task_id) {
-      onOpenChat?.(n.sender_slug || null, n.message_id || null);
+      if (n.chat_channel) {
+        onOpenChat?.(null, n.message_id || null, n.chat_channel);
+      } else {
+        onOpenChat?.(n.sender_slug || null, n.message_id || null);
+      }
       return;
     }
 
@@ -148,7 +162,7 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
 
     // ── Channel mention fallback ──────────────────────────────────────────────
     if (n.chat_channel) {
-      onOpenChat?.(null, n.message_id || null);
+      onOpenChat?.(null, n.message_id || null, n.chat_channel);
       return;
     }
 
