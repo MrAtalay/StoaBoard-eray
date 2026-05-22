@@ -49,12 +49,16 @@ function NotifPanel({ open, onClose, socket, onOpenTask, onOpenChat, currentWsId
 
   React.useEffect(() => {
     if (!open) return;
+    // fullPage modunda panel sayfanın kendisidir — outside click kapanma
+    // davranışı uygulanmaz; aksi halde sekmeye tıkladığında panel dışı algılanıp
+    // hemen dashboard'a dönüyordu.
+    if (fullPage) return;
     const handler = (e) => {
       if (panelRef.current && !panelRef.current.contains(e.target)) onClose();
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+  }, [open, fullPage]);
 
   React.useEffect(() => {
     if (open) {
