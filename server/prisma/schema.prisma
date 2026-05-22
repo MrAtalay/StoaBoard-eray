@@ -1,0 +1,392 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int                    @id @default(autoincrement())
+  slug                 String                 @unique @db.VarChar(60)
+  name                 String                 @db.VarChar(100)
+  email                String                 @unique @db.VarChar(150)
+  passwordHash         String?                @map("password_hash") @db.VarChar(255)
+  avatarColor          String?                @map("avatar_color") @db.VarChar(100)
+  avatarInitials       String?                @map("avatar_initials") @db.VarChar(10)
+  avatarPhotoUrl       String?                @map("avatar_photo_url") @db.VarChar(300)
+  roleTitle            String?                @map("role_title") @db.VarChar(100)
+  lastSeen             DateTime?              @default(now()) @map("last_seen") @db.Timestamp(6)
+  createdAt            DateTime?              @default(now()) @map("created_at") @db.Timestamp(6)
+  currentWorkspaceId   Int?                   @map("current_workspace_id")
+  status               String?                @db.VarChar(20)
+  awayTimeout          Int?                   @map("away_timeout")
+  googleId             String?                @unique @map("google_id") @db.VarChar(100)
+  activityLogs         ActivityLog[]
+  channelMemberships   ChannelMember[]
+  createdChannels      Channel[]              @relation("ChannelCreator")
+  receivedMessages     ChatMessage[]          @relation("MessageReceiver")
+  sentMessages         ChatMessage[]          @relation("MessageSender")
+  comments             Comment[]
+  noteCollabs          NoteCollaborator[]
+  authoredNotes        Note[]                 @relation("NoteAuthor")
+  notifications        Notification[]
+  taskAssignments      TaskAssignee[]
+  uploadedAttachments  TaskAttachment[]
+  createdTasks         Task[]                 @relation("TaskCreator")
+  currentWorkspace     Workspace?             @relation("UserCurrentWorkspace", fields: [currentWorkspaceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  joinRequests         WorkspaceJoinRequest[]
+  workspaceMemberships WorkspaceMember[]
+  ownedWorkspaces      Workspace[]            @relation("WorkspaceOwner")
+
+  @@map("users")
+}
+
+model Workspace {
+  id            Int                    @id @default(autoincrement())
+  name          String                 @db.VarChar(100)
+  slug          String                 @unique @db.VarChar(100)
+  ownerId       Int?                   @map("owner_id")
+  inviteCode    String?                @unique @map("invite_code") @db.VarChar(20)
+  logoUrl       String?                @map("logo_url") @db.VarChar(255)
+  channels      Channel[]
+  chatMessages  ChatMessage[]
+  notes         Note[]
+  notifications Notification[]
+  projects      Project[]
+  currentUsers  User[]                 @relation("UserCurrentWorkspace")
+  joinRequests  WorkspaceJoinRequest[]
+  members       WorkspaceMember[]
+  roles         WorkspaceRole[]
+  owner         User?                  @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("workspaces")
+}
+
+model WorkspaceRole {
+  id          Int               @id @default(autoincrement())
+  workspaceId Int?              @map("workspace_id")
+  name        String            @db.VarChar(100)
+  color       String?           @db.VarChar(100)
+  permissions Json?             @db.Json
+  isDefault   Boolean?          @map("is_default")
+  members     WorkspaceMember[]
+  workspace   Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("workspace_roles")
+}
+
+model WorkspaceMember {
+  workspaceId   Int            @map("workspace_id")
+  userId        Int            @map("user_id")
+  role          String?        @db.VarChar(50)
+  roleId        Int?           @map("role_id")
+  roleTitle     String?        @map("role_title") @db.VarChar(100)
+  workspaceRole WorkspaceRole? @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user          User           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model WorkspaceJoinRequest {
+  id          Int        @id @default(autoincrement())
+  workspaceId Int?       @map("workspace_id")
+  userId      Int?       @map("user_id")
+  status      String?    @db.VarChar(20)
+  createdAt   DateTime?  @default(now()) @map("created_at") @db.Timestamp(6)
+  user        User?      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("workspace_join_requests")
+}
+
+model Project {
+  id          Int           @id @default(autoincrement())
+  workspaceId Int?          @map("workspace_id")
+  name        String        @db.VarChar(100)
+  color       String?       @db.VarChar(100)
+  icon        String?       @db.VarChar(50)
+  activities  ActivityLog[]
+  columns     BoardColumn[]
+  labels      Label[]
+  workspace   Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tasks       Task[]
+
+  @@map("projects")
+}
+
+model BoardColumn {
+  id        Int      @id @default(autoincrement())
+  projectId Int?     @map("project_id")
+  slug      String   @db.VarChar(60)
+  title     String   @db.VarChar(100)
+  titleTr   String?  @map("title_tr") @db.VarChar(100)
+  color     String?  @db.VarChar(100)
+  position  Int?
+  isDone    Boolean? @map("is_done")
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tasks     Task[]
+
+  @@map("board_columns")
+}
+
+model Label {
+  id        Int         @id @default(autoincrement())
+  projectId Int?        @map("project_id")
+  slug      String      @db.VarChar(60)
+  nameEn    String      @map("name_en") @db.VarChar(100)
+  nameTr    String?     @map("name_tr") @db.VarChar(100)
+  colorTone String?     @map("color_tone") @db.VarChar(50)
+  project   Project?    @relation(fields: [projectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  taskLinks TaskLabel[]
+
+  @@map("labels")
+}
+
+model Task {
+  id            Int              @id @default(autoincrement())
+  columnId      Int?             @map("column_id")
+  projectId     Int?             @map("project_id")
+  title         String           @db.VarChar(500)
+  description   String?
+  priority      String?          @db.VarChar(20)
+  progress      Int?
+  dueDate       DateTime?        @map("due_date") @db.Date
+  startDate     DateTime?        @map("start_date") @db.Date
+  assigneeDates Json?            @map("assignee_dates") @db.Json
+  doc           Json?            @db.Json
+  createdBy     Int?             @map("created_by")
+  createdAt     DateTime?        @default(now()) @map("created_at") @db.Timestamp(6)
+  position      Float?
+  comments      Comment[]
+  noteLinks     NoteLinkedTask[]
+  notifications Notification[]
+  subtasks      Subtask[]
+  assignees     TaskAssignee[]
+  attachments   TaskAttachment[]
+  labelLinks    TaskLabel[]
+  column        BoardColumn?     @relation(fields: [columnId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  creator       User?            @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  project       Project?         @relation(fields: [projectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([projectId], map: "ix_task_project_id")
+  @@index([columnId], map: "ix_task_column_id")
+  @@index([createdAt], map: "ix_task_created_at")
+  @@map("tasks")
+}
+
+model TaskLabel {
+  taskId  Int   @map("task_id")
+  labelId Int   @map("label_id")
+  label   Label @relation(fields: [labelId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  task    Task  @relation(fields: [taskId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([taskId, labelId])
+  @@index([taskId], map: "ix_task_label_task_id")
+  @@map("task_labels")
+}
+
+model TaskAssignee {
+  taskId Int  @map("task_id")
+  userId Int  @map("user_id")
+  task   Task @relation(fields: [taskId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user   User @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([taskId, userId])
+  @@index([taskId], map: "ix_task_assignee_task_id")
+  @@map("task_assignees")
+}
+
+model Subtask {
+  id       Int      @id @default(autoincrement())
+  taskId   Int?     @map("task_id")
+  title    String   @db.VarChar(500)
+  done     Boolean?
+  position Int?
+  task     Task?    @relation(fields: [taskId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("subtasks")
+}
+
+model Comment {
+  id        Int       @id @default(autoincrement())
+  taskId    Int?      @map("task_id")
+  userId    Int?      @map("user_id")
+  text      String
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  task      Task?     @relation(fields: [taskId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("comments")
+}
+
+model Notification {
+  id          Int          @id @default(autoincrement())
+  userId      Int?         @map("user_id")
+  text        String
+  read        Boolean?
+  createdAt   DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
+  taskId      Int?         @map("task_id")
+  senderSlug  String?      @map("sender_slug") @db.VarChar(80)
+  workspaceId Int?         @map("workspace_id")
+  chatChannel String?      @map("chat_channel") @db.VarChar(20)
+  messageId   Int?         @map("message_id")
+  message     ChatMessage? @relation(fields: [messageId], references: [id], onUpdate: NoAction)
+  tasks       Task?        @relation(fields: [taskId], references: [id], onUpdate: NoAction)
+  user        User?        @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace   Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([userId], map: "ix_notification_user_id")
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id        Int       @id @default(autoincrement())
+  projectId Int?      @map("project_id")
+  userId    Int?      @map("user_id")
+  text      String
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("activity_logs")
+}
+
+model UploadedFile {
+  id          Int              @id @default(autoincrement())
+  filename    String           @db.VarChar(255)
+  contentType String           @map("content_type") @db.VarChar(100)
+  purpose     String?          @db.VarChar(20)
+  data        Bytes
+  size        Int?
+  createdAt   DateTime?        @default(now()) @map("created_at") @db.Timestamp(6)
+  attachments TaskAttachment[]
+
+  @@map("uploaded_files")
+}
+
+model TaskAttachment {
+  id           Int          @id @default(autoincrement())
+  taskId       Int          @map("task_id")
+  fileId       Int          @map("file_id")
+  fileName     String       @map("file_name") @db.VarChar(255)
+  displayName  String?      @map("display_name") @db.VarChar(255)
+  fileType     String       @map("file_type") @db.VarChar(100)
+  uploaderId   Int?         @map("uploader_id")
+  createdAt    DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
+  uploadedFile UploadedFile @relation(fields: [fileId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  uploader     User?        @relation(fields: [uploaderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([taskId], map: "ix_task_attachments_task_id")
+  @@map("task_attachments")
+}
+
+model Channel {
+  id          Int             @id @default(autoincrement())
+  workspaceId Int             @map("workspace_id")
+  slug        String          @db.VarChar(80)
+  name        String          @db.VarChar(120)
+  description String?
+  type        String?         @db.VarChar(10)
+  icon        String?         @db.VarChar(50)
+  createdBy   Int?            @map("created_by")
+  createdAt   DateTime?       @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime?       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  isDefault   Boolean?        @map("is_default")
+  members     ChannelMember[]
+  creator     User?           @relation("ChannelCreator", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([workspaceId, slug], map: "uq_channel_workspace_slug")
+  @@index([slug], map: "ix_channels_slug")
+  @@index([workspaceId], map: "ix_channels_workspace_id")
+  @@map("channels")
+}
+
+model ChannelMember {
+  channelId Int       @map("channel_id")
+  userId    Int       @map("user_id")
+  role      String?   @db.VarChar(20)
+  joinedAt  DateTime? @default(now()) @map("joined_at") @db.Timestamp(6)
+  channel   Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user      User      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([channelId, userId])
+  @@map("channel_members")
+}
+
+model ChatMessage {
+  id            Int            @id @default(autoincrement())
+  workspaceId   Int?           @map("workspace_id")
+  senderId      Int?           @map("sender_id")
+  receiverId    Int?           @map("receiver_id")
+  text          String?
+  fileUrl       String?        @map("file_url") @db.VarChar(500)
+  fileType      String?        @map("file_type") @db.VarChar(20)
+  fileName      String?        @map("file_name") @db.VarChar(255)
+  createdAt     DateTime?      @default(now()) @map("created_at") @db.Timestamp(6)
+  isDeleted     Boolean?       @map("is_deleted")
+  hiddenFor     Json?          @map("hidden_for") @db.Json
+  channel       String?        @db.VarChar(80)
+  pinned        Boolean?
+  isRead        Boolean?       @map("is_read")
+  replyToId     Int?           @map("reply_to_id")
+  replyToSender String?        @map("reply_to_sender") @db.VarChar(120)
+  replyToText   String?        @map("reply_to_text") @db.VarChar(280)
+  receiver      User?          @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sender        User?          @relation("MessageSender", fields: [senderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace     Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  notifications Notification[]
+
+  @@map("chat_messages")
+}
+
+model Note {
+  id            Int                @id @default(autoincrement())
+  workspaceId   Int                @map("workspace_id")
+  authorId      Int                @map("author_id")
+  title         String             @default("Başlıksız Not") @db.VarChar(255)
+  body          String?            @default("")
+  labels        Json?              @default("[]") @db.Json
+  visibility    String?            @default("private") @db.VarChar(20)
+  status        String?            @default("draft") @db.VarChar(20)
+  pinned        Boolean?           @default(false)
+  archived      Boolean?           @default(false)
+  createdAt     DateTime?          @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime?          @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  collaborators NoteCollaborator[]
+  linkedTasks   NoteLinkedTask[]
+  author        User               @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace     Workspace          @relation(fields: [workspaceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([workspaceId], map: "ix_note_workspace_id")
+  @@index([authorId], map: "ix_note_author_id")
+  @@index([updatedAt], map: "ix_note_updated_at")
+  @@map("notes")
+}
+
+model NoteCollaborator {
+  noteId Int  @map("note_id")
+  userId Int  @map("user_id")
+  note   Note @relation(fields: [noteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user   User @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([noteId, userId])
+  @@map("note_collaborators")
+}
+
+model NoteLinkedTask {
+  noteId Int  @map("note_id")
+  taskId Int  @map("task_id")
+  note   Note @relation(fields: [noteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([noteId, taskId])
+  @@index([taskId], map: "ix_note_linked_task_task_id")
+  @@index([noteId], map: "ix_note_linked_task_note_id")
+  @@map("note_linked_tasks")
+}

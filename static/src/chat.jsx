@@ -1974,7 +1974,29 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     if (!sock) return;
 
     const onMsg = (msg) => {
-      // Check relevance
+      // Hangi kanalın son mesajı olduğunu sidebar için güncelle (her durumda)
+      if (!msg.to) {
+        const msgCh = msg.channel || 'general';
+        const sender = allMembers.find(m => m.id === msg.from);
+        const senderName = sender?.name || msg.from || '';
+        setChannels(prev => prev.map(c => {
+          const cSlug = c.slug || c.id;
+          if (cSlug !== msgCh) return c;
+          return {
+            ...c,
+            last_message: {
+              id: msg.id,
+              text: msg.text || '',
+              file_name: msg.file_name || null,
+              time: msg.ts || new Date().toISOString(),
+              from: msg.from,
+              from_name: senderName,
+            },
+          };
+        }));
+      }
+
+      // Check relevance — sadece aktif kanal/DM'in messages dizisine ekle
       let relevant = false;
       if (dmWith) {
         relevant = (msg.from === dmWith && msg.to === me) || (msg.from === me && msg.to === dmWith);
@@ -2846,21 +2868,33 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
                         <div className="chat-fp-row-body">
                           <div className="chat-fp-row-name">{ch.name}</div>
                           <div className="chat-fp-row-preview">
-                            {slug === 'general' && messages.length > 0
-                              ? (() => {
-                                  const last = messages[messages.length - 1];
-                                  const sender = allMembers.find(m => m.id === last.from);
-                                  const preview = last.text || last.file_name || (window.t?.('chat_file')||'Dosya');
-                                  return `${(sender?.name || last.from || '').split(' ')[0]}: ${preview}`;
-                                })()
-                              : (isPrivate
-                                  ? `${ch.member_count || 0} ${window.t?.('chat_members_count')||'üye'}`
-                                  : (isDefault ? (window.t?.('chat_no_msg_yet')||'Henüz mesaj yok') : (window.t?.('chat_msg_none_yet')||'Mesaj henüz yok')))}
+                            {/* Her kanalın kendi son mesajını backend'in
+                                döndürdüğü last_message field'ından oku.
+                                Aktif kanalda yazılan yeni mesajlar
+                                onMsg handler'ında channel state'ine yazılıyor. */}
+                            {(() => {
+                              const lm = ch.last_message;
+                              if (lm && (lm.text || lm.file_name)) {
+                                const senderName = (lm.from_name || lm.from || '').split(' ')[0];
+                                const preview = lm.text || lm.file_name || (window.t?.('chat_file')||'Dosya');
+                                return `${senderName}: ${preview}`;
+                              }
+                              return isPrivate
+                                ? `${ch.member_count || 0} ${window.t?.('chat_members_count')||'üye'}`
+                                : (isDefault ? (window.t?.('chat_no_msg_yet')||'Henüz mesaj yok') : (window.t?.('chat_msg_none_yet')||'Mesaj henüz yok'));
+                            })()}
                           </div>
                         </div>
                         <div className="chat-fp-row-right">
-                          {slug === 'general' && messages.length > 0 && (
-                            <div className="chat-fp-row-time">{fmtMsgTime(messages[messages.length - 1])}</div>
+                          {ch.last_message?.time && (
+                            <div className="chat-fp-row-time">{(() => {
+                              try {
+                                const d = new Date(ch.last_message.time);
+                                const h = String(d.getHours()).padStart(2,'0');
+                                const m = String(d.getMinutes()).padStart(2,'0');
+                                return `${h}:${m}`;
+                              } catch { return ''; }
+                            })()}</div>
                           )}
                           {(() => {
                             if (slug !== 'general') return null;
