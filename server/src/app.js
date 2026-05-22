@@ -43,10 +43,25 @@ import { chatRouter } from './routes/chat.js';
 // Session store — varsayılan memory store server restart'ta tüm
 // oturumları siliyordu (kullanıcı her server restart'ta tekrar login).
 // PostgreSQL store kullanarak NeonDB'de "session" tablosunda kalıcılaştır.
+//
+// pg v8+ DATABASE_URL'deki sslmode=require parametresini görünce uyarı atıyor
+// ('verify-full alias' deprecation). SSL'i URL'den ayıklayıp config'le veriyoruz:
+//   - URL'de sslmode parametresini kaldırıyoruz
+//   - ssl: { rejectUnauthorized: false } ile Neon'un kendi imzalı sertifikası kabul
+function buildSessionPoolUrl() {
+  const raw = process.env.DATABASE_URL || '';
+  try {
+    const u = new URL(raw);
+    u.searchParams.delete('sslmode');
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
 const PgSession = connectPgSimple(session);
 const sessionPool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  // Neon SSL gerektirir
+  connectionString: buildSessionPoolUrl(),
   ssl: { rejectUnauthorized: false },
 });
 
