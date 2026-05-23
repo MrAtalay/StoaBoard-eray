@@ -368,18 +368,53 @@ tasksRouter.patch(
   }),
 );
 
-// ─── DELETE /tasks/:taskId ─────────────────────────────────────────────────
+// ─── DELETE /tasks/:taskId — soft delete ────────────────────────────────────
 
 tasksRouter.delete(
   '/:taskId',
   requireAuth,
   asyncHandler(async (req, res) => {
     const taskId = parseInt(req.params.taskId, 10);
-    const access = await loadTaskWithAccess(req, res, taskId, {
-      permission: 'manage_tasks',
-    });
+    const access = await loadTaskWithAccess(req, res, taskId, { permission: 'manage_tasks' });
     if (access.denied) return;
+    await prisma.task.update({ where: { id: taskId }, data: { deletedAt: new Date() } });
+    res.json({ ok: true });
+  }),
+);
 
+// ─── POST /tasks/:taskId/restore ────────────────────────────────────────────
+
+tasksRouter.post(
+  '/:taskId/restore',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const taskId = parseInt(req.params.taskId, 10);
+    const access = await loadTaskWithAccess(req, res, taskId, { permission: 'manage_tasks' });
+    if (access.denied) return;
+    await prisma.task.update({ where: { id: taskId }, data: { deletedAt: null } });
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: {
+        column: true, creator: true,
+        assignees: { include: { user: true } },
+        labelLinks: { include: { label: true } },
+        subtasks: true,
+        comments: { select: { id: true } },
+      },
+    });
+    res.json(taskToDict(task));
+  }),
+);
+
+// ─── DELETE /tasks/:taskId/permanent ────────────────────────────────────────
+
+tasksRouter.delete(
+  '/:taskId/permanent',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const taskId = parseInt(req.params.taskId, 10);
+    const access = await loadTaskWithAccess(req, res, taskId, { permission: 'manage_tasks' });
+    if (access.denied) return;
     await prisma.$transaction([
       prisma.taskAttachment.deleteMany({ where: { taskId } }),
       prisma.taskAssignee.deleteMany({ where: { taskId } }),
@@ -387,10 +422,7 @@ tasksRouter.delete(
       prisma.subtask.deleteMany({ where: { taskId } }),
       prisma.comment.deleteMany({ where: { taskId } }),
       prisma.noteLinkedTask.deleteMany({ where: { taskId } }),
-      prisma.notification.updateMany({
-        where: { taskId },
-        data: { taskId: null },
-      }),
+      prisma.notification.updateMany({ where: { taskId }, data: { taskId: null } }),
       prisma.task.delete({ where: { id: taskId } }),
     ]);
     res.json({ ok: true });

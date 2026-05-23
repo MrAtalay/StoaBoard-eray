@@ -85,15 +85,13 @@ export const sessionMiddleware = session({
   },
 });
 
-// index.html'i bir kez okuyup, Google Client ID'yi inject ederek cache'le.
-// (Flask'taki Jinja {{ config.get('GOOGLE_CLIENT_ID') | tojson }} karşılığı —
-// tek bir placeholder olduğu için template engine'e gerek yok.)
 function loadIndexHtml() {
-  const raw = fs.readFileSync(path.join(config.viewsDir, 'index.html'), 'utf8');
-  return raw.replace(
-    '{{GOOGLE_CLIENT_ID_JSON}}',
-    JSON.stringify(config.googleClientId),
-  );
+  const indexPath = path.join(config.distDir, 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    if (config.isProduction) throw new Error('static/dist/index.html not found — run the client build first.');
+    return '<html><body><pre>Dev mode: run "cd client && npm run build" first, then restart the server.</pre></body></html>';
+  }
+  return fs.readFileSync(indexPath, 'utf8');
 }
 
 export function createApp() {
@@ -159,23 +157,18 @@ export function createApp() {
   app.use('/api/tasks', taskLinkedNotesRouter);
   app.use('/api', apiRouter);
 
-  // --- Static frontend servis (static/ klasörü) ---
-  // Versiyonlu URL'ler (?v=46) için immutable cache — istemci aynı URL'i bir
-  // daha hiç istemez. Versiyonsuz isteyenler (dev'de manuel test) için 7 gün.
+  // --- Vite build assets (hashed filenames → immutable cache) ---
+  app.use('/assets', express.static(path.join(config.distDir, 'assets'), {
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    },
+  }));
+
+  // --- Static files: uploads + images (no build step, served as-is) ---
   app.use('/static', express.static(config.staticDir, {
     setHeaders: (res, filePath) => {
-      const isVersioned = res.req?.query?.v;
       if (/\.(png|ico|svg|webp|gif|jpg|jpeg)$/i.test(filePath)) {
-        // Görseller: 30 gün
         res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
-      } else if (/\.(jsx|js|css)$/i.test(filePath)) {
-        if (isVersioned) {
-          // Versiyonlu kod: 1 yıl + immutable — F5'te yeniden yüklenmez
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        } else {
-          // Versiyonsuz: kısa cache, dev sırasında değişiklikleri yakala
-          res.setHeader('Cache-Control', 'public, max-age=300');
-        }
       } else {
         res.setHeader('Cache-Control', 'public, max-age=3600');
       }

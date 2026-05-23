@@ -30,6 +30,7 @@ import {
   projectToDict,
   columnToDict,
   labelToDictValue,
+  taskToDict,
 } from '../lib/serializers.js';
 import { buildNotificationText } from '../lib/notifications.js';
 import { deleteProjectTree, logActivity } from '../lib/projects.js';
@@ -192,6 +193,30 @@ projectsRouter.delete(
       await deleteProjectTree(tx, projectId);
     });
     res.json({ ok: true });
+  }),
+);
+
+// ─── GET /api/projects/:projectId/trash ────────────────────────────────────
+
+projectsRouter.get(
+  '/:projectId/trash',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const projectId = parseInt(req.params.projectId, 10);
+    const access = await loadProjectWithAccess(req, res, projectId);
+    if (access.denied) return;
+    const tasks = await prisma.task.findMany({
+      where: { projectId, deletedAt: { not: null } },
+      orderBy: { deletedAt: 'desc' },
+      include: {
+        column: true, creator: true,
+        assignees: { include: { user: true } },
+        labelLinks: { include: { label: true } },
+        subtasks: true,
+        comments: { select: { id: true } },
+      },
+    });
+    res.json(tasks.map(taskToDict));
   }),
 );
 

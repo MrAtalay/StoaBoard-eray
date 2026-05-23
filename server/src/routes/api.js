@@ -249,7 +249,7 @@ apiRouter.get(
       }),
       prisma.label.findMany({ where: { projectId: project.id } }),
       prisma.task.findMany({
-        where: { projectId: project.id },
+        where: { projectId: project.id, deletedAt: null },
         include: {
           column: true,
           creator: true,
@@ -275,6 +275,25 @@ apiRouter.get(
 
     const labelsMap = {};
     for (const l of labels) labelsMap[l.slug] = labelToDictValue(l);
+
+    // Auto-cleanup: permanently delete tasks soft-deleted > 30 days ago
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const expiredIds = (await prisma.task.findMany({
+      where: { projectId: project.id, deletedAt: { lt: thirtyDaysAgo } },
+      select: { id: true },
+    })).map(t => t.id);
+    if (expiredIds.length > 0) {
+      await prisma.$transaction([
+        prisma.taskAttachment.deleteMany({ where: { taskId: { in: expiredIds } } }),
+        prisma.taskAssignee.deleteMany({ where: { taskId: { in: expiredIds } } }),
+        prisma.taskLabel.deleteMany({ where: { taskId: { in: expiredIds } } }),
+        prisma.subtask.deleteMany({ where: { taskId: { in: expiredIds } } }),
+        prisma.comment.deleteMany({ where: { taskId: { in: expiredIds } } }),
+        prisma.noteLinkedTask.deleteMany({ where: { taskId: { in: expiredIds } } }),
+        prisma.notification.updateMany({ where: { taskId: { in: expiredIds } }, data: { taskId: null } }),
+        prisma.task.deleteMany({ where: { id: { in: expiredIds } } }),
+      ]);
+    }
 
     return res.json({
       ...basePayload,

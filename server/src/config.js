@@ -1,7 +1,7 @@
 // Python karşılığı: config.py
 // Tüm environment değişkenlerini tek yerden okur, defaults verir.
 
-import 'dotenv/config';
+import { config as dotenvLoad } from 'dotenv';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,6 +10,10 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
+
+// server/.env önce yüklenir; yoksa proje kök .env'i devreye girer.
+dotenvLoad({ path: path.resolve(ROOT_DIR, '.env') });
+dotenvLoad({ path: path.resolve(ROOT_DIR, '..', '.env') });
 
 const isProduction =
   process.env.NODE_ENV === 'production' ||
@@ -68,5 +72,5 @@ export const config = {
   },
   maxContentLength: 10 * 1024 * 1024, // 10 MB
   staticDir: path.resolve(ROOT_DIR, '..', 'static'),
-  viewsDir: path.resolve(ROOT_DIR, 'views'),
+  distDir: path.resolve(ROOT_DIR, '..', 'static', 'dist'),
 };

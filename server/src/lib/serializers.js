@@ -107,6 +107,7 @@ export function taskToDict(task) {
     attachments: 0,
     project_id: task.projectId,
     created_by: task.creator?.slug || null,
+    deleted_at: task.deletedAt ? task.deletedAt.toISOString() : null,
   };
   if (subtaskList.length > 0) {
     const doneCount = subtaskList.filter((s) => s.done).length;

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StoaBoard - Takım Proje Yönetimi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="icon" type="image/x-icon" href="/static/stoaboard_beyaz.png">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+  window.__TWEAKS__ = {
+    "theme": "cream",
+    "accent": "navy",
+    "fontPair": "sans",
+    "density": "balanced",
+    "showProgress": true,
+    "showTags": true,
+    "sidebarCollapsed": false
+  };
+  try {
+    if (!localStorage.getItem('stoa.brand2026')) {
+      const k = 'stoa.tweaks';
+      const saved = JSON.parse(localStorage.getItem(k) || '{}');
+      if (!saved.accent || saved.accent === 'terracotta') {
+        saved.accent = 'navy';
+        localStorage.setItem(k, JSON.stringify(saved));
+      }
+      localStorage.setItem('stoa.brand2026', '1');
+    }
+  } catch (e) {}
+</script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>

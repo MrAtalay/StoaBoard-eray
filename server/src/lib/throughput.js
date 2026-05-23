@@ -1,16 +1,8 @@
-// Python karşılığı: api.py _throughput_for_project
-//
-// Son 7 günün her günü için board üzerinde "done / review / progress" kategorilerine
-// kaç task taşındı? ActivityLog içindeki 'task_moved' JSON event'lerini parse eder.
+// Son 7 günün her günü için board üzerindeki kolonlara kaç task taşındı?
+// ActivityLog içindeki 'task_moved' JSON event'lerini parse eder.
+// Dönüş: [{ date: 'YYYY-MM-DD', cols: { [colSlug]: count } }, ...]
 
 import { prisma } from '../db.js';
-
-function isReviewColumn(col) {
-  const slug = (col.slug || '').toLowerCase();
-  const title = (col.title || '').toLowerCase();
-  const titleTr = (col.titleTr || '').toLowerCase();
-  return slug.includes('review') || title.includes('inceleme') || titleTr.includes('inceleme');
-}
 
 export async function throughputForProject(projectId) {
   const today = new Date();
@@ -19,18 +11,20 @@ export async function throughputForProject(projectId) {
 
   const cols = await prisma.boardColumn.findMany({
     where: { projectId },
+    orderBy: { position: 'asc' },
   });
 
-  const titleToCat = new Map();
+  const colSlugs = cols.map(c => c.slug);
+
+  // title/title_tr → slug eşleşmesi
+  const titleToSlug = new Map();
   for (const c of cols) {
-    const cat = c.isDone ? 'done' : isReviewColumn(c) ? 'review' : 'progress';
     for (const t of [c.title, c.titleTr]) {
       const key = (t || '').trim().toLowerCase();
-      if (key) titleToCat.set(key, cat);
+      if (key) titleToSlug.set(key, c.slug);
     }
   }
 
-  // Son 7 günlük task_moved aktiviteleri
   const logs = await prisma.activityLog.findMany({
     where: {
       projectId,
@@ -46,22 +40,29 @@ export async function throughputForProject(projectId) {
     try {
       const parsed = JSON.parse(log.text);
       colTitle = (parsed.col || '').trim().toLowerCase();
-    } catch {
-      colTitle = '';
-    }
-    const cat = titleToCat.get(colTitle);
-    if (!cat) continue;
+    } catch { colTitle = ''; }
+
+    const slug = titleToSlug.get(colTitle);
+    if (!slug) continue;
+
     const day = new Date(log.createdAt).toISOString().slice(0, 10);
-    if (!daily.has(day)) daily.set(day, { done: 0, review: 0, progress: 0 });
-    daily.get(day)[cat] += 1;
+    if (!daily.has(day)) {
+      const bucket = {};
+      for (const s of colSlugs) bucket[s] = 0;
+      daily.set(day, bucket);
+    }
+    daily.get(day)[slug] = (daily.get(day)[slug] || 0) + 1;
   }
 
-  const result = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
-    const dayStr = d.toISOString().slice(0, 10);
-    const bucket = daily.get(dayStr) || { done: 0, review: 0, progress: 0 };
-    result.push({ date: dayStr, done: bucket.done, review: bucket.review, progress: bucket.progress });
-  }
-  return result;
+  const emptyDay = () => {
+    const b = {};
+    for (const s of colSlugs) b[s] = 0;
+    return b;
+  };
+
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today.getTime() - (6 - i) * 24 * 60 * 60 * 1000);
+    const dateStr = d.toISOString().slice(0, 10);
+    return { date: dateStr, cols: daily.get(dateStr) || emptyDay() };
+  });
 }

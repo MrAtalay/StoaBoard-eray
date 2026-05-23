@@ -160,6 +160,7 @@ model Task {
   doc           Json?            @db.Json
   createdBy     Int?             @map("created_by")
   createdAt     DateTime?        @default(now()) @map("created_at") @db.Timestamp(6)
+  deletedAt     DateTime?        @map("deleted_at") @db.Timestamp(6)
   position      Float?
   comments      Comment[]
   noteLinks     NoteLinkedTask[]

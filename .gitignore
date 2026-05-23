@@ -12,6 +12,10 @@ server/.secret_key
 # Node
 node_modules/
 server/node_modules/
+client/node_modules/
+
+# Vite build output
+static/dist/
 *.log
 npm-debug.log*
 yarn-debug.log*

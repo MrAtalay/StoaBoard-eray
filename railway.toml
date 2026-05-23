@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "cd server && npm ci && npx prisma generate"
+buildCommand = "cd client && npm ci && npm run build && cd ../server && npm ci && npx prisma db push"
 
 [deploy]
 startCommand = "cd server && npm start"
