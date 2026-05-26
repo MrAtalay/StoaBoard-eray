@@ -1649,7 +1649,6 @@ function MediaGallery({ allMembers, onImageClick }) {
           <button key={k} onClick={() => setMediaTab(k)}
             style={{ padding: '8px 14px', fontSize: 12, fontWeight: mediaTab === k ? 600 : 400,
               color: mediaTab === k ? 'var(--accent)' : 'var(--ink-muted)',
-              borderBottom: mediaTab === k ? '2px solid var(--accent)' : '2px solid transparent',
               background: 'none', border: 'none', borderBottom: mediaTab === k ? '2px solid var(--accent)' : '2px solid transparent',
               cursor: 'pointer', marginBottom: -1 }}>
             {label}
