@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js",
+    "start": "npx prisma db push --accept-data-loss && node src/index.js",
     "postinstall": "prisma generate",
     "prisma:pull": "prisma db pull",
     "prisma:generate": "prisma generate",

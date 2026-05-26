@@ -6,5 +6,5 @@ nixPkgs = ["nodejs_20"]
 [phases.build]
 cmds = [
   "cd client && npm ci && npm run build",
-  "cd server && npm ci && npx prisma db push --accept-data-loss"
+  "cd server && npm ci"
 ]
