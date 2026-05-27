@@ -7106,33 +7106,42 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   position: relative;
   min-height: 54px;
   border-bottom: 1px solid var(--line);
-  background-image: linear-gradient(to right, transparent calc(var(--tl-cw) - 1px), var(--line) calc(var(--tl-cw) - 1px), var(--line) var(--tl-cw), transparent var(--tl-cw));
-  background-size: var(--tl-cw) 100%;
+  /* Layer 1: vertical grid lines; Layer 2: repeating weekend shading (5 weekdays + 2 weekend days) */
+  background-image:
+    linear-gradient(to right, transparent calc(var(--tl-cw) - 1px), var(--line) calc(var(--tl-cw) - 1px), var(--line) var(--tl-cw), transparent var(--tl-cw)),
+    repeating-linear-gradient(to right,
+      transparent 0,
+      transparent calc(5 * var(--tl-cw)),
+      color-mix(in oklch, var(--bg-sunken) 55%, transparent) calc(5 * var(--tl-cw)),
+      color-mix(in oklch, var(--bg-sunken) 55%, transparent) calc(7 * var(--tl-cw))
+    );
+  background-size: var(--tl-cw) 100%, calc(7 * var(--tl-cw)) 100%;
+  background-position: 0 0, var(--tl-week-offset, 0px) 0;
+}
+/* Today line rendered once per track via ::after, positioned via CSS custom prop */
+.tl-track::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: var(--tl-today-x, -9999px);
+  width: 2px;
+  background: var(--accent);
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 1px;
 }
 .tl-track.tl-group-track {
   min-height: 28px;
-  background: var(--bg-subtle);
-  background-image: none;
-}
-.tl-group-track .tl-weekend-col { background: color-mix(in oklch, var(--bg-sunken) 60%, var(--bg-subtle)); }
-
-/* Weekend column shading */
-.tl-weekend-col {
-  position: absolute;
-  top: 0; bottom: 0;
-  background: color-mix(in oklch, var(--bg-sunken) 55%, transparent);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.tl-today-line {
-  position: absolute;
-  top: 0; bottom: 0;
-  width: 2px;
-  background: var(--accent);
-  z-index: 2;
-  pointer-events: none;
-  border-radius: 1px;
+  background-color: var(--bg-subtle);
+  background-image:
+    repeating-linear-gradient(to right,
+      transparent 0,
+      transparent calc(5 * var(--tl-cw)),
+      color-mix(in oklch, var(--bg-sunken) 60%, var(--bg-subtle)) calc(5 * var(--tl-cw)),
+      color-mix(in oklch, var(--bg-sunken) 60%, var(--bg-subtle)) calc(7 * var(--tl-cw))
+    );
+  background-size: calc(7 * var(--tl-cw)) 100%;
+  background-position: var(--tl-week-offset, 0px) 0;
 }
 
 /* ── Bars ── */

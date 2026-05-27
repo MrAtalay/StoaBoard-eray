@@ -576,10 +576,13 @@ function TimelineView({ tasks, onOpenTask }) {
   const rawMin = taskDates.length > 0 ? new Date(Math.min(...taskDates)) : new Date(today);
   const rawMax = taskDates.length > 0 ? new Date(Math.max(...taskDates)) : new Date(today);
 
+  const minOf = (a, b) => a.getTime() < b.getTime() ? a : b;
+  const maxOf = (a, b) => a.getTime() > b.getTime() ? a : b;
+
   let minDate, maxDate;
   if (zoom === 'day') {
     // ±7 day padding, always include today, minimum 3 weeks
-    minDate = new Date(Math.min(rawMin, today)); minDate.setDate(minDate.getDate() - 7);
+    minDate = new Date(minOf(rawMin, today)); minDate.setDate(minDate.getDate() - 7);
     maxDate = new Date(rawMax); maxDate.setDate(rawMax.getDate() + 7);
     const minEnd = new Date(minDate); minEnd.setDate(minDate.getDate() + 21);
     if (maxDate < minEnd) maxDate = minEnd;
@@ -587,16 +590,15 @@ function TimelineView({ tasks, onOpenTask }) {
     // Snap to Mon–Sun week boundaries, minimum 5 weeks
     const toMonday = d => { const r = new Date(d), dow = r.getDay(); r.setDate(r.getDate() - (dow === 0 ? 6 : dow - 1)); return r; };
     const toSunday = d => { const r = new Date(d), dow = r.getDay(); r.setDate(r.getDate() + (dow === 0 ? 0 : 7 - dow)); return r; };
-    minDate = toMonday(new Date(Math.min(rawMin, today))); minDate.setDate(minDate.getDate() - 7);
+    minDate = toMonday(new Date(minOf(rawMin, today))); minDate.setDate(minDate.getDate() - 7);
     maxDate = toSunday(rawMax); maxDate.setDate(maxDate.getDate() + 7);
     const minEnd = new Date(minDate); minEnd.setDate(minDate.getDate() + 35);
     if (maxDate < minEnd) maxDate = minEnd;
   } else if (zoom === 'month') {
     // Snap to 1st–last of month, include today's month, minimum 3 months
-    minDate = new Date(Math.min(
-      new Date(rawMin.getFullYear(), rawMin.getMonth(), 1),
-      new Date(today.getFullYear(), today.getMonth(), 1)
-    ));
+    const rawMinMonth = new Date(rawMin.getFullYear(), rawMin.getMonth(), 1);
+    const todayMonth  = new Date(today.getFullYear(), today.getMonth(), 1);
+    minDate = new Date(minOf(rawMinMonth, todayMonth));
     maxDate = new Date(rawMax.getFullYear(), rawMax.getMonth() + 1, 0);
     const minEnd = new Date(minDate.getFullYear(), minDate.getMonth() + 3, 0);
     if (maxDate < minEnd) maxDate = minEnd;
@@ -604,7 +606,7 @@ function TimelineView({ tasks, onOpenTask }) {
     // quarter: snap to quarter start/end, include today's quarter, minimum 3 full quarters
     const qStart = d => new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1);
     const qEnd   = d => new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3 + 3, 0);
-    minDate = new Date(Math.min(qStart(rawMin), qStart(today)));
+    minDate = new Date(minOf(qStart(rawMin), qStart(today)));
     maxDate = qEnd(rawMax);
     const minEnd = new Date(qStart(today).getFullYear(), qStart(today).getMonth() + 9, 0);
     if (maxDate < minEnd) maxDate = minEnd;
@@ -631,7 +633,7 @@ function TimelineView({ tasks, onOpenTask }) {
       el.scrollLeft = Math.max(0, targetLeft);
     }
   };
-  useBoardEf(scrollToToday, [zoom]);
+  useBoardEf(scrollToToday, [zoom, todayIdx]);
 
   // Header row 1: month or quarter groups
   const headerGroups = (() => {
@@ -701,17 +703,15 @@ function TimelineView({ tasks, onOpenTask }) {
 
   const undatedTasks = filteredTasks.filter(t => !t.start && !t.due);
   const totalW = totalDays * dayWidth;
-  const weekendIndices = days.reduce((acc, d, i) => {
-    if (d.getDay() === 0 || d.getDay() === 6) acc.push(i);
-    return acc;
-  }, []);
 
-  const weekendCols = weekendIndices.map(wi => (
-    <div key={wi} className="tl-weekend-col" style={{ left: wi * dayWidth, width: dayWidth }} />
-  ));
-  const todayLine = todayIdx >= 0 && todayIdx < totalDays
-    ? <div className="tl-today-line" style={{ left: todayIdx * dayWidth + dayWidth / 2 }} />
-    : null;
+  // CSS custom props replace per-row DOM nodes for weekend shading and today line.
+  // Week offset aligns the repeating 5+2 day gradient to the correct day-of-week.
+  const dow = minDate.getDay();
+  const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+  const weekOffset = -daysSinceMonday * dayWidth;
+  const todayX = todayIdx >= 0 && todayIdx < totalDays
+    ? todayIdx * dayWidth + dayWidth / 2
+    : -9999;
 
   return (
     <div className="timeline-view">
@@ -742,7 +742,7 @@ function TimelineView({ tasks, onOpenTask }) {
         </div>
       </div>
 
-      <div className="timeline-grid" ref={gridRef} style={{ '--tl-side': `${SIDE}px`, '--tl-cw': `${dayWidth}px` }}>
+      <div className="timeline-grid" ref={gridRef} style={{ '--tl-side': `${SIDE}px`, '--tl-cw': `${dayWidth}px`, '--tl-week-offset': `${weekOffset}px`, '--tl-today-x': `${todayX}px` }}>
         <div className="tl-corner">
           <span>{window.t('board_tl_task')}</span>
           {tlAssigneeFilter.size > 0 && <span className="tl-corner-badge">{tlAssigneeFilter.size}</span>}
@@ -772,12 +772,10 @@ function TimelineView({ tasks, onOpenTask }) {
               <div className="tl-side tl-group" style={{ cursor: 'pointer' }} onClick={() => toggleTlGroup(col.id)}>
                 <Icon name={isCollapsed ? 'chevronRight' : 'chevronDown'} size={12} strokeWidth={2.5} style={{ color: 'var(--ink-faint)', flexShrink: 0 }} />
                 <span className="col-dot" style={{ background: col.color }} />
-                {col.title_tr}
+                {lang === 'en' ? (col.title || col.title_tr) : col.title_tr}
                 <span className="col-count" style={{ marginLeft: 'auto' }}>{gTasks.length}</span>
               </div>
-              <div className="tl-track tl-group-track" style={{ width: totalW }}>
-                {weekendCols}{todayLine}
-              </div>
+              <div className="tl-track tl-group-track" style={{ width: totalW }} />
               {!isCollapsed && gTasks.map(t => {
                 const startIdx = dayIndex(t.start) ?? dayIndex(t.due);
                 const endIdx = dayIndex(t.due) ?? dayIndex(t.start);
@@ -788,7 +786,7 @@ function TimelineView({ tasks, onOpenTask }) {
                 const offscreenLeft = startIdx < 0;
                 const offscreenRight = endIdx > totalDays - 1;
                 const members = (t.assignees || []).map(id => DATA.MEMBERS.find(m => m.id === id)).filter(Boolean);
-                const isMilestone = t.start && t.due && t.start === t.due;
+                const isMilestone = t.start && t.due && t.start.slice(0, 10) === t.due.slice(0, 10);
                 return (
                   <React.Fragment key={t.id}>
                     <div className="tl-side" onClick={() => onOpenTask(t)}>
@@ -799,7 +797,6 @@ function TimelineView({ tasks, onOpenTask }) {
                       {members.length > 0 && <AvatarStack members={members} size="sm" max={3} />}
                     </div>
                     <div className="tl-track" style={{ width: totalW }}>
-                      {weekendCols}{todayLine}
                       {isMilestone ? (
                         <div
                           className="tl-milestone"
