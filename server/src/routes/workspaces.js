@@ -34,7 +34,7 @@ import {
   memberToDict,
   hasPermission,
 } from '../lib/workspace.js';
-import { workspaceRoleToDict } from '../lib/serializers.js';
+import { workspaceRoleToDict, taskToDict } from '../lib/serializers.js';
 import { buildNotificationText, createAndPush } from '../lib/notifications.js';
 import { upload, storeFile } from '../lib/uploads.js';
 
@@ -128,7 +128,7 @@ const TEMPLATES = {
 };
 
 const DEFAULT_ROLES = [
-  ['Yönetici', 'oklch(52% 0.15 270)', ['manage_tasks', 'manage_projects', 'manage_members'], false],
+  ['Yönetici', 'oklch(52% 0.15 270)', ['manage_tasks', 'manage_projects', 'manage_members', 'manage_channels', 'delete_messages'], false],
   ['Düzenleyici', 'oklch(55% 0.09 150)', ['manage_tasks'], true],
   ['Görüntüleyici', 'oklch(55% 0.02 250)', [], false],
 ];
@@ -365,7 +365,7 @@ workspacesRouter.get(
   asyncHandler(async (req, res) => {
     const user = await loadUser(req);
     const member = await currentMember(user);
-    if (!member || member.role !== 'owner') {
+    if (!hasPermission(member, 'manage_members')) {
       return res.status(403).json({ error: 'Yetki gerekli' });
     }
     const reqs = await prisma.workspaceJoinRequest.findMany({
@@ -403,7 +403,7 @@ workspacesRouter.post(
   asyncHandler(async (req, res) => {
     const user = await loadUser(req);
     const member = await currentMember(user);
-    if (!member || member.role !== 'owner') {
+    if (!hasPermission(member, 'manage_members')) {
       return res.status(403).json({ error: 'Yetki gerekli' });
     }
 
@@ -420,6 +420,9 @@ workspacesRouter.post(
     const defaultRole = await prisma.workspaceRole.findFirst({
       where: { workspaceId: joinReq.workspaceId, isDefault: true },
     });
+    if (!defaultRole) {
+      return res.status(500).json({ error: 'Varsayılan rol bulunamadı. Lütfen bir varsayılan rol tanımlayın.' });
+    }
 
     const newMember = await prisma.$transaction(async (tx) => {
       await tx.workspaceJoinRequest.update({
@@ -488,7 +491,7 @@ workspacesRouter.post(
   asyncHandler(async (req, res) => {
     const user = await loadUser(req);
     const member = await currentMember(user);
-    if (!member || member.role !== 'owner') {
+    if (!hasPermission(member, 'manage_members')) {
       return res.status(403).json({ error: 'Yetki gerekli' });
     }
 
@@ -615,7 +618,7 @@ workspacesRouter.post(
         where: {
           workspaceId_userId: { workspaceId: member.workspaceId, userId: user.id },
         },
-        data: { role: 'member' },
+        data: { role: 'member', roleId: null },
         include: { user: true, workspaceRole: true },
       }),
     ]).then((r) => [r[1], r[2]]);
@@ -638,7 +641,7 @@ workspacesRouter.post(
   asyncHandler(async (req, res) => {
     const user = await loadUser(req);
     const member = await currentMember(user);
-    if (!member || member.role !== 'owner') {
+    if (!hasPermission(member, 'manage_workspace') && member?.role !== 'owner') {
       return res.status(403).json({ error: 'Yetkisiz işlem' });
     }
     const newCode = await uniqueInviteCode();
@@ -658,7 +661,7 @@ workspacesRouter.delete(
   asyncHandler(async (req, res) => {
     const user = await loadUser(req);
     const member = await currentMember(user);
-    if (!member || member.role !== 'owner') {
+    if (!hasPermission(member, 'manage_workspace') && member?.role !== 'owner') {
       return res.status(403).json({ error: 'Yetkisiz işlem' });
     }
     await prisma.workspace.update({
@@ -666,6 +669,82 @@ workspacesRouter.delete(
       data: { inviteCode: null },
     });
     res.json({ ok: true });
+  }),
+);
+
+// ── GET /workspaces/me/trash ──────────────────────────────────────────────
+
+workspacesRouter.get(
+  '/me/trash',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const user = await loadUser(req);
+    const member = await currentMember(user);
+    if (!member) return res.json([]);
+
+    const projects = await prisma.project.findMany({
+      where: { workspaceId: member.workspaceId },
+      select: { id: true, name: true },
+    });
+    const projectIds = projects.map((p) => p.id);
+    const projectMap = Object.fromEntries(projects.map((p) => [p.id, p.name]));
+
+    const tasks = await prisma.task.findMany({
+      where: { projectId: { in: projectIds }, deletedAt: { not: null } },
+      include: {
+        column: true,
+        creator: true,
+        assignees: { include: { user: true } },
+        labelLinks: { include: { label: true } },
+        subtasks: true,
+        comments: { select: { id: true } },
+      },
+      orderBy: { deletedAt: 'desc' },
+    });
+
+    res.json(tasks.map((t) => ({
+      ...taskToDict(t),
+      project_name: projectMap[t.projectId] || null,
+    })));
+  }),
+);
+
+// ── DELETE /workspaces/me/trash ───────────────────────────────────────────
+
+workspacesRouter.delete(
+  '/me/trash',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const user = await loadUser(req);
+    const member = await currentMember(user);
+    if (!member) return res.status(403).json({ error: 'Üye bulunamadı' });
+
+    const projects = await prisma.project.findMany({
+      where: { workspaceId: member.workspaceId },
+      select: { id: true },
+    });
+    const projectIds = projects.map((p) => p.id);
+
+    const trashedTasks = await prisma.task.findMany({
+      where: { projectId: { in: projectIds }, deletedAt: { not: null } },
+      select: { id: true },
+    });
+    const taskIds = trashedTasks.map((t) => t.id);
+
+    if (taskIds.length > 0) {
+      await prisma.$transaction([
+        prisma.taskAttachment.deleteMany({ where: { taskId: { in: taskIds } } }),
+        prisma.taskAssignee.deleteMany({ where: { taskId: { in: taskIds } } }),
+        prisma.taskLabel.deleteMany({ where: { taskId: { in: taskIds } } }),
+        prisma.subtask.deleteMany({ where: { taskId: { in: taskIds } } }),
+        prisma.comment.deleteMany({ where: { taskId: { in: taskIds } } }),
+        prisma.noteLinkedTask.deleteMany({ where: { taskId: { in: taskIds } } }),
+        prisma.notification.updateMany({ where: { taskId: { in: taskIds } }, data: { taskId: null } }),
+        prisma.task.deleteMany({ where: { id: { in: taskIds } } }),
+      ]);
+    }
+
+    res.json({ ok: true, deleted: taskIds.length });
   }),
 );
 
@@ -776,13 +855,25 @@ workspacesRouter.delete(
     });
     if (!role) return res.status(404).json({ error: 'Rol bulunamadı' });
 
-    await prisma.$transaction([
-      prisma.workspaceMember.updateMany({
-        where: { roleId },
-        data: { roleId: null },
-      }),
-      prisma.workspaceRole.delete({ where: { id: roleId } }),
-    ]);
+    if (role.isDefault) {
+      const otherRole = await prisma.workspaceRole.findFirst({
+        where: { workspaceId: member.workspaceId, id: { not: roleId } },
+        orderBy: { id: 'asc' },
+      });
+      if (!otherRole) {
+        return res.status(400).json({ error: 'Son varsayılan rol silinemez. Önce başka bir rol oluşturun.' });
+      }
+      await prisma.$transaction([
+        prisma.workspaceRole.update({ where: { id: otherRole.id }, data: { isDefault: true } }),
+        prisma.workspaceMember.updateMany({ where: { roleId }, data: { roleId: null } }),
+        prisma.workspaceRole.delete({ where: { id: roleId } }),
+      ]);
+    } else {
+      await prisma.$transaction([
+        prisma.workspaceMember.updateMany({ where: { roleId }, data: { roleId: null } }),
+        prisma.workspaceRole.delete({ where: { id: roleId } }),
+      ]);
+    }
     res.json({ ok: true });
   }),
 );
@@ -881,11 +972,29 @@ workspacesRouter.delete(
       return res.status(403).json({ error: 'Sahip takımdan çıkarılamaz' });
     }
 
+    // Workspace kanallarından da çıkar
+    const workspaceChannels = await prisma.channel.findMany({
+      where: { workspaceId: actor.workspaceId },
+      select: { id: true },
+    });
+    const channelIds = workspaceChannels.map((c) => c.id);
+    if (channelIds.length > 0) {
+      await prisma.channelMember.deleteMany({
+        where: { userId: targetUser.id, channelId: { in: channelIds } },
+      });
+    }
+
     await prisma.workspaceMember.delete({
       where: {
         workspaceId_userId: { workspaceId: actor.workspaceId, userId: targetUser.id },
       },
     });
+
+    const io = req.app.get('io');
+    try {
+      io?.to(`ws_${actor.workspaceId}`).emit('member_removed', { id: targetUser.slug });
+    } catch {}
+
     res.json({ ok: true });
   }),
 );
@@ -922,9 +1031,9 @@ workspacesRouter.post(
 
     const ws = await prisma.workspace.findUnique({ where: { id: wsId } });
     if (!ws) return res.status(404).json({ error: 'Workspace bulunamadı' });
-    if (ws.ownerId !== user.id) {
-      const m = await memberForWorkspace(user.id, wsId);
-      if (!m) return res.status(403).json({ error: 'Yetkisiz' });
+    const m = await memberForWorkspace(user.id, wsId);
+    if (!hasPermission(m, 'manage_workspace') && ws.ownerId !== user.id) {
+      return res.status(403).json({ error: 'Yetkisiz' });
     }
 
     if (!req.file) return res.status(400).json({ error: 'Dosya seçilmedi' });
@@ -955,7 +1064,8 @@ workspacesRouter.delete(
     const wsId = parseInt(req.params.wsId, 10);
     const ws = await prisma.workspace.findUnique({ where: { id: wsId } });
     if (!ws) return res.status(404).json({ error: 'Workspace bulunamadı' });
-    if (ws.ownerId !== user.id) {
+    const m = await memberForWorkspace(user.id, wsId);
+    if (!hasPermission(m, 'manage_workspace') && ws.ownerId !== user.id) {
       return res.status(403).json({ error: 'Yetkisiz' });
     }
     await prisma.workspace.update({ where: { id: wsId }, data: { logoUrl: null } });

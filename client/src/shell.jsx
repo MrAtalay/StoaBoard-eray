@@ -246,7 +246,7 @@ function Sidebar({
       <div className="sidebar-search" onClick={openCmd}>
         <Icon name="search" size={14} />
         <span className="sidebar-label">{window.t?.('shell_search') || 'Ara veya komut...'}</span>
-        <kbd className="sidebar-label">⌘K</kbd>
+        <kbd className="sidebar-label">Ctrl K</kbd>
       </div>
 
       <div className="sidebar-section">

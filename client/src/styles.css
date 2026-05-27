@@ -5164,6 +5164,27 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   font-size: 13px;
   color: var(--ink-muted);
 }
+.trash-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+  margin-bottom: 6px;
+}
+.trash-section-count {
+  background: var(--bg-subtle);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
 .trash-list {
   display: flex;
   flex-direction: column;
@@ -5294,6 +5315,91 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   cursor: pointer;
 }
 .trash-confirm-no:hover { background: var(--bg-dim); }
+
+/* header-top row: title block + empty btn */
+.trash-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.trash-empty-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink-muted);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.trash-empty-btn:hover {
+  background: oklch(58% 0.13 10 / 0.08);
+  color: var(--status-rose);
+  border-color: oklch(58% 0.13 10 / 0.25);
+}
+.trash-empty-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+/* search bar */
+.trash-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  margin-bottom: 16px;
+  color: var(--ink-muted);
+}
+.trash-search {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+}
+.trash-search::placeholder { color: var(--ink-faint); }
+.trash-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 0;
+}
+.trash-search-clear:hover { background: var(--bg-dim); color: var(--ink); }
+
+/* project chip in task row */
+.trash-item-project {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  background: var(--bg-subtle);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
 
 @media (max-width: 768px) {
 

@@ -2157,6 +2157,13 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
         return next;
       });
     };
+    const onMemberRemoved = ({ id: removedSlug }) => {
+      setCurrentChannelDetail(prev => {
+        if (!prev?.members) return prev;
+        return { ...prev, members: prev.members.filter(cm => cm.user_id !== removedSlug) };
+      });
+    };
+
     const onChannelMemberAdded = (ch) => onChannelUpdated(ch);
     const onChannelMemberRemoved = (payload) => {
       // If I'm the one removed, drop the channel from my list
@@ -2185,6 +2192,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
     sock.on('channel_deleted', onChannelDeleted);
     sock.on('channel_member_added', onChannelMemberAdded);
     sock.on('channel_member_removed', onChannelMemberRemoved);
+    sock.on('member_removed', onMemberRemoved);
     return () => {
       sock.off('chat_message', onMsg);
       sock.off('typing', onTyping);
@@ -2196,6 +2204,7 @@ function ChatPanel({ open, onClose, onExpand, onlineUsers, onlineStatuses, membe
       sock.off('channel_deleted', onChannelDeleted);
       sock.off('channel_member_added', onChannelMemberAdded);
       sock.off('channel_member_removed', onChannelMemberRemoved);
+      sock.off('member_removed', onMemberRemoved);
     };
   }, [socket, dmWith, me, activeChannel]);
 

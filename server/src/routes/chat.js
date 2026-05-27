@@ -18,7 +18,7 @@ import {
   usersShareWorkspace,
 } from '../lib/workspace.js';
 import { chatMessageToDict } from '../lib/serializers.js';
-import { userChannelRole, parseHiddenFor } from '../lib/channels.js';
+import { userChannelRole, canManageChannel, parseHiddenFor } from '../lib/channels.js';
 import { buildNotificationText, createAndPush } from '../lib/notifications.js';
 
 export const chatRouter = Router();
@@ -249,6 +249,7 @@ chatRouter.delete(
     const isSender = msg.senderId === user.id;
     const isReceiver = msg.receiverId === user.id;
     let wsCanDelete = false;
+    let channelCanDelete = false;
     if (msg.workspaceId) {
       const wm = await memberForWorkspace(user.id, msg.workspaceId);
       wsCanDelete =
@@ -256,11 +257,23 @@ chatRouter.delete(
         (wm.role === 'owner' ||
           (wm.workspaceRole &&
             (wm.workspaceRole.permissions || []).includes('delete_messages')));
+      // Kanal mesajıysa kanal sahibi/admin'i de silebilir
+      if (!wsCanDelete && msg.receiverId === null && msg.channel && msg.channel !== 'general') {
+        const chRow = await prisma.channel.findFirst({
+          where: { workspaceId: msg.workspaceId, slug: msg.channel },
+          include: { members: true },
+        });
+        if (chRow) {
+          const role = await userChannelRole(chRow, user.id);
+          channelCanDelete = canManageChannel(role);
+        }
+      }
     }
+    const canDelete = isSender || isReceiver || wsCanDelete || channelCanDelete;
     if (!isSender && !isReceiver && msg.receiverId !== null && !wsCanDelete) {
       return res.status(403).json({ error: 'Yetkiniz yok' });
     }
-    if (!isSender && msg.receiverId === null && !wsCanDelete) {
+    if (!canDelete && msg.receiverId === null) {
       return res.status(403).json({ error: 'Yetkiniz yok' });
     }
 
@@ -311,9 +324,17 @@ chatRouter.post(
     });
     if (!msg) return res.status(404).json({ error: 'Mesaj bulunamadı' });
 
-    // Yetki: katılımcı olmak gerekiyor
+    // Yetki: DM'de katılımcı, kanalda üye olmak gerekiyor
     if (msg.receiverId !== null) {
       if (![msg.senderId, msg.receiverId].includes(user.id)) {
+        return res.status(403).json({ error: 'Yetkiniz yok' });
+      }
+    } else if (msg.channel && msg.channel !== 'general') {
+      const chRow = await prisma.channel.findFirst({
+        where: { workspaceId: msg.workspaceId, slug: msg.channel },
+        include: { members: true },
+      });
+      if (chRow && !(await userChannelRole(chRow, user.id))) {
         return res.status(403).json({ error: 'Yetkiniz yok' });
       }
     } else {
@@ -428,11 +449,26 @@ chatRouter.get(
         include: MSG_INCLUDE,
       });
     } else {
+      const channelSlug = ((req.query.channel || '') + '').trim().toLowerCase() || null;
+      // Private kanal için üyelik kontrolü
+      if (channelSlug && channelSlug !== 'general') {
+        const chRow = await prisma.channel.findFirst({
+          where: { workspaceId: wsId, slug: channelSlug },
+          include: { members: true },
+        });
+        if (chRow && !(await userChannelRole(chRow, user.id))) {
+          return res.status(403).json({ error: 'Bu kanala erişim yetkiniz yok' });
+        }
+      }
+      const channelFilter = channelSlug
+        ? { channel: channelSlug }
+        : {};
       messages = await prisma.chatMessage.findMany({
         where: {
           workspaceId: wsId,
           receiverId: null,
           fileUrl: { not: null },
+          ...channelFilter,
         },
         orderBy: { createdAt: 'desc' },
         take: 200,

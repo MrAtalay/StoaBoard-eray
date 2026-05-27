@@ -14,7 +14,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { requireAuth } from '../lib/session.js';
-import { resolveWorkspaceId, memberForWorkspace } from '../lib/workspace.js';
+import { resolveWorkspaceId, memberForWorkspace, hasPermission } from '../lib/workspace.js';
 import {
   channelToDict,
   listAccessibleChannels,
@@ -196,6 +196,22 @@ channelsRouter.get(
     if (!channel) return res.status(404).json({ error: 'Kanal bulunamadı' });
     const role = await userChannelRole(channel, user.id);
     if (!role) return res.status(403).json({ error: 'Bu kanala erişim yetkiniz yok' });
+
+    // Workspace'ten ayrılmış ama kanalda kalan stale üyeleri temizle
+    const wsMemberIds = new Set(
+      (await prisma.workspaceMember.findMany({
+        where: { workspaceId: channel.workspaceId },
+        select: { userId: true },
+      })).map((m) => m.userId),
+    );
+    const staleIds = channel.members.filter((m) => !wsMemberIds.has(m.userId)).map((m) => m.userId);
+    if (staleIds.length > 0) {
+      await prisma.channelMember.deleteMany({
+        where: { channelId: channel.id, userId: { in: staleIds } },
+      });
+      channel.members = channel.members.filter((m) => wsMemberIds.has(m.userId));
+    }
+
     res.json(channelToDict(channel, { includeMembers: true, currentUserId: user.id }));
   }),
 );
@@ -337,7 +353,8 @@ channelsRouter.post(
     });
     if (!channel) return res.status(404).json({ error: 'Kanal bulunamadı' });
     const role = await userChannelRole(channel, user.id);
-    if (!canManageChannel(role)) {
+    const wm = await memberForWorkspace(user.id, channel.workspaceId);
+    if (!canManageChannel(role) && !hasPermission(wm, 'manage_channels')) {
       return res.status(403).json({ error: 'Üye ekleme yetkiniz yok' });
     }
 
@@ -476,7 +493,8 @@ channelsRouter.delete(
         }
       }
     } else {
-      if (!canManageChannel(role)) {
+      const wm = await memberForWorkspace(user.id, channel.workspaceId);
+      if (!canManageChannel(role) && !hasPermission(wm, 'manage_channels')) {
         return res.status(403).json({ error: 'Üye çıkarma yetkiniz yok' });
       }
       const targetMember = channel.members.find((m) => m.userId === target.id);

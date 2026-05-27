@@ -17,6 +17,8 @@ import * as onlineState from '../lib/onlineState.js';
 import { chatMessageToDict, notificationToDict } from '../lib/serializers.js';
 import { buildNotificationText } from '../lib/notifications.js';
 import { sessionMiddleware } from '../app.js';
+import { usersShareWorkspace } from '../lib/workspace.js';
+import { userChannelRole } from '../lib/channels.js';
 
 const MENTION_RE = /@([\w-]+)/g;
 
@@ -154,15 +156,35 @@ export function registerChatHandlers(io) {
 
     // ── chat_message ──
     socket.on('chat_message', async (data) => {
+      try {
       const text = ((data || {}).text || '').trim();
       const toSlug = (data || {}).to;
       const fileUrl = (data || {}).file_url || null;
       if (!text && !fileUrl) return;
 
-      let receiver = null;
       const workspaceId = await resolveActiveWorkspaceId(user);
+      let receiver = null;
+      let channel = 'general';
+
       if (toSlug) {
+        // DM — alıcı aynı workspace'te mi?
         receiver = await prisma.user.findUnique({ where: { slug: toSlug } });
+        if (!receiver) return;
+        if (!(await usersShareWorkspace(user.id, receiver.id, workspaceId))) return;
+        channel = 'dm';
+      } else {
+        // Kanal mesajı — üyelik kontrolü
+        channel = ((data.channel || 'general') + '').trim().toLowerCase().slice(0, 80) || 'general';
+        if (channel !== 'general' && workspaceId) {
+          const chRow = await prisma.channel.findFirst({
+            where: { workspaceId, slug: channel },
+            include: { members: true },
+          });
+          if (chRow) {
+            const role = await userChannelRole(chRow, user.id);
+            if (!role) return;
+          }
+        }
       }
 
       const msg = await prisma.chatMessage.create({
@@ -174,6 +196,7 @@ export function registerChatHandlers(io) {
           fileUrl,
           fileType: data.file_type || null,
           fileName: data.file_name || null,
+          channel,
         },
         include: { sender: true, receiver: true },
       });
@@ -229,20 +252,40 @@ export function registerChatHandlers(io) {
         io.to(`user_${user.id}`).emit('chat_message', payload);
         io.to(`user_${receiver.id}`).emit('chat_message', payload);
       } else if (workspaceId) {
-        io.to(`ws_${workspaceId}`).emit('chat_message', payload);
+        if (channel !== 'general') {
+          const chRow = await prisma.channel.findFirst({
+            where: { workspaceId, slug: channel },
+            include: { members: { select: { userId: true } } },
+          });
+          if (chRow?.type === 'private') {
+            for (const cm of chRow.members) {
+              io.to(`user_${cm.userId}`).emit('chat_message', payload);
+            }
+          } else {
+            io.to(`ws_${workspaceId}`).emit('chat_message', payload);
+          }
+        } else {
+          io.to(`ws_${workspaceId}`).emit('chat_message', payload);
+        }
+      }
+      } catch (err) {
+        console.warn('[socket] chat_message failed:', err.message);
       }
     });
 
     // ── typing ──
     socket.on('typing', async (data) => {
+      try {
       const toSlug = (data || {}).to;
       const isTyping = Boolean((data || {}).typing);
       if (!toSlug) return;
       const r = await prisma.user.findUnique({ where: { slug: toSlug } });
-      if (r) {
-        socket
-          .to(`user_${r.id}`)
-          .emit('typing', { user: user.slug, typing: isTyping });
+      if (!r) return;
+      const wsId = await resolveActiveWorkspaceId(user);
+      if (!(await usersShareWorkspace(user.id, r.id, wsId))) return;
+      socket.to(`user_${r.id}`).emit('typing', { user: user.slug, typing: isTyping });
+      } catch (err) {
+        console.warn('[socket] typing failed:', err.message);
       }
     });
 

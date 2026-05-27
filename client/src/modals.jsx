@@ -1,6 +1,7 @@
 // Add Task modal — API-backed
 
 import React, { useState as useModalState, useEffect as useModalEffect, useRef as useModalRef } from 'react';
+import ReactDOM from 'react-dom';
 import { Icon } from './icons.jsx';
 import { Avatar } from './shell.jsx';
 import { API } from './data.jsx';

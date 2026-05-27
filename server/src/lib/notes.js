@@ -31,6 +31,8 @@ export function noteToDict(note, { includeBody = true } = {}) {
   const updatedIso = note.updatedAt ? new Date(note.updatedAt).toISOString() : '';
   const createdIso = note.createdAt ? new Date(note.createdAt).toISOString() : '';
 
+  const deletedIso = note.deletedAt ? new Date(note.deletedAt).toISOString() : null;
+
   const d = {
     id: note.id,
     title: note.title || '',
@@ -39,6 +41,7 @@ export function noteToDict(note, { includeBody = true } = {}) {
     status: note.status || 'draft',
     pinned: Boolean(note.pinned),
     archived: Boolean(note.archived),
+    deleted_at: deletedIso,
     author: note.author?.slug || null,
     collaborators: collabSlugs,
     linked_tasks: linkedTaskIds,
@@ -115,6 +118,7 @@ export function visibleNotesWhere(userId, workspaceId, collabIds, includeArchive
     : { OR: [{ archived: false }, { archived: null }] };
   return {
     workspaceId,
+    deletedAt: null,
     ...archivedFilter,
     AND: [
       {

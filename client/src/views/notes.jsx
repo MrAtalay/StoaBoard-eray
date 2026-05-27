@@ -310,14 +310,14 @@ function MarkdownEditor({ body, onChange, onBlur, onKeyShortcut, disabled }) {
   return (
     <div className="md-editor">
       <div className="md-toolbar" role="toolbar" aria-label={window.t?.('notes_edit_mode') || 'Biçimlendirme'}>
-        <button type="button" className="md-tb-btn" title="H1 (⌘1)" onClick={() => prefix('# ')}><Icon name="heading1" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="H2 (⌘2)" onClick={() => prefix('## ')}><Icon name="heading2" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="H3 (⌘3)" onClick={() => prefix('### ')}><Icon name="heading3" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="H1 (Ctrl+1)" onClick={() => prefix('# ')}><Icon name="heading1" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="H2 (Ctrl+2)" onClick={() => prefix('## ')}><Icon name="heading2" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="H3 (Ctrl+3)" onClick={() => prefix('### ')}><Icon name="heading3" size={14} /></button>
         <div className="md-tb-sep" />
         <button type="button" className="md-tb-btn" title={`${window.t?.('chat_fmt_bold') || 'Kalın (Ctrl+B)'}`} onClick={() => wrap('**','**','text')}><Icon name="bold" size={14} /></button>
         <button type="button" className="md-tb-btn" title={`${window.t?.('chat_fmt_italic') || 'İtalik (Ctrl+I)'}`} onClick={() => wrap('*','*','text')}><Icon name="italic" size={14} /></button>
         <button type="button" className="md-tb-btn" title={`${window.t?.('chat_fmt_code') || 'Kod (Ctrl+E)'}`} onClick={() => wrap('`','`','code')}><Icon name="code" size={14} /></button>
-        <button type="button" className="md-tb-btn" title="Link (⌘K)" onClick={() => wrap('[', '](https://)','text')}><Icon name="link" size={14} /></button>
+        <button type="button" className="md-tb-btn" title="Link (Ctrl+K)" onClick={() => wrap('[', '](https://)','text')}><Icon name="link" size={14} /></button>
         <div className="md-tb-sep" />
         <button type="button" className="md-tb-btn" title="Bullet list" onClick={() => prefix('- ')}><Icon name="listBullet" size={14} /></button>
         <button type="button" className="md-tb-btn" title={window.t?.('drawer_checklist') || 'Yapılacaklar'} onClick={() => prefix('- [ ] ')}><Icon name="listChecks" size={14} /></button>
@@ -785,10 +785,10 @@ function NoteDetail({ note, members, tasks, workspaceTasks, currentUserId, isOwn
 
         {/* Mode toggle */}
         <div className="note-mode-toggle">
-          <button type="button" data-active={mode === 'edit'} onClick={() => setMode('edit')} title={`${window.t?.('notes_edit_mode') || 'Düzenle'} (⌘E)`}>
+          <button type="button" data-active={mode === 'edit'} onClick={() => setMode('edit')} title={`${window.t?.('notes_edit_mode') || 'Düzenle'} (Ctrl+E)`}>
             <Icon name="edit" size={12} /> {window.t?.('notes_edit_mode') || 'Düzenle'}
           </button>
-          <button type="button" data-active={mode === 'preview'} onClick={() => setMode('preview')} title={`${window.t?.('notes_preview_mode') || 'Önizle'} (⌘E)`}>
+          <button type="button" data-active={mode === 'preview'} onClick={() => setMode('preview')} title={`${window.t?.('notes_preview_mode') || 'Önizle'} (Ctrl+E)`}>
             <Icon name="eye" size={12} /> {window.t?.('notes_preview_mode') || 'Önizle'}
           </button>
         </div>
@@ -960,6 +960,10 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
   const [viewMode, setViewMode] = useNS(() => localStorage.getItem('stoa.notesView') || 'grid');
   const [filtersOpen, setFiltersOpen] = useNS(false);
   const [creating, setCreating] = useNS(false);
+  const [showTrash, setShowTrash] = useNS(false);
+  const [trashNotes, setTrashNotes] = useNS([]);
+  const [trashConfirmId, setTrashConfirmId] = useNS(null);
+  const [trashBusy, setTrashBusy] = useNS(new Set());
 
   useNE(() => { localStorage.setItem('stoa.notesView', viewMode); }, [viewMode]);
 
@@ -985,6 +989,12 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
       .then(rows => { setNotes(rows || []); setLoading(false); onCountChange?.((rows || []).length); })
       .catch(() => { setNotes([]); setLoading(false); });
   }, [showArchived]);
+
+  // Trash fetch
+  useNE(() => {
+    if (!showTrash) return;
+    API.getNoteTrash().then(rows => setTrashNotes(rows || [])).catch(() => {});
+  }, [showTrash]);
 
   // Sync URL hash
   useNE(() => {
@@ -1104,17 +1114,48 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
   const handleDelete = async (note) => {
     setNotes(prev => prev.filter(n => n.id !== note.id));
     setSelectedId(prev => (prev === note.id ? null : prev));
-    try { await API.deleteNote(note.id); }
-    catch (e) {
+    try {
+      await API.deleteNote(note.id);
+      setTrashNotes(prev => {
+        if (prev.some(n => n.id === note.id)) return prev;
+        return [{ ...note, deleted_at: new Date().toISOString() }, ...prev];
+      });
+    } catch (e) {
       window.showToast?.((window.t?.('notes_err_delete') || 'Silinemedi: ') + e.message, 'error');
-      // Refetch to restore on failure
-      API.listNotes({ archived: showArchived }).then(rows => setNotes(rows || []));
+      setNotes(prev => [...prev, note]);
     }
   };
 
   const handleDeleteFromDetail = async (note) => {
     await handleDelete(note);
     setSelectedId(null);
+  };
+
+  const handleTrashRestore = async (note) => {
+    setTrashBusy(b => new Set([...b, note.id]));
+    try {
+      const restored = await API.restoreNote(note.id);
+      setTrashNotes(prev => prev.filter(n => n.id !== note.id));
+      setNotes(prev => [restored, ...prev]);
+      window.showToast?.(window.t?.('notes_trash_restored') || 'Not geri alındı', 'success');
+    } catch (e) {
+      window.showToast?.((window.t?.('notes_err_update') || 'Güncellenemedi: ') + e.message, 'error');
+    } finally {
+      setTrashBusy(b => { const n = new Set(b); n.delete(note.id); return n; });
+    }
+  };
+
+  const handleTrashPermanentDelete = async (note) => {
+    setTrashBusy(b => new Set([...b, `d-${note.id}`]));
+    try {
+      await API.permanentDeleteNote(note.id);
+      setTrashNotes(prev => prev.filter(n => n.id !== note.id));
+      setTrashConfirmId(null);
+    } catch (e) {
+      window.showToast?.((window.t?.('notes_err_delete') || 'Silinemedi: ') + e.message, 'error');
+    } finally {
+      setTrashBusy(b => { const n = new Set(b); n.delete(`d-${note.id}`); return n; });
+    }
   };
 
   const handleLinkTask = async (noteId, taskId) => {
@@ -1208,6 +1249,88 @@ function NotesView({ socket, tasks, members, currentUserId, isOwner, canManagePr
           onUnlinkTask={handleUnlinkTask}
           onOpenTask={onOpenTask}
         />
+      </div>
+    );
+  }
+
+  if (showTrash) {
+    const NOTE_RETENTION = 30;
+    const noteDaysLeft = (deletedAt) => {
+      if (!deletedAt) return NOTE_RETENTION;
+      const exp = new Date(new Date(deletedAt).getTime() + NOTE_RETENTION * 86400000);
+      return Math.max(0, Math.ceil((exp - Date.now()) / 86400000));
+    };
+    return (
+      <div className="notes-view">
+        <div className="notes-header">
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <h1 className="notes-title">{window.t?.('notes_trash_tab') || 'Çöp Kutusu'}</h1>
+            {trashNotes.length > 0 && <span className="notes-count">{trashNotes.length}</span>}
+          </div>
+          <div className="notes-toolbar">
+            <button type="button" className="btn btn-ghost" onClick={() => setShowTrash(false)}>
+              <Icon name="arrowLeft" size={13} /> {window.t?.('notes_title') || 'Notlar'}
+            </button>
+          </div>
+        </div>
+        <div className="trash-subtitle" style={{ marginBottom: 16, color: 'var(--ink-muted)', fontSize: 12 }}>
+          {window.t?.('notes_trash_subtitle') || 'Silinen notlar 30 gün içinde kalıcı olarak silinir'}
+        </div>
+        {trashNotes.length === 0 ? (
+          <div className="notes-empty">
+            <div className="notes-empty-icon"><Icon name="trash" size={36} strokeWidth={1} /></div>
+            <div className="notes-empty-title">{window.t?.('notes_trash_empty') || 'Not çöp kutusu boş'}</div>
+            <div className="notes-empty-sub">{window.t?.('notes_trash_empty_sub') || 'Silinen notlar burada görünür'}</div>
+          </div>
+        ) : (
+          <div className="trash-list">
+            {trashNotes.map(note => {
+              const days = noteDaysLeft(note.deleted_at);
+              const urgent = days <= 3;
+              return (
+                <div key={note.id} className="trash-item">
+                  <div className="trash-item-info">
+                    <div className="trash-item-title">{note.title || (window.t?.('notes_untitled') || 'Başlıksız Not')}</div>
+                    <div className="trash-item-meta">
+                      {note.preview && <span style={{ fontSize: 11, color: 'var(--ink-muted)', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note.preview}</span>}
+                      <span className="trash-item-expiry" data-urgent={urgent}>
+                        <Icon name="clock" size={11} />
+                        {days === 0
+                          ? (window.t?.('notes_trash_expires_today') || 'Bugün silinecek')
+                          : `${days} ${window.t?.('notes_trash_days_left') || 'gün kaldı'}`}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="trash-item-actions">
+                    <button
+                      className="trash-restore-btn"
+                      onClick={() => handleTrashRestore(note)}
+                      disabled={trashBusy.has(note.id)}
+                    >
+                      <Icon name="undo" size={13} />
+                      {window.t?.('notes_trash_restore') || 'Geri Al'}
+                    </button>
+                    {trashConfirmId === note.id ? (
+                      <div className="trash-confirm">
+                        <span>{window.t?.('notes_trash_confirm') || 'Kalıcı silinsin mi?'}</span>
+                        <button className="trash-confirm-yes" onClick={() => handleTrashPermanentDelete(note)} disabled={trashBusy.has(`d-${note.id}`)}>
+                          {window.t?.('notes_trash_confirm_yes') || 'Evet, sil'}
+                        </button>
+                        <button className="trash-confirm-no" onClick={() => setTrashConfirmId(null)}>
+                          {window.t?.('notes_trash_confirm_no') || 'İptal'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button className="trash-delete-btn" onClick={() => setTrashConfirmId(note.id)} title={window.t?.('notes_trash_permanent_delete') || 'Kalıcı Sil'}>
+                        <Icon name="trash" size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }

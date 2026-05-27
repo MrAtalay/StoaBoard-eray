@@ -796,6 +796,29 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
 
   const [projects, setProjects] = React.useState([...(DATA.PROJECTS || [])]);
   const [editingProject, setEditingProject] = React.useState(null);
+  const [deletingProjectId, setDeletingProjectId] = React.useState(null);
+  const [deleteProjectName, setDeleteProjectName] = React.useState('');
+  const [deleteProjectBusy, setDeleteProjectBusy] = React.useState(false);
+  const [deleteProjectError, setDeleteProjectError] = React.useState('');
+
+  const handleDeleteProject = async (project) => {
+    if (deleteProjectName !== project.name) {
+      setDeleteProjectError(_t('set_prj_delete_name_mismatch', 'Proje adı eşleşmiyor.'));
+      return;
+    }
+    setDeleteProjectBusy(true);
+    try {
+      await API.deleteProject(project.id);
+      setProjects(ps => ps.filter(p => p.id !== project.id));
+      DATA.PROJECTS = (DATA.PROJECTS || []).filter(p => p.id !== project.id);
+      setDeletingProjectId(null);
+      setDeleteProjectName('');
+    } catch (e) {
+      setDeleteProjectError(e.message);
+    } finally {
+      setDeleteProjectBusy(false);
+    }
+  };
 
   const saveProjectIcon = async (projectId, icon, color) => {
     try {
@@ -813,7 +836,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
     { id: 'profile',        label: _t('set_profile','Profil'),               icon: 'user' },
     { id: 'appearance',     label: _t('set_appearance','Görünüm'),           icon: 'palette' },
     { id: 'workspace',      label: _t('set_workspace','Çalışma Alanı'),      icon: 'building', ownerOnly: true },
-    { id: 'join_requests',  label: _t('set_jrq_nav','Katılım İstekleri'),    icon: 'userPlus', ownerOnly: true },
+    { id: 'join_requests',  label: _t('set_jrq_nav','Katılım İstekleri'),    icon: 'userPlus', membersOnly: true },
     { id: 'invite',         label: _t('set_invite','Davet Kodu'),            icon: 'key', ownerOnly: true },
     { id: 'roles',          label: _t('set_roles','Roller'),                 icon: 'shield', ownerOnly: true },
     { id: 'projects',       label: _t('set_prj_nav','Projeler'),             icon: 'folder', manageProjOnly: true, hideWhenEmpty: true },
@@ -1275,8 +1298,11 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                       <Icon name={p.icon || 'folder'} size={16} strokeWidth={1.8} />
                     </div>
                     <span style={{ fontWeight:500, fontSize:13, flex:1 }}>{p.name}</span>
-                    <button className="icon-btn" title={_t('set_prj_edit','Düzenle')} onClick={() => setEditingProject(isEditing ? null : { id:p.id, color:p.color, icon:p.icon||'folder' })}>
+                    <button className="icon-btn" title={_t('set_prj_edit','Düzenle')} onClick={() => { setEditingProject(isEditing ? null : { id:p.id, color:p.color, icon:p.icon||'folder' }); setDeletingProjectId(null); }}>
                       <Icon name={isEditing ? 'x' : 'edit'} size={13} />
+                    </button>
+                    <button className="icon-btn icon-btn-danger" title={_t('set_prj_delete','Projeyi sil')} onClick={() => { setDeletingProjectId(deletingProjectId === p.id ? null : p.id); setDeleteProjectName(''); setDeleteProjectError(''); setEditingProject(null); }}>
+                      <Icon name="trash" size={13} />
                     </button>
                   </div>
                   {isEditing && (
@@ -1310,6 +1336,36 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
                       <div style={{ display:'flex', gap:8, marginTop:2 }}>
                         <button className="btn btn-primary" style={{ fontSize:12 }} onClick={() => saveProjectIcon(p.id, editIcon, editColor)}>{_t('set_prj_save','Kaydet')}</button>
                         <button className="btn btn-ghost" style={{ fontSize:12 }} onClick={() => setEditingProject(null)}>{_t('set_prj_cancel','İptal')}</button>
+                      </div>
+                    </div>
+                  )}
+                  {deletingProjectId === p.id && (
+                    <div className="danger-confirm" style={{ margin: '0 14px 14px', borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+                      <div>
+                        <strong style={{ color: 'var(--status-rose)' }}>{_t('set_prj_delete_desc', 'Bu proje ve tüm görevleri kalıcı olarak silinir.')}</strong>
+                        <p style={{ marginTop: 4 }}>{_t('set_prj_delete_confirm', 'Onaylamak için proje adını yazın:')}</p>
+                      </div>
+                      <input
+                        type="text"
+                        value={deleteProjectName}
+                        onChange={e => { setDeleteProjectName(e.target.value); setDeleteProjectError(''); }}
+                        placeholder={p.name}
+                        autoFocus
+                      />
+                      {deleteProjectError && <div className="inline-error">{deleteProjectError}</div>}
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button className="btn btn-ghost" onClick={() => { setDeletingProjectId(null); setDeleteProjectName(''); setDeleteProjectError(''); }} disabled={deleteProjectBusy}>
+                          {_t('set_prj_delete_cancel', 'İptal')}
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ color: 'var(--status-rose)', borderColor: 'oklch(58% 0.13 10 / 0.35)' }}
+                          onClick={() => handleDeleteProject(p)}
+                          disabled={deleteProjectBusy || !deleteProjectName.trim()}
+                        >
+                          <Icon name="trash" size={14} />
+                          {deleteProjectBusy ? _t('set_prj_deleting', 'Siliniyor…') : _t('set_prj_delete_btn', 'Projeyi kalıcı sil')}
+                        </button>
                       </div>
                     </div>
                   )}

@@ -50,7 +50,7 @@ async function loadUser(req) {
  * Project'i yükle ve workspace erişimini doğrula. denied: response döndürmüş
  * isek o yüzden caller `if (denied) return` yapsın.
  */
-async function loadProjectWithAccess(req, res, projectId, { permission = null } = {}) {
+async function loadProjectWithAccess(req, res, projectId, { permission = null, anyPermission = null } = {}) {
   const user = await loadUser(req);
   if (!user) {
     res.status(401).json({ error: 'err_auth_required' });
@@ -67,6 +67,10 @@ async function loadProjectWithAccess(req, res, projectId, { permission = null } 
     return { denied: true };
   }
   if (permission && !hasPermission(member, permission)) {
+    res.status(403).json({ error: 'Bu işlem için yetkiniz yok' });
+    return { denied: true };
+  }
+  if (anyPermission && !anyPermission.some((p) => hasPermission(member, p))) {
     res.status(403).json({ error: 'Bu işlem için yetkiniz yok' });
     return { denied: true };
   }
@@ -406,7 +410,7 @@ projectsRouter.post(
   asyncHandler(async (req, res) => {
     const projectId = parseInt(req.params.projectId, 10);
     const access = await loadProjectWithAccess(req, res, projectId, {
-      permission: 'manage_projects',
+      anyPermission: ['manage_projects', 'manage_labels'],
     });
     if (access.denied) return;
 
@@ -436,7 +440,7 @@ projectsRouter.patch(
   asyncHandler(async (req, res) => {
     const projectId = parseInt(req.params.projectId, 10);
     const access = await loadProjectWithAccess(req, res, projectId, {
-      permission: 'manage_projects',
+      anyPermission: ['manage_projects', 'manage_labels'],
     });
     if (access.denied) return;
 
@@ -467,7 +471,7 @@ projectsRouter.delete(
   asyncHandler(async (req, res) => {
     const projectId = parseInt(req.params.projectId, 10);
     const access = await loadProjectWithAccess(req, res, projectId, {
-      permission: 'manage_projects',
+      anyPermission: ['manage_projects', 'manage_labels'],
     });
     if (access.denied) return;
 

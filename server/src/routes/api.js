@@ -620,6 +620,7 @@ apiRouter.delete(
 
 apiRouter.get(
   '/media/:fileId',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const fileId = parseInt(req.params.fileId, 10);
     if (!Number.isFinite(fileId)) return res.status(404).end();

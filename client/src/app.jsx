@@ -82,6 +82,7 @@ function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useS(false);
   const [projectSwitching, setProjectSwitching]   = useS(false);
   const [trashTasks, setTrashTasks]               = useS([]);
+  const [trashNotes, setTrashNotes]               = useS([]);
   const switchAbortRef = useRef(null);
 
   const activityTimer  = useRef(null);
@@ -124,6 +125,7 @@ function App() {
   const canManageProjects = isOwner || myPerms.includes('manage_projects');
   const canManageChannels = isOwner || myPerms.includes('manage_channels');
   const canDeleteMessages = isOwner || myPerms.includes('delete_messages');
+  const canManageMembers = isOwner || myPerms.includes('manage_members');
 
   useEf(() => localStorage.setItem('stoa.view', view), [view]);
   useEf(() => { document.documentElement.dataset.theme    = tweaks.theme;    }, [tweaks.theme]);
@@ -285,6 +287,13 @@ function App() {
     });
     sock.on('join_request_rejected', () => {
       window.showToast?.(window.t('app_join_rejected'), 'error');
+    });
+    sock.on('member_removed', ({ id }) => {
+      setMembers(prev => {
+        const next = prev.filter(m => m.id !== id);
+        window.DATA.MEMBERS = next;
+        return next;
+      });
     });
     sock.on('member_role_changed', (updatedMember) => {
       setMembers(prev => {
@@ -613,19 +622,22 @@ function App() {
 
   const deleteTask = async (id) => {
     const task = tasks.find(t => String(t.id) === String(id));
-    setTasks(tasks.filter(t => String(t.id) !== String(id)));
+    setTasks(prev => prev.filter(t => String(t.id) !== String(id)));
     setDrawerTask(null);
     try {
       await API.deleteTask(id);
       if (task) setTrashTasks(prev => [{ ...task, deleted_at: new Date().toISOString() }, ...prev]);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      if (task) setTasks(prev => [...prev, task]);
+    }
   };
 
   const restoreTask = async (id) => {
     try {
       const restored = await API.restoreTask(id);
       setTrashTasks(prev => prev.filter(t => String(t.id) !== String(id)));
-      setTasks(prev => [restored, ...prev]);
+      setTasks(prev => [...prev, restored]);
       window.showToast?.(window.t?.('trash_restored') || 'Görev geri alındı', 'success');
     } catch (e) { console.error(e); }
   };
@@ -634,6 +646,28 @@ function App() {
     try {
       await API.permanentDeleteTask(id);
       setTrashTasks(prev => prev.filter(t => String(t.id) !== String(id)));
+    } catch (e) { console.error(e); }
+  };
+
+  const restoreNote = async (id) => {
+    try {
+      await API.restoreNote(id);
+      setTrashNotes(prev => prev.filter(n => n.id !== id));
+      window.showToast?.(window.t?.('notes_trash_restored') || 'Not geri alındı', 'success');
+    } catch (e) { console.error(e); }
+  };
+
+  const permanentDeleteNote = async (id) => {
+    try {
+      await API.permanentDeleteNote(id);
+      setTrashNotes(prev => prev.filter(n => n.id !== id));
+    } catch (e) { console.error(e); }
+  };
+
+  const emptyTrash = async () => {
+    try {
+      await API.emptyWorkspaceTrash();
+      setTrashTasks([]);
     } catch (e) { console.error(e); }
   };
 
@@ -815,11 +849,11 @@ function App() {
   // Tam ekran görev açıkken view değişirse kapat
   useEf(() => { setTaskPageTask(null); }, [view]);
 
-  // Load trash whenever the active project changes
+  // Load workspace-wide task trash once on mount (workspace-scoped)
   useEf(() => {
-    if (!currentProject?.id) return;
-    API.getTrash(currentProject.id).then(setTrashTasks).catch(() => {});
-  }, [currentProject?.id]);
+    API.getWorkspaceTrash().then(setTrashTasks).catch(() => {});
+    API.getNoteTrash().then(setTrashNotes).catch(() => {});
+  }, []);
 
   const openModal = (colId, dates = null) => {
     if (!canManageTasks) return;
@@ -923,7 +957,7 @@ function App() {
         myTasksOpenCount={myTasksOpenCount}
         notifCount={notifCount}
         notesCount={notesCount}
-        trashCount={trashTasks.length}
+        trashCount={trashTasks.length + trashNotes.length}
         onOpenNotifs={() => { if (view !== 'notifications') setPreNotifView(view); setView('notifications'); setNotifCount(0); }}
       />
       <div className="main" key={_appLang}>
@@ -994,7 +1028,7 @@ function App() {
               onOpenTask={(t) => { setView('board'); setDrawerTask(t); }}
               onCountChange={setNotesCount}
             />}
-            {!taskPageTask && view === 'trash' && <TrashView tasks={trashTasks} onRestore={restoreTask} onPermanentDelete={permanentDeleteTask} canManageTasks={canManageTasks} />}
+            {!taskPageTask && view === 'trash' && <TrashView tasks={trashTasks} onRestore={restoreTask} onPermanentDelete={permanentDeleteTask} canManageTasks={canManageTasks} notes={trashNotes} onRestoreNote={restoreNote} onPermanentDeleteNote={permanentDeleteNote} onEmptyTrash={emptyTrash} />}
             {view === 'chat' && (
               <ChatPanel
                 open

@@ -116,7 +116,7 @@ projectTasksRouter.get(
     if (!member) return res.status(403).json({ error: 'Bu projeye erişiminiz yok' });
 
     const tasks = await prisma.task.findMany({
-      where: { projectId },
+      where: { projectId, deletedAt: null },
       include: TASK_LIST_INCLUDE,
       orderBy: { position: 'asc' },
     });

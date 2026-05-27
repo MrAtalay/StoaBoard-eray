@@ -254,6 +254,104 @@ notesRouter.patch(
   }),
 );
 
+// ─── GET /api/notes/trash ─────────────────────────────────────────────────
+
+notesRouter.get(
+  '/trash',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const user = await loadUser(req);
+    const wsId = await resolveWorkspaceId(user);
+    if (!wsId) return res.json([]);
+
+    const collabRows = await prisma.noteCollaborator.findMany({
+      where: { userId: user.id },
+      select: { noteId: true },
+    });
+    const collabIds = collabRows.map((c) => c.noteId);
+
+    const notes = await prisma.note.findMany({
+      where: {
+        workspaceId: wsId,
+        deletedAt: { not: null },
+        AND: [{
+          OR: [
+            { visibility: 'workspace' },
+            { authorId: user.id },
+            ...(collabIds.length ? [{ id: { in: collabIds } }] : []),
+          ],
+        }],
+      },
+      include: NOTE_INCLUDE,
+      orderBy: { deletedAt: 'desc' },
+    });
+    res.json(notes.map((n) => noteToDict(n)));
+  }),
+);
+
+// ─── POST /api/notes/:id/restore ──────────────────────────────────────────
+
+notesRouter.post(
+  '/:noteId/restore',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const user = await loadUser(req);
+    const noteId = parseInt(req.params.noteId, 10);
+    const note = await prisma.note.findUnique({ where: { id: noteId }, include: NOTE_INCLUDE });
+    if (!note) return res.status(404).json({ error: 'Not bulunamadı' });
+    const member = await memberForWorkspace(user.id, note.workspaceId);
+    if (!canEditNote(user, note, member)) {
+      return res.status(403).json({ error: 'Bu işlem için yetkiniz yok' });
+    }
+    const restored = await prisma.note.update({
+      where: { id: noteId },
+      data: { deletedAt: null },
+      include: NOTE_INCLUDE,
+    });
+    res.json(noteToDict(restored));
+  }),
+);
+
+// ─── DELETE /api/notes/:id/permanent ──────────────────────────────────────
+
+notesRouter.delete(
+  '/:noteId/permanent',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const user = await loadUser(req);
+    const noteId = parseInt(req.params.noteId, 10);
+    const note = await prisma.note.findUnique({ where: { id: noteId }, include: NOTE_INCLUDE });
+    if (!note) return res.status(404).json({ error: 'Not bulunamadı' });
+    const member = await memberForWorkspace(user.id, note.workspaceId);
+    if (!canEditNote(user, note, member)) {
+      return res.status(403).json({ error: 'Bu notu silme yetkiniz yok' });
+    }
+
+    const recipients = new Set((note.collaborators || []).map((c) => c.userId));
+    recipients.add(note.authorId);
+    if (note.workspace?.ownerId) recipients.add(note.workspace.ownerId);
+
+    await prisma.$transaction([
+      prisma.noteLinkedTask.deleteMany({ where: { noteId } }),
+      prisma.noteCollaborator.deleteMany({ where: { noteId } }),
+      prisma.note.delete({ where: { id: noteId } }),
+    ]);
+
+    const io = req.app.get('io');
+    if (io) {
+      const evtPayload = { id: note.id, workspace_id: note.workspaceId, visibility: note.visibility, actor: user.slug };
+      try {
+        if (note.visibility === 'workspace') {
+          io.to(`ws_${note.workspaceId}`).emit('note_deleted', evtPayload);
+        } else {
+          for (const uid of recipients) io.to(`user_${uid}`).emit('note_deleted', evtPayload);
+        }
+      } catch {}
+    }
+    res.json({ ok: true });
+  }),
+);
+
 // ─── DELETE /api/notes/:id ─────────────────────────────────────────────────
 
 notesRouter.delete(
@@ -272,34 +370,19 @@ notesRouter.delete(
       return res.status(403).json({ error: 'Bu notu silme yetkiniz yok' });
     }
 
-    // Recipients delete'ten önce yakala
-    const recipients = new Set(
-      (note.collaborators || []).map((c) => c.userId),
-    );
-    recipients.add(note.authorId);
-    if (note.workspace?.ownerId) recipients.add(note.workspace.ownerId);
-
-    await prisma.$transaction([
-      prisma.noteLinkedTask.deleteMany({ where: { noteId } }),
-      prisma.noteCollaborator.deleteMany({ where: { noteId } }),
-      prisma.note.delete({ where: { id: noteId } }),
-    ]);
+    await prisma.note.update({ where: { id: noteId }, data: { deletedAt: new Date() } });
 
     const io = req.app.get('io');
-    const evtPayload = {
-      id: note.id,
-      workspace_id: note.workspaceId,
-      visibility: note.visibility,
-      actor: user.slug,
-    };
+    const evtPayload = { id: note.id, workspace_id: note.workspaceId, visibility: note.visibility, actor: user.slug };
     if (io) {
       try {
+        const recipients = new Set((note.collaborators || []).map((c) => c.userId));
+        recipients.add(note.authorId);
+        if (note.workspace?.ownerId) recipients.add(note.workspace.ownerId);
         if (note.visibility === 'workspace') {
           io.to(`ws_${note.workspaceId}`).emit('note_deleted', evtPayload);
         } else {
-          for (const uid of recipients) {
-            io.to(`user_${uid}`).emit('note_deleted', evtPayload);
-          }
+          for (const uid of recipients) io.to(`user_${uid}`).emit('note_deleted', evtPayload);
         }
       } catch {}
     }
