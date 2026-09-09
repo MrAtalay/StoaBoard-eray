@@ -43,7 +43,11 @@ export const mcpRouter = Router();
 
 // Sunucu yüzeyinin kendi sürümü — uygulamanın sürümünden ayrı ilerliyor.
 // İstemciler yetenek değişikliğini buradan görür.
-const MCP_VERSION = '0.2.0';
+// Dağıtımın indiğini anlamanın da tek yolu bu: uç anahtarsız isteğe her
+// durumda 401 döndüğü için "yeni kod canlıda mı" sorusu dışarıdan
+// cevaplanamıyor. Yüzeyi değiştiren her commit'te bump et; `initialize`
+// yanıtındaki serverInfo.version dağıtım kanıtı olarak okunabilsin.
+const MCP_VERSION = '0.2.1';
 
 // ─── Yardımcılar ───────────────────────────────────────────────────────────
 
