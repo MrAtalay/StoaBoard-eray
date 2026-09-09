@@ -217,8 +217,17 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       yazma yok. **Uçtan uca doğrulandı (9 Eylül, canlıda):** kapı kapalı,
       el sıkışma geçiyor, `whoami` Neon'dan gerçek veriyi getiriyor.
       Ayrıntı DEVIR.md'de.
-- [ ] **2. adım — okuma araçları.** `list_projects`, `list_tasks`, `get_task`.
-      Risk sıfır ve **değerin çoğu burada**: "Claude, kart aç" cümlesi panoda
+- [x] ~~**2. adım — okuma araçları.**~~ **Yapıldı (9 Eylül).** `list_projects`,
+      `list_columns`, `list_tasks`, `get_task`, `list_notes` ve `get_note`.
+      Hepsi mevcut HTTP API'ye kısa ömürlü gerçek oturumla gidiyor; MCP içinde
+      ikinci bir kapsamlama/izin mantığı yok. Liste yanıtlarında aktif çalışma
+      alanı görünür tutuluyor; görev süzgeçleri (`col`, `assignee`, `overdue`)
+      MCP katmanında uygulanıyor çünkü karşılık gelen uç yalnızca ham liste
+      döndürüyor.
+      **Bilinen sınır:** araçların saf birim testi yok; yetki ve veri kapsamı
+      mevcut API uçlarından geçerek doğrulanıyor. Okuma araçlarının gerçek
+      veriyle uçtan uca denemesi yazma araçlarından önce yapılmalı.
+      Ürün riski düşük ve **değerin çoğu burada**: "Claude, kart aç" cümlesi panoda
       zaten iki tık; kazandıran cümle "bugün bende ne var, ne gecikti".
       Yalnızca yazma aracı koyan entegrasyonlar iki haftada terk ediliyor.
 - [ ] **3. adım — yazma araçları.** En sona, çünkü **atama bildirim üretiyor.**

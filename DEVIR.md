@@ -15,8 +15,10 @@ güven, düzyazıya değil.
 **Aşağıdaki 1. bölüm 3 Eylül'den kalma ve dal tablosu bayat** (`main` o gün
 `df113c3`ti, bugün `0566ecf`). Bu bölüm onu geçersiz kılar.
 
-**Yapılan.** Claude'un panoyu MCP üzerinden sürmesi için kimlik iskeleti.
-Henüz yazma aracı yok, tek araç `whoami`. Planın tamamı ve gerekçeleri
+**Yapılan.** Claude'un panoyu MCP üzerinden sürmesi için kimlik iskeleti ve
+salt-okuma yüzeyi. Araçlar `whoami`, `list_projects`, `list_columns`,
+`list_tasks`, `get_task`, `list_notes` ve `get_note`; henüz yazma aracı yok.
+Planın tamamı ve gerekçeleri
 [TODO.md](TODO.md) → "MCP entegrasyonu" bölümünde; 2. adım okuma araçları,
 3. adım yazma araçları.
 
