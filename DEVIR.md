@@ -49,12 +49,41 @@ böyle bulundu. Pencere artık bir sonraki kayıtta kesiliyor. Aynı sınıf dil
 testinde de görülmüştü (`f3c5907`). **Bu tur bir testin yalan söylediğini
 gösterdi — yeni bir kapı eklerken önce kapıyı kırmayı dene.**
 
-### Uçtan uca deneme — yapılmadı, sıradaki iş
+### Uçtan uca deneme — YAPILDI, dördü de geçti (9 Eylül)
 
-`whoami` gerçek bir kullanıcıyla hiç çalıştırılmadı: Prisma sorgusu yapıyor ve
-ofis ağı 5432'yi kesiyor. `STOA_MCP_TOKENS` Railway'e girildi (9 Eylül), ama
-**bu commit'ler push edilene kadar dağıtımda `/mcp` diye bir uç yok** — Railway
-depodan derliyor. Sıra: push → dağıtım → aşağıdaki dört adım.
+Canlıda doğrulandı. Ofis ağından koşulabildi: engellenen 5432 (Postgres),
+HTTPS değil — veritabanına Railway kendi tarafından bağlanıyor. Yani bu tür
+denemeler için ev makinesini beklemeye gerek yokmuş, ders bu.
+
+| Adım | Sonuç |
+|---|---|
+| 1 · Anahtarsız çağrı | `401 err_mcp_token_invalid` — uç canlıda, kapı kapalı |
+| — Hız sınırı | `ratelimit-limit: 600`, `policy 600;w=900` |
+| 2 · El sıkışma | `serverInfo: stoaboard / 0.1.0` |
+| 3 · `tools/list` | tek araç: `whoami` |
+| 4 · `whoami` | Neon'dan gerçek veri: slug, ad, çalışma alanı, izinler |
+
+**Tek arıza slug'dı ve tahmin edilmişti:** `STOA_MCP_TOKENS`e önce `eray`
+yazılmıştı, doğrusu `eray-atalay`. Kod değişmedi, yalnızca ortam değişkeni.
+Hata `err_mcp_user_unknown` olarak döndü — yani kapalı başarısızlık çalıştı ve
+teşhis tek bakışta yapıldı. Gerçek slug'a bakmanın en hızlı yolu: giriş
+yapmışken `https://www.stoaboard.com/api/auth/me` — dönen JSON'daki `id`
+alanı slug'ın kendisi (`userToDict` onu `id` diye adlandırıyor).
+
+**Not:** apex `stoaboard.com` ofis ağından bağlantı sıfırlanmasıyla düşüyor,
+`www.stoaboard.com` çalışıyor. Denemeleri `www` üzerinden yap.
+
+**Yolda görülen:** `eray-atalay` çalışma alanı 1'de `owner` değil `member` ve
+dokuz izinden yedisine sahip — `view_reports` ile `manage_workspace` yok.
+Bugün bir şeyi engellemiyor ama rapor okuyan bir MCP aracı eklendiğinde o uç
+403 dönecek. Karar anı geldiğinde hatırla.
+
+### Denemeyi tekrarlamak için
+
+Bir sonraki turda uç hâlâ ayakta mı diye bakmak ya da yeni araç eklendikten
+sonra aynı yoldan geçmek için. **Kod değişikliği dağıtılmadan bu komutlar eski
+sürümü ölçer:** Railway depodan derliyor, ortam değişkenini eklemek tek başına
+yetmiyor — sıra push → dağıtım → deneme.
 
 ```bash
 TOKEN=<STOA_MCP_TOKENS içindeki anahtar>

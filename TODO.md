@@ -214,9 +214,9 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
 - [x] ~~**1. adım — kimlik iskeleti.**~~ **Yapıldı (9 Eylül, 13a012c).**
       `requireMcpToken`, `lib/mcpToken.js` (saf, 8 testli), `routes/mcp.js`,
       ayrı hız sınırı, başarısız denemeler denetim kaydına. Tek araç `whoami`,
-      yazma yok. **Doğrulama ölçütü henüz karşılanmadı:** uçtan uca deneme
-      yapılamadı, çünkü `whoami` Prisma sorgusu yapıyor ve ofis ağı 5432'yi
-      kesiyor. Dağıtımdan sonra ilk iş — adımlar DEVIR.md'de.
+      yazma yok. **Uçtan uca doğrulandı (9 Eylül, canlıda):** kapı kapalı,
+      el sıkışma geçiyor, `whoami` Neon'dan gerçek veriyi getiriyor.
+      Ayrıntı DEVIR.md'de.
 - [ ] **2. adım — okuma araçları.** `list_projects`, `list_tasks`, `get_task`.
       Risk sıfır ve **değerin çoğu burada**: "Claude, kart aç" cümlesi panoda
       zaten iki tık; kazandıran cümle "bugün bende ne var, ne gecikti".
