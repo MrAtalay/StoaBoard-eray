@@ -52,15 +52,27 @@ function ucKayitlari() {
     if (!ad.endsWith('.js')) continue;
     const src = fs.readFileSync(path.join(ROUTES, ad), 'utf8');
     // tasksRouter.patch( · notesRouter.post( · router.get(
-    for (const m of src.matchAll(/(\w*[Rr]outer)\.(get|post|patch|put|delete)\(/g)) {
+    const eslesmeler = [...src.matchAll(/(\w*[Rr]outer)\.(get|post|patch|put|delete)\(/g)];
+    for (let i = 0; i < eslesmeler.length; i += 1) {
+      const m = eslesmeler[i];
       // Kayıt çok satırlı yazılıyor:
       //     tasksRouter.patch(
       //       '/:taskId',
       //       requireAuth,
-      // Bu yüzden ara yazılım listesi için sabit bir pencereye bakıyoruz.
-      // 400 karakter, en uzun kayıtta bile ara yazılımları kapsıyor; handler
+      // Bu yüzden ara yazılım listesi için bir pencereye bakıyoruz. 400
+      // karakter, en uzun kayıtta bile ara yazılımları kapsıyor; handler
       // gövdesine taşacak kadar da uzun değil.
-      const pencere = src.slice(m.index, m.index + 400);
+      //
+      // Pencere BİR SONRAKİ KAYITTA da kesiliyor. Sabit 400 karakter tek
+      // başına yanlış bir güvence veriyordu: kayıtlar tek satıra sığdığında
+      // pencere sonraki kaydın içine taşıyor ve korumasız bir uç, komşusunun
+      // ara yazılımını görüp aklanıyordu. Aynı sınıf dil testinde de
+      // görülmüştü (f3c5907: "bir anahtar iki metni birden aklıyordu"):
+      // komşuluk, testin ölçtüğü şeyi sessizce genişletiyor.
+      const sinir = i + 1 < eslesmeler.length
+        ? Math.min(m.index + 400, eslesmeler[i + 1].index)
+        : m.index + 400;
+      const pencere = src.slice(m.index, sinir);
       const yolEsl = /['"`]([^'"`]*)['"`]/.exec(pencere);
       kayitlar.push({
         dosya: ad,
