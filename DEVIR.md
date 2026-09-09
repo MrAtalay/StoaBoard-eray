@@ -5,8 +5,81 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 3 Eylül 2026, ofis makinesinde (5432'nin kapalı olduğu ağ).
-`df113c3` alındı, üzerine dil turu + CI + yetki turu yapıldı.
+**Son güncelleme:** 9 Eylül 2026, ofis makinesinde (5432'nin kapalı olduğu ağ).
+`0566ecf` üzerine MCP entegrasyonunun 1. adımı yapıldı.
+
+---
+
+## 0. 9 Eylül turu — MCP entegrasyonu, 1. adım
+
+**Aşağıdaki 1. bölüm 3 Eylül'den kalma ve dal tablosu bayat** (`main` o gün
+`df113c3`ti, bugün `0566ecf`). Bu bölüm onu geçersiz kılar.
+
+**Yapılan.** Claude'un panoyu MCP üzerinden sürmesi için kimlik iskeleti.
+Henüz yazma aracı yok, tek araç `whoami`. Planın tamamı ve gerekçeleri
+[TODO.md](TODO.md) → "MCP entegrasyonu" bölümünde; 2. adım okuma araçları,
+3. adım yazma araçları.
+
+**Dokunulan dosyalar** — hepsi yeni ya da katkı niteliğinde, hiçbir mevcut
+davranış değişmedi:
+
+```
+YENİ  server/src/lib/mcpToken.js     anahtar çözümlemesi (saf, testli)
+YENİ  server/src/lib/mcpAuth.js      requireMcpToken ara yazılımı
+YENİ  server/src/routes/mcp.js       POST /mcp + whoami aracı
+      server/src/config.js           config.mcp.tokens
+      server/src/app.js              /mcp mount + ayrı hız sınırı
+      server/src/lib/audit.js        AUDIT.MCP_AUTH_FAILED
+      server/test/yetki.test.js      tarayıcı sıkılaştırıldı + MCP kapısı
+      server/test/guvenlik.test.js   8 regresyon testi
+      server/test/dil.test.js        HATA_DOSYALARI += mcp.js
+      client/src/data.jsx            4 err_mcp_* anahtarı (tr + en)
+      server/.env.example            STOA_MCP_TOKENS belgesi
+```
+
+**Testler 143 → 153, hepsi geçiyor.** Ön yüz derlemesi temiz.
+
+**Yolda bulunan ve kapatılan gerçek kusur:** `yetki.test.js`in uç tarayıcısı
+ara yazılımı sabit 400 karakterlik bir pencerede arıyordu. Kayıtlar tek satıra
+sığdığında pencere bir sonraki kaydın içine taşıyor ve **korumasız bir uç,
+komşusunun `requireAuth`ını görüp aklanıyordu.** Mevcut route dosyalarında
+kayıtlar çok satırlı olduğu için kusur hiç görünmemişti; MCP ucunun kapısını
+doğrulamak için bilerek korumasız bir uç bırakıldığında test yeşil kaldı ve
+böyle bulundu. Pencere artık bir sonraki kayıtta kesiliyor. Aynı sınıf dil
+testinde de görülmüştü (`f3c5907`). **Bu tur bir testin yalan söylediğini
+gösterdi — yeni bir kapı eklerken önce kapıyı kırmayı dene.**
+
+### Uçtan uca deneme — yapılmadı, sıradaki iş
+
+`whoami` gerçek bir kullanıcıyla hiç çalıştırılmadı: Prisma sorgusu yapıyor ve
+ofis ağı 5432'yi kesiyor. `STOA_MCP_TOKENS` Railway'e girildi (9 Eylül), ama
+**bu commit'ler push edilene kadar dağıtımda `/mcp` diye bir uç yok** — Railway
+depodan derliyor. Sıra: push → dağıtım → aşağıdaki dört adım.
+
+```bash
+TOKEN=<STOA_MCP_TOKENS içindeki anahtar>
+H='-H Content-Type:application/json -H Accept:application/json,text/event-stream'
+
+# 1) Uç var mı, kapı kapalı mı — anahtarsız
+curl -i -X POST https://stoaboard.com/mcp $H   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+#    beklenen: 401 + {"error":"err_mcp_token_invalid"}
+#    HTML dönerse dağıtım kodu almamış (SPA yedeği devrede) — en net teşhis
+
+# 2) El sıkışma — anahtarla, aynı gövde + -H "Authorization: Bearer $TOKEN"
+#    beklenen: serverInfo → stoaboard / 0.1.0
+
+# 3) {"jsonrpc":"2.0","id":2,"method":"tools/list"}
+#    beklenen: tek araç, whoami
+
+# 4) {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"whoami","arguments":{}}}
+#    beklenen: slug, ad, çalışma alanı adı, izin listesi
+#    err_mcp_user_unknown gelirse: STOA_MCP_TOKENS'teki slug users.slug ile
+#    eşleşmiyor. Tek düzeltilecek yer orası.
+```
+
+1–3 kodun ayakta olduğunu, 4 kimliğin ve veritabanı yolunun gerçekten
+çalıştığını kanıtlıyor. Dördü de geçerse 1. adım kapanır ve Claude istemcisine
+bağlamaya geçilebilir.
 
 ---
 

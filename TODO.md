@@ -176,6 +176,131 @@ Canlı sistem üzerinde yapılan inceleme sonucu bulunan ve düzeltilen hatalar.
 
 ## 🔜 Sıradakiler
 
+### 🔌 MCP entegrasyonu — Claude panoyu sürsün (9 Eylül 2026, başlandı)
+
+**Amaç.** Ekip bugün proje yönetimini Notion + MCP üzerinden yürütüyor, oysa
+pano elimizde. StoaBoard bir MCP sunucusu açarsa Claude Desktop / Cowork
+üzerinden görev açılır, atanır, taşınır, kapatılır; arkadaşların tarafında
+hiçbir şey değişmez — onlar sadece panoyu görür. Kazanç tek taraflı, ama araç
+AI'a hiç dokunmayan için de aynen çalışmaya devam ediyor. Notion ölmüyor:
+**belge Notion'da kalır, görev StoaBoard'a taşınır.**
+
+**Mimari kararı.** MCP sunucusu Express'in içinde bir router
+(`server/src/routes/mcp.js`), Railway'de ikinci servis yok. Prisma'ya
+**dokunmuyor** — kendi HTTP API'sini çağırıyor. Gerekçe: görev oluşturmak bu
+depoda satır yazmak değil. `POST /projects/:id/tasks` tek çağrıda izin
+kontrolü, atama bildirimi, soket yayını, aktivite kaydı ve `task_transitions`
+geçişini birlikte yapıyor. Doğrudan `INSERT` bunların hepsini atlar: kartlar
+bildirimsiz kalır, raporlarda görünmez, izin kapısından hiç geçmez. API
+üzerinden gidince kolon geçiş kuralları (`allowedNext`) da bedava geliyor —
+Claude yasak geçiş denerse 409 alıp sebebini okuyor.
+
+**Araç → uç eşlemesi.** Sekiz aracın yedisi mevcut uçlara birebir oturuyor,
+tek satır yeni iş mantığı yok:
+
+| Araç | Uç |
+|---|---|
+| `list_projects` / `create_project` | `GET` / `POST /api/projects` |
+| `list_tasks` | `GET /api/projects/:id/tasks` |
+| `get_task` | `GET /api/tasks/:id` |
+| `create_task` | `POST /api/projects/:id/tasks` |
+| `assign_task` · `move_task` · `close_task` | `PATCH /api/tasks/:id` |
+| `comment_task` | `POST /api/tasks/:id/comments` |
+| `my_open_tasks` | **yok — aşağıya bak** |
+
+Kapatma ayrı uç değil: kartı `isDone` kolonuna taşımak `completedAt`i yazıyor,
+ilerlemeyi 100 yapıyor, geçişi kaydediyor.
+
+- [x] ~~**1. adım — kimlik iskeleti.**~~ **Yapıldı (9 Eylül, 13a012c).**
+      `requireMcpToken`, `lib/mcpToken.js` (saf, 8 testli), `routes/mcp.js`,
+      ayrı hız sınırı, başarısız denemeler denetim kaydına. Tek araç `whoami`,
+      yazma yok. **Doğrulama ölçütü henüz karşılanmadı:** uçtan uca deneme
+      yapılamadı, çünkü `whoami` Prisma sorgusu yapıyor ve ofis ağı 5432'yi
+      kesiyor. Dağıtımdan sonra ilk iş — adımlar DEVIR.md'de.
+- [ ] **2. adım — okuma araçları.** `list_projects`, `list_tasks`, `get_task`.
+      Risk sıfır ve **değerin çoğu burada**: "Claude, kart aç" cümlesi panoda
+      zaten iki tık; kazandıran cümle "bugün bende ne var, ne gecikti".
+      Yalnızca yazma aracı koyan entegrasyonlar iki haftada terk ediliyor.
+- [ ] **3. adım — yazma araçları.** En sona, çünkü **atama bildirim üretiyor.**
+      Sohbet kapsam dışı bırakıldı, ama "sadece pano" dendiğinde bile dışa
+      dokunan nokta bu: kart açmak sessiz, atamak arkadaşının ekranında beliriyor.
+- [ ] **4. adım — `my_open_tasks` ucu.** İki hafta gerçek kullanımdan sonra,
+      ihtiyacın şekli belli olunca. İlk sürümde MCP projeleri gezip birleştirir;
+      üç kişi ve birkaç projede yeni uç gerekmiyor.
+
+**Kimlik: token `.env`de, tabloda değil.** Şemada token modeli yok ve bu depoda
+şema değişikliği bilinçli, elle yapılan bir iş — bir tablo uğruna o zinciri
+işletmeye değmedi. `STOA_MCP_TOKENS` içinde `kullanıcı_slug:anahtar` çiftleri,
+üç kişi için üç satır. **Ödünü açıkça:** iptal/rotasyon arayüzü yok, token
+değiştirmek Railway değişkenini düzenleyip yeniden dağıtmak demek. Üç kişide
+sorun değil, on kişide değil — o noktada `ApiToken` tablosuna geçilir.
+Token **kişiye** bağlı, ekibe değil: aksi halde denetim kaydında "kim yaptı"nın
+cevabı yok ve bildirim kime gidecek belirsiz. Kişiye bağlı olması kapsamı da
+kendiliğinden çözüyor — Claude tam olarak o kullanıcının gördüğünü görür,
+MCP katmanında ikinci bir izin modeli belirmez.
+
+**"Claude üzerinden" izi `lib/audit.js`e düşüyor.** Denetim kaydı zaten "kim ne
+yaptı" tablosu: serbest `action` + `detail` alıyor, hiçbir koşulda hata
+fırlatmıyor, isteği bekletmiyor. Her MCP yazma işlemi bu sarmalın içinden
+geçiyor (`mcp.task_created`, `mcp.task_moved`, …), böylece panodan yapılan
+işlemle Claude'un yaptığı ayrışıyor ve **mevcut route dosyalarının tek satırına
+dokunulmuyor.**
+
+- [x] ~~**`yetki.test.js` genişletilecek — muafiyet yazılmayacak.**~~
+      **Yapıldı (9 Eylül).** Ayrıca tarayıcının kendisinde gerçek bir kusur
+      çıktı ve ayrı commit'te kapatıldı (`4836220`): ara yazılım penceresi
+      sabit 400 karakterdi ve sınırı yoktu, tek satırlık kayıtlarda komşunun
+      `requireAuth`ını sayıyordu. Kapıyı bilerek kırmaya çalışırken bulundu.
+      Kararın gerekçesi: MCP ucu bearer
+      token taşıyor, oturum çerezi değil; test her uçta `requireAuth` arıyor.
+      Ucu `ACIK_UCLAR`a yazmak kolay ama yanlış olurdu: uç *açık* değil, **farklı**
+      korunuyor. Bunun yerine test `requireMcpToken`ı denk koruma sayacak ve her
+      MCP ucunda onu **şart koşacak**. CLAUDE.md'deki merdivende bir basamak
+      yukarısı; muafiyet listesi bayatlar, kapı bayatlamaz.
+- [x] ~~**`dil.test.js` → `HATA_DOSYALARI`na `mcp.js`.**~~ **Yapıldı (9 Eylül).**
+      Dört `err_mcp_*` kodu iki sözlüğe de girdi. MCP araç açıklamaları kural
+      dışı: onları kullanıcı görmüyor, model okuyor ve cevabını zaten
+      kullanıcının diliyle veriyor.
+- [x] ~~**Regresyon testi** (`guvenlik.test.js`).~~ **Yapıldı (9 Eylül).** Sekiz
+      test, hepsi saf: anahtar yoksa / tanınmıyorsa / kullanıcısı silinmişse
+      401; kısa anahtar atılıyor; aynı anahtar iki kişideyse ikisi de düşüyor;
+      ham anahtar bellekte durmuyor. Korunan sınıf, "yapılandırılmamışsa
+      serbest bırak" — bu depodaki üç kusurun kök sebebi sessiz atlamaydı.
+- [x] ~~**Hız sınırı.**~~ **Yapıldı (9 Eylül):** `/mcp` için 600/15dk ≈ 40
+      istek/dk. `/api/auth`un 30'luk sınırı burada normal kullanımı keserdi —
+      MCP konuşkan bir protokol, `initialize`/`tools/list`/`tools/call` ayrı
+      isteklerdir. Üç kişi tek ofis IP'sinin arkasından rahat çalışır, döngüye
+      giren bir model durur.
+- [x] ~~**Yeni bağımlılık:** `@modelcontextprotocol/sdk`.~~ **Kuruldu (1.30.0).**
+      Transport **Streamable HTTP**, durum tutmayan kipte ve düz JSON yanıtla
+      (`enableJsonResponse`) — araçlar istek/yanıt biçiminde, akışa ihtiyaç yok
+      ve Railway'in ters vekili uzun ömürlü bağlantıyı boşta kalma zaman
+      aşımıyla düşürebiliyor. Müstakil HTTP+SSE zaten spesifikasyonda geriye
+      dönük uyumluluğa indirilmişti.
+      **Kipin dayandığı varsayım:** SDK sunucusu `initialize` görmemiş isteği
+      reddetmiyor — her istekte yeni sunucu kurulduğu için bu şart. 1.30.0'da
+      doğrulandı; sürüm yükseltmesinde yeniden bakılmalı.
+
+**Yan kazanç.** Bu kullanım biçimi `task_transitions` ve `work_logs`'a ilk kez
+gerçek veri yazar. Raporlama katmanı bugüne kadar boş bir odaydı; iş akışı
+oturduğunda ilk anlamlı raporlar oradan çıkar.
+
+**Asıl risk teknik değil, alışkanlıkta.** Döngünün tamamı arkadaşların panoyu
+dürüst tutmasına bağlı. Görevler geç kapanırsa Claude tarafındaki görüntü bayat
+olur — ve bayat bilgiye güvenmek, hiç bilgi olmamasından kötüdür. Panoyu
+güncellemek ucuz kalmalı: az görev, az durum. Sadelik iddiası burada işe yarıyor.
+
+**Kapsam dışı (bilinçli).** Sohbete **yazmak**: dışa dönük, bildirim üreten bir
+eylem ve "mesajı kim yazdı" sorusunu doğuruyor — "Claude" diye bir kullanıcı
+belirirse kanal kirlenir, senin adına yazarsa arkadaşların sana yazmışsın sanır.
+Sohbeti **okumak** değerli (kanaldaki karar panoda görünmüyor) ve ileride
+düşünülebilir; yazmak ilk sürümde yok.
+
+**Yolda bulundu, ayrı iş:** `GET /api/workspaces/me/tasks` silinmiş görevleri de
+döndürüyor (`deletedAt` filtresi yok). Notlar'ın bağlantı seçicisi için yazılmış
+hafif bir uç, çöp kutusundaki kartlar orada listeleniyor.
+
+
 ### Eray — yerelde çalıştırma kısıtı
 
 Bu bölüm koda değil, **çalışma ortamına** ait. Kararı ve denemesi Eray'da;

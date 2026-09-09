@@ -43,7 +43,7 @@ dil turu: Raporlar ve süre kaydı ekranları, sonra on route dosyasındaki
 sunucu hata mesajları çeviriye bağlandı (`32644b9`, `2449240`, `df113c3`).
 Öksüz `list.jsx` silindi.
 
-Test sayısı **143**, hepsi geçiyor. Sözlükler TR/EN **1154'er anahtar**
+Test sayısı **153**, hepsi geçiyor. Sözlükler TR/EN **1154'er anahtar**
 (106'sı `err_` kodu), de/es/ru 43'er.
 
 ---
@@ -95,7 +95,7 @@ tarayıcı içi SQL Editor'ü HTTPS üzerinden çalıştığı için o ağlarda 
 
 ## Çalışma biçimi
 
-**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 143 test,
+**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 153 test,
 veritabanı gerektirmez, birkaç saniye sürer. Çıktıda `[db] warmup failed` /
 "Can't reach database server" görürsen bu bir test hatası **değil**: uygulama
 modülü yüklenirken bağlantıyı deniyor, kurumsal ağda 5432 kapalı. Ölçüt en
@@ -117,7 +117,7 @@ derlemeyi çalıştırıp kırmızıysa push'u iptal ediyor. Kancalar `.git/hook
 içinde takip edilmediği için depoda `.githooks/` klasöründe duruyorlar; komut
 git'e oraya bakmasını söylüyor. Bilerek atlamak için `git push --no-verify`.
 
-**Kanca ofis ağında da çalışır.** 143 testin hiçbiri veritabanı istemiyor;
+**Kanca ofis ağında da çalışır.** 153 testin hiçbiri veritabanı istemiyor;
 çalışmayan tek şey uygulamanın kendisi. Kanca sahte bir `DATABASE_URL` ile
 koşuyor ki test koşusu ağa bağımlı hale gelip asılı kalmasın.
 
