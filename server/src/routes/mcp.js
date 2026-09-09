@@ -6,18 +6,20 @@
 //
 // ── Neden bu dosya iş mantığı taşımıyor ───────────────────────────────────
 //
-// Araçlar veritabanına değil, uygulamanın kendi HTTP API'sine yazar. Gerekçe:
-// bu depoda görev oluşturmak satır yazmak değil. `POST /projects/:id/tasks`
-// tek çağrıda izin kontrolünü, atama bildirimini, soket yayınını, aktivite
-// kaydını ve `task_transitions` geçişini birlikte yapıyor. Doğrudan Prisma'ya
-// yazmak bunların hepsini atlardı: kartlar bildirimsiz kalır, raporlarda
-// görünmez, izin kapısından hiç geçmezdi. Kolon geçiş kuralları (`allowedNext`)
-// da API üzerinden bedava geliyor — yasak bir geçişte Claude 409 alıp sebebini
-// okuyor.
+// Araçlar veritabanına değil, uygulamanın kendi HTTP API'sine gidiyor
+// (`lib/selfApi.js`). Gerekçe: bu depoda bir görevi okumak bir satırı okumak
+// değil. Kapsamlama dört ayrı biçimde yapılıyor — `loadTaskWithAccess`,
+// `loadProjectWithAccess`, aktif çalışma alanı, `userId: user.id` — ve dördü
+// de doğru. Prisma'ya inseydik bu mantığı yeniden yazardık; yani ikinci bir
+// izin modeli, yani er ya da geç birinciyle ayrışan bir izin modeli.
 //
-// Bu ilkenin tek istisnası `whoami`: kullanıcının kendi kimliğini okuması bir
-// iş kuralı taşımıyor, yan etkisi yok. Yazma araçları (2. ve 3. adım) API
-// çağrısı yapacak.
+// Yazma tarafında aynı karar daha da ağır basıyor: `POST /projects/:id/tasks`
+// tek çağrıda izin kontrolünü, atama bildirimini, soket yayınını, aktivite
+// kaydını ve `task_transitions` geçişini birlikte yapıyor.
+//
+// Tek istisna `whoami` ve aktif alan okuması: kullanıcının kendi kimliği bir
+// iş kuralı taşımıyor, yan etkisi yok ve API'de birebir karşılığı olan bir uç
+// da yok.
 //
 // ── Araç açıklamaları neden çevrilmiyor ───────────────────────────────────
 //
@@ -27,6 +29,7 @@
 // taşıyor — `dil.test.js` bu dosyayı da tarıyor.
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
@@ -34,26 +37,77 @@ import { prisma } from '../db.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { requireMcpToken } from '../lib/mcpAuth.js';
 import { currentMember, memberPermissions } from '../lib/workspace.js';
+import { callSelf } from '../lib/selfApi.js';
 
 export const mcpRouter = Router();
 
 // Sunucu yüzeyinin kendi sürümü — uygulamanın sürümünden ayrı ilerliyor.
 // İstemciler yetenek değişikliğini buradan görür.
-const MCP_VERSION = '0.1.0';
+const MCP_VERSION = '0.2.0';
+
+// ─── Yardımcılar ───────────────────────────────────────────────────────────
+
+/** Başarılı araç yanıtı. */
+function sonuc(veri) {
+  return { content: [{ type: 'text', text: JSON.stringify(veri, null, 2) }] };
+}
+
+/**
+ * Başarısız araç yanıtı.
+ *
+ * `isError` ile dönüyor ki model bunu bir cevap değil bir engel olarak okusun.
+ * Gövde olduğu gibi aktarılıyor: "bu projeye erişiminiz yok" bilgisi modele
+ * ulaşmalı ki yeniden denemek yerine kullanıcıya söylesin.
+ */
+function hata(yanit) {
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({ status: yanit.status, ...(yanit.data || {}) }, null, 2),
+      },
+    ],
+  };
+}
+
+/**
+ * Kullanıcının aktif çalışma alanı.
+ *
+ * Her listeleme yanıtına ekleniyor. Sebebi kolaylık değil, güvenlik: MCP
+ * kullanıcının AKTİF alanını takip ediyor ve o alan tarayıcıdan bir tıkla
+ * değişebiliyor. Yanıtın içinde alan adı yazmazsa "Claude kartı yanlış panoya
+ * açmış" durumu ancak iş işten geçtikten sonra fark edilir. Adı her yanıta
+ * koymak, modelin yanlış yerde olduğunu kendisinin görmesini sağlıyor.
+ */
+async function aktifAlan(user) {
+  const member = await currentMember(user);
+  if (!member?.workspaceId) return { member: null, workspace: null };
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: member.workspaceId },
+    select: { id: true, name: true },
+  });
+  return { member, workspace: workspace || null };
+}
+
+// ─── MCP sunucusu ──────────────────────────────────────────────────────────
 
 /**
  * İsteği yapan kullanıcıya bağlı bir MCP sunucusu kurar.
  *
  * Her istek için yeniden kuruluyor. Durum tutmayan (stateless) kip bilinçli:
  * Railway süreci yeniden başlattığında ya da ikinci bir örnek açtığında
- * yarıda kalan oturum diye bir şey olmuyor. Bedeli, istek başına birkaç
- * nesne — ölçülebilir bir maliyet değil.
+ * yarıda kalan oturum diye bir şey olmuyor.
  */
 function buildMcpServer(user) {
   const server = new McpServer(
     { name: 'stoaboard', version: MCP_VERSION },
     { capabilities: { tools: {} } },
   );
+
+  const salt = { readOnlyHint: true };
+
+  // ── whoami ───────────────────────────────────────────────────────────────
 
   server.registerTool(
     'whoami',
@@ -63,37 +117,154 @@ function buildMcpServer(user) {
         'Bağlantının hangi StoaBoard kullanıcısı adına açıldığını, aktif çalışma '
         + 'alanını ve o alandaki izinleri döner. Bir işe başlamadan önce kimin '
         + 'adına hareket ettiğini doğrulamak için kullan.',
-      annotations: { readOnlyHint: true },
+      annotations: salt,
     },
     async () => {
-      const member = await currentMember(user);
-      // currentMember yalnızca rolü include ediyor; çalışma alanının adı ayrı
-      // okunuyor. Üyelik yoksa (yeni kullanıcı) alan null kalır — uydurulmuş
-      // bir ad döndürmek modelin yanlış panoya yazmasına yol açardı.
-      const workspace = member?.workspaceId
-        ? await prisma.workspace.findUnique({
-            where: { id: member.workspaceId },
-            select: { id: true, name: true },
-          })
-        : null;
+      const { member, workspace } = await aktifAlan(user);
+      return sonuc({
+        user: { slug: user.slug, name: user.name },
+        workspace,
+        role: member?.role || null,
+        permissions: memberPermissions(member),
+      });
+    },
+  );
 
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(
-              {
-                user: { slug: user.slug, name: user.name },
-                workspace: workspace || null,
-                role: member?.role || null,
-                permissions: memberPermissions(member),
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+  // ── list_projects ────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'list_projects',
+    {
+      title: 'Projeler',
+      description:
+        'Aktif çalışma alanındaki projeleri, açık görev sayılarıyla birlikte '
+        + 'listeler. Diğer araçların istediği project_id buradan alınır. '
+        + 'Yanıttaki workspace alanı hangi panoda olduğunu söyler — beklediğin '
+        + 'alan değilse kullanıcıya sor, devam etme.',
+      annotations: salt,
+    },
+    async () => {
+      const yanit = await callSelf(user, '/api/projects');
+      if (!yanit.ok) return hata(yanit);
+      const { workspace } = await aktifAlan(user);
+      return sonuc({ workspace, projects: yanit.data });
+    },
+  );
+
+  // ── list_columns ─────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'list_columns',
+    {
+      title: 'Kolonlar',
+      description:
+        'Bir projenin kolonlarını sırasıyla döner. Görev taşımadan önce hedef '
+        + 'kolonun slug değerini buradan al; "tamamlandı" anlamına gelen kolon '
+        + 'is_done alanıyla işaretlidir. allowed_next doluysa o kolondan '
+        + 'yalnızca listedeki kolonlara geçilebilir.',
+      inputSchema: { project_id: z.number().int().describe('list_projects içindeki id') },
+      annotations: salt,
+    },
+    async ({ project_id }) => {
+      const yanit = await callSelf(user, `/api/projects/${project_id}/columns`);
+      return yanit.ok ? sonuc(yanit.data) : hata(yanit);
+    },
+  );
+
+  // ── list_tasks ───────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'list_tasks',
+    {
+      title: 'Görevler',
+      description:
+        'Bir projenin görevlerini listeler. Süzgeçler birleşimli çalışır: col '
+        + 'kolon slug\'ı, assignee kullanıcı slug\'ı, overdue=true ise yalnızca '
+        + 'tarihi geçmiş ve henüz tamamlanmamış olanlar döner. Süzgeç vermezsen '
+        + 'projedeki bütün açık görevler gelir.',
+      inputSchema: {
+        project_id: z.number().int(),
+        col: z.string().optional().describe('kolon slug\'ı, örn. "todo"'),
+        assignee: z.string().optional().describe('kullanıcı slug\'ı, örn. "eray-atalay"'),
+        overdue: z.boolean().optional(),
+      },
+      annotations: salt,
+    },
+    async ({ project_id, col, assignee, overdue }) => {
+      const yanit = await callSelf(user, `/api/projects/${project_id}/tasks`);
+      if (!yanit.ok) return hata(yanit);
+
+      const bugun = new Date().toISOString().slice(0, 10);
+      const gorevler = (Array.isArray(yanit.data) ? yanit.data : []).filter((t) => {
+        if (col && t.col !== col) return false;
+        if (assignee && !(t.assignees || []).includes(assignee)) return false;
+        // Gecikme ölçütü: tarihi geçmiş VE henüz tamamlanmamış. Yalnızca
+        // tarihe bakmak, bitmiş işleri de gecikmiş gösterirdi.
+        if (overdue && !(t.due && t.due < bugun && !t.completed_at)) return false;
+        return true;
+      });
+
+      return sonuc({ project_id, count: gorevler.length, tasks: gorevler });
+    },
+  );
+
+  // ── get_task ─────────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'get_task',
+    {
+      title: 'Görev detayı',
+      description:
+        'Tek bir görevin tamamını döner: açıklama, alt görevler, yorumlar, '
+        + 'etiketler, atananlar ve tarihler. Bir işi anlamadan önce buraya bak; '
+        + 'list_tasks yalnızca özet veriyor.',
+      inputSchema: { task_id: z.number().int() },
+      annotations: salt,
+    },
+    async ({ task_id }) => {
+      const yanit = await callSelf(user, `/api/tasks/${task_id}`);
+      return yanit.ok ? sonuc(yanit.data) : hata(yanit);
+    },
+  );
+
+  // ── list_notes ───────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'list_notes',
+    {
+      title: 'Notlar',
+      description:
+        'Aktif çalışma alanında görebildiğin notları listeler — gövde metni '
+        + 'olmadan. İçeriği okumak için get_note kullan. Yalnızca çalışma alanı '
+        + 'görünürlüğündeki notlar ve senin yazarı ya da ortak yazarı olduğun '
+        + 'özel notlar döner.',
+      inputSchema: {
+        archived: z.boolean().optional().describe('true ise arşivlenmiş notlar da gelir'),
+      },
+      annotations: salt,
+    },
+    async ({ archived }) => {
+      const yanit = await callSelf(user, `/api/notes${archived ? '?archived=1' : ''}`);
+      return yanit.ok ? sonuc(yanit.data) : hata(yanit);
+    },
+  );
+
+  // ── get_note ─────────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'get_note',
+    {
+      title: 'Not detayı',
+      description:
+        'Tek bir notun gövdesini ve bağlı olduğu görevleri döner. Bir kartın '
+        + 'neden var olduğunu anlamak için: gereksinim notu genellikle görevlere '
+        + 'bağlıdır ve get_task yanıtındaki bağlı notlardan buraya gelinir.',
+      inputSchema: { note_id: z.number().int() },
+      annotations: salt,
+    },
+    async ({ note_id }) => {
+      const yanit = await callSelf(user, `/api/notes/${note_id}`);
+      return yanit.ok ? sonuc(yanit.data) : hata(yanit);
     },
   );
 
