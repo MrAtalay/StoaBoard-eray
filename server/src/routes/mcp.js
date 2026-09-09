@@ -53,6 +53,24 @@ function sonuc(veri) {
 }
 
 /**
+ * Kimlik argümanı şeması — metin de sayı da kabul eder.
+ *
+ * Düz `z.number()` buradaki zinciri kırıyordu ve uçtan uca denemede yakalandı:
+ * `projectToDict` ve `taskToDict` kimliği bilerek METİN döndürüyor
+ * (`id: String(p.id)`, Python aslından taşınan sözleşme; ön yüz buna yaslanıyor).
+ * Yani `list_projects` `"21"` veriyor, araç açıklaması "diğer araçların istediği
+ * project_id buradan alınır" diyor, ve `list_columns` o değeri
+ * `-32602 expected number, received string` ile geri çeviriyordu. Belgelenen
+ * yolun tamamı — projeden kolona, kolondan göreve — kullanılamaz durumdaydı.
+ *
+ * Düzeltme API'de değil burada: `String(id)` sözleşmesini değiştirmek ön yüzü
+ * kırar. Dönüşüm MCP katmanında yapılıyor, çünkü uyumsuzluk da burada doğuyor.
+ * `coerce` yalnızca sayıya çevrilebilen metni geçirir; "abc" NaN'a düşüp
+ * `int()` kapısında elenir.
+ */
+const kimlik = (aciklama) => z.coerce.number().int().positive().describe(aciklama);
+
+/**
  * Başarısız araç yanıtı.
  *
  * `isError` ile dönüyor ki model bunu bir cevap değil bir engel olarak okusun.
@@ -158,11 +176,14 @@ function buildMcpServer(user) {
     {
       title: 'Kolonlar',
       description:
-        'Bir projenin kolonlarını sırasıyla döner. Görev taşımadan önce hedef '
-        + 'kolonun slug değerini buradan al; "tamamlandı" anlamına gelen kolon '
-        + 'is_done alanıyla işaretlidir. allowed_next doluysa o kolondan '
-        + 'yalnızca listedeki kolonlara geçilebilir.',
-      inputSchema: { project_id: z.number().int().describe('list_projects içindeki id') },
+        'Bir projenin kolonlarını sırasıyla döner. Yanıttaki id alanı kolonun '
+        + 'slug\'ıdır ("todo", "doing", …) — list_tasks\'in col süzgecine ve '
+        + 'görevlerin col alanına giren değer budur; db_id sayısal satır '
+        + 'kimliğidir, araçlarda kullanma. "Tamamlandı" anlamına gelen kolon '
+        + 'is_done ile işaretlidir; hiçbir kolonda işaretli değilse bu pano '
+        + '"bitti" kavramını tanımlamamış demektir, kullanıcıya söyle. '
+        + 'allowed_next doluysa o kolondan yalnızca listedeki kolonlara geçilebilir.',
+      inputSchema: { project_id: kimlik('list_projects içindeki id') },
       annotations: salt,
     },
     async ({ project_id }) => {
@@ -183,8 +204,8 @@ function buildMcpServer(user) {
         + 'tarihi geçmiş ve henüz tamamlanmamış olanlar döner. Süzgeç vermezsen '
         + 'projedeki bütün açık görevler gelir.',
       inputSchema: {
-        project_id: z.number().int(),
-        col: z.string().optional().describe('kolon slug\'ı, örn. "todo"'),
+        project_id: kimlik('list_projects içindeki id'),
+        col: z.string().optional().describe('kolon slug\'ı — list_columns yanıtındaki id, örn. "todo"'),
         assignee: z.string().optional().describe('kullanıcı slug\'ı, örn. "eray-atalay"'),
         overdue: z.boolean().optional(),
       },
@@ -218,7 +239,7 @@ function buildMcpServer(user) {
         'Tek bir görevin tamamını döner: açıklama, alt görevler, yorumlar, '
         + 'etiketler, atananlar ve tarihler. Bir işi anlamadan önce buraya bak; '
         + 'list_tasks yalnızca özet veriyor.',
-      inputSchema: { task_id: z.number().int() },
+      inputSchema: { task_id: kimlik('list_tasks içindeki id') },
       annotations: salt,
     },
     async ({ task_id }) => {
@@ -259,7 +280,7 @@ function buildMcpServer(user) {
         'Tek bir notun gövdesini ve bağlı olduğu görevleri döner. Bir kartın '
         + 'neden var olduğunu anlamak için: gereksinim notu genellikle görevlere '
         + 'bağlıdır ve get_task yanıtındaki bağlı notlardan buraya gelinir.',
-      inputSchema: { note_id: z.number().int() },
+      inputSchema: { note_id: kimlik('list_notes içindeki id') },
       annotations: salt,
     },
     async ({ note_id }) => {
