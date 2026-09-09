@@ -7,6 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { parseMcpTokens } from './lib/mcpToken.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -57,6 +59,14 @@ function getSecretKey() {
   return key;
 }
 
+// Anahtarlar config nesnesinden önce çözümleniyor ki atılan girdiler açılışta
+// bir kez, yüksek sesle raporlansın. Sessizce düşen bir anahtar, "neden 401
+// alıyorum" diye saatler yakar.
+const mcpTokens = parseMcpTokens(process.env.STOA_MCP_TOKENS);
+for (const uyari of mcpTokens.warnings) {
+  console.warn('[mcp] anahtar atlandı:', uyari);
+}
+
 export const config = {
   isProduction,
   port: parseInt(process.env.PORT || '5000', 10),
@@ -69,6 +79,11 @@ export const config = {
     cookieHttpOnly: true,
     cookieSameSite: 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 gün
+  },
+  mcp: {
+    // Claude'un panoyu sürdüğü MCP ucu. Değişken tanımsızsa harita boş kalır
+    // ve uç her isteği reddeder — özellik kapalı demektir, açık değil.
+    tokens: mcpTokens.tokens,
   },
   maxContentLength: 10 * 1024 * 1024, // 10 MB
   staticDir: path.resolve(ROOT_DIR, '..', 'static'),

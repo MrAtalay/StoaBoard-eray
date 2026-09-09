@@ -38,6 +38,7 @@ import {
   chatUploadRouter,
 } from './routes/attachments.js';
 import { channelsRouter } from './routes/channels.js';
+import { mcpRouter } from './routes/mcp.js';
 import { chatRouter } from './routes/chat.js';
 import {
   taskWorkLogsRouter,
@@ -113,6 +114,19 @@ export function createApp() {
   });
   app.use('/api/auth', authLimiter);
 
+  // MCP ucu ayrı bir limitleyici istiyor: protokol konuşkan (initialize,
+  // tools/list, tools/call ayrı isteklerdir), yani /api/auth'un 30'luk sınırı
+  // normal kullanımı keserdi. 600/15dk ≈ 40 istek/dk; üç kişi tek ofis IP'sinin
+  // arkasından rahat çalışır, döngüye giren bir model ise durur.
+  const mcpLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'err_mcp_rate_limited', message: 'Çok fazla MCP isteği' },
+  });
+  app.use('/mcp', mcpLimiter);
+
   // --- Güvenlik header'ları (Flask after_request karşılığı) ---
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -146,6 +160,12 @@ export function createApp() {
   app.use('/api/notes', notesRouter);
   app.use('/api/tasks', taskLinkedNotesRouter);
   app.use('/api', apiRouter);
+
+  // MCP bilinçli olarak /api altında değil: /api'nin altındaki her şey
+  // tarayıcıdan, oturum çereziyle çağrılıyor. Burası tek istisna — istek
+  // kullanıcının Claude istemcisinden geliyor ve çerez taşımıyor. Ayrı yol,
+  // ayrı kapı (requireMcpToken), karışmasın.
+  app.use('/mcp', mcpRouter);
 
   // --- Vite build assets (hashed filenames → immutable cache) ---
   app.use('/assets', express.static(path.join(config.distDir, 'assets'), {

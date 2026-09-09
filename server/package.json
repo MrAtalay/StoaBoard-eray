@@ -18,6 +18,7 @@
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@prisma/client": "^5.22.0",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",

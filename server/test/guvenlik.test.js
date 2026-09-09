@@ -24,6 +24,7 @@ import {
   hasAnyPermission,
 } from '../src/lib/permissions.js';
 import { renderNotification } from '../src/lib/mailer.js';
+import { parseMcpTokens, lookupSlug, MIN_TOKEN_LENGTH } from '../src/lib/mcpToken.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -355,5 +356,79 @@ describe('mentionAllowed — bahsetme bildirimi görünürlük kapısı', () => 
   test('boş çağrı — kapalı başarısızlık (varsayılan red)', () => {
     assert.equal(mentionAllowed(), false);
     assert.equal(mentionAllowed({}), false);
+  });
+});
+
+// ─── MCP anahtarlarının çözümlenmesi ───────────────────────────────────────
+//
+// Korunan kusur sınıfı: "yapılandırılmamışsa serbest bırak". Bu depodaki üç
+// kusurun kök sebebi sessiz atlamaydı (`if (!window.io) return`,
+// `window.showToast?.()`, `if (satır && !yetki)`); MCP ucunda aynı refleks,
+// anahtar tanımlanmadığında panoyu internete açmak anlamına gelirdi.
+//
+// İkinci koruduğu şey: kimliği belirsiz bırakan yapılandırma. Aynı anahtarın
+// iki kişiye verilmesi "muhtemelen ilki kastedilmiştir" diye yorumlanmaz —
+// denetim kaydında yanlış isim, yanlış kişiye giden bildirim demek olurdu.
+
+describe('parseMcpTokens — yapılandırma çözümlemesi', () => {
+  const GECERLI = 'a'.repeat(MIN_TOKEN_LENGTH);
+  const GECERLI2 = 'b'.repeat(MIN_TOKEN_LENGTH);
+
+  test('tanımsız/boş değer: harita boş — özellik kapalı, açık değil', () => {
+    for (const ham of [undefined, null, '', '   ', '\n']) {
+      const { tokens } = parseMcpTokens(ham);
+      assert.equal(tokens.size, 0);
+      assert.equal(lookupSlug(tokens, GECERLI), null);
+    }
+  });
+
+  test('geçerli çift çözümleniyor, yanlış anahtar reddediliyor', () => {
+    const { tokens, warnings } = parseMcpTokens(`eray:${GECERLI}`);
+    assert.deepEqual(warnings, []);
+    assert.equal(lookupSlug(tokens, GECERLI), 'eray');
+    assert.equal(lookupSlug(tokens, GECERLI2), null);
+    assert.equal(lookupSlug(tokens, ''), null);
+    assert.equal(lookupSlug(tokens, undefined), null);
+  });
+
+  test('ham anahtar bellekte tutulmuyor — harita yalnızca özet taşıyor', () => {
+    const { tokens } = parseMcpTokens(`eray:${GECERLI}`);
+    assert.equal([...tokens.keys()].includes(GECERLI), false);
+    assert.match([...tokens.keys()][0], /^[0-9a-f]{64}$/);
+  });
+
+  test('kısa anahtar atılıyor ve gürültü çıkarıyor', () => {
+    const kisa = 'a'.repeat(MIN_TOKEN_LENGTH - 1);
+    const { tokens, warnings } = parseMcpTokens(`eray:${kisa}`);
+    assert.equal(tokens.size, 0);
+    assert.equal(warnings.length, 1);
+    assert.equal(lookupSlug(tokens, kisa), null);
+  });
+
+  test('aynı anahtar iki kişide: ikisi de düşüyor', () => {
+    const { tokens, warnings } = parseMcpTokens(`eray:${GECERLI},ahmet:${GECERLI}`);
+    assert.equal(lookupSlug(tokens, GECERLI), null);
+    assert.equal(tokens.size, 0);
+    assert.equal(warnings.length, 1);
+  });
+
+  test('bozuk girdi diğerlerini götürmüyor', () => {
+    const { tokens, warnings } = parseMcpTokens(
+      `bozuk-satir,eray:${GECERLI},:${GECERLI2},ahmet:${GECERLI2}`,
+    );
+    assert.equal(lookupSlug(tokens, GECERLI), 'eray');
+    assert.equal(lookupSlug(tokens, GECERLI2), 'ahmet');
+    assert.equal(warnings.length, 2);
+  });
+
+  test('satır sonu da ayraç — çok satırlı ortam değişkeni çalışıyor', () => {
+    const { tokens } = parseMcpTokens(`eray:${GECERLI}\nahmet:${GECERLI2}`);
+    assert.equal(lookupSlug(tokens, GECERLI), 'eray');
+    assert.equal(lookupSlug(tokens, GECERLI2), 'ahmet');
+  });
+
+  test('slug küçük harfe indiriliyor — kullanıcı slug\'ları küçük harf', () => {
+    const { tokens } = parseMcpTokens(`ERAY:${GECERLI}`);
+    assert.equal(lookupSlug(tokens, GECERLI), 'eray');
   });
 });

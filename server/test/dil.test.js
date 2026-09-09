@@ -383,7 +383,7 @@ describe('görünüm dosyaları — çıplak Türkçe metin kalmamalı', () => {
 //
 // Yeni bir route dosyası eklenirse listeye yazılmalı.
 const HATA_DOSYALARI = [
-  'api.js', 'attachments.js', 'channels.js', 'chat.js', 'notes.js',
+  'api.js', 'attachments.js', 'channels.js', 'chat.js', 'mcp.js', 'notes.js',
   'notifications.js', 'projects.js', 'reports.js', 'tasks.js', 'workspaces.js',
 ];
 

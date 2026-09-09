@@ -65,10 +65,12 @@ function ucKayitlari() {
       //
       // Pencere BİR SONRAKİ KAYITTA da kesiliyor. Sabit 400 karakter tek
       // başına yanlış bir güvence veriyordu: kayıtlar tek satıra sığdığında
-      // pencere sonraki kaydın içine taşıyor ve korumasız bir uç, komşusunun
-      // ara yazılımını görüp aklanıyordu. Aynı sınıf dil testinde de
-      // görülmüştü (f3c5907: "bir anahtar iki metni birden aklıyordu"):
-      // komşuluk, testin ölçtüğü şeyi sessizce genişletiyor.
+      // (mcp.js böyle) pencere sonraki kaydın içine taşıyor ve korumasız bir
+      // uç, komşusunun ara yazılımını görüp aklanıyordu. 9 Eylül'de MCP
+      // kapısını doğrulamak için bilerek korumasız bir uç bırakıldığında test
+      // yeşil kaldı — kusur buydu. Aynı sınıf dil testinde de görülmüştü
+      // (f3c5907: "bir anahtar iki metni birden aklıyordu"): komşuluk, testin
+      // ölçtüğü şeyi sessizce genişletiyor.
       const sinir = i + 1 < eslesmeler.length
         ? Math.min(m.index + 400, eslesmeler[i + 1].index)
         : m.index + 400;
@@ -79,7 +81,14 @@ function ucKayitlari() {
         metot: m[2].toUpperCase(),
         yol: yolEsl ? yolEsl[1] : '?',
         satir: src.slice(0, m.index).split(/\r?\n/).length,
-        auth: /requireAuth/.test(pencere),
+        // İki denk kapı var. `requireAuth` oturum çerezine bakar; `requireMcpToken`
+        // bearer anahtara. İkincisi MCP ucunda kullanılıyor, çünkü istek
+        // kullanıcının Claude istemcisinden geliyor ve çerez taşıyamıyor.
+        // MCP ucunu ACIK_UCLAR muafiyet listesine yazmak kolay olurdu ama
+        // yanlış olurdu: uç açık değil, farklı korunuyor. Muafiyet listesi
+        // bayatlar (bir uç silinip korumasız geri gelebilir); kapı bayatlamaz.
+        auth: /requireAuth|requireMcpToken/.test(pencere),
+        mcpAuth: /requireMcpToken/.test(pencere),
       });
     }
   }
@@ -120,6 +129,37 @@ describe('yetkilendirme — her uç kimlik doğrulamasından geçmeli', () => {
       kayitlar.filter((k) => k.auth).length > 90,
       'requireAuth taşıyan uç sayısı beklenenden az — ara yazılım adı değişmiş olabilir',
     );
+  });
+});
+
+// ─── 1b. MCP ucu kendi kapısını taşımalı ────────────────────────────────────
+//
+// Yukarıdaki test "bir kapı var mı" diye soruyor; iki kapıyı da denk sayıyor.
+// Bu, tek başına bir boşluk bırakırdı: MCP ucuna yanlışlıkla `requireAuth`
+// yazmak testi geçerdi ama uç pratikte kullanılamaz olurdu — Claude istemcisi
+// oturum çerezi taşımıyor, her istek 401 alırdı. Ters yönü daha kötü: oturumlu
+// bir tarayıcı isteği MCP ucuna ulaşabilir hale gelirdi.
+//
+// Bu yüzden ikinci bir değişmez: mcp.js'teki HER uç `requireMcpToken` taşır.
+
+describe('MCP ucu — kendi kimlik kapısından geçmeli', () => {
+  test('mcp.js içindeki her uç requireMcpToken taşıyor', () => {
+    const eksik = ucKayitlari()
+      .filter((k) => k.dosya === 'mcp.js' && !k.mcpAuth)
+      .map((k) => `${k.dosya}:${k.satir}  ${k.metot} ${k.yol}`);
+
+    assert.deepEqual(
+      eksik, [],
+      'MCP uçları requireMcpToken taşımak zorunda. requireAuth burada işe '
+      + 'yaramaz: istek Claude istemcisinden geliyor ve oturum çerezi taşımıyor.',
+    );
+  });
+
+  test('tarayıcı MCP uçlarını gerçekten görüyor', () => {
+    // Dosya adı değişir ya da router adlandırması ayrıştırıcıya uymazsa
+    // üstteki test boş kümeyle sessizce geçerdi.
+    const mcp = ucKayitlari().filter((k) => k.dosya === 'mcp.js');
+    assert.ok(mcp.length >= 3, `mcp.js'te beklenenden az uç bulundu: ${mcp.length}`);
   });
 });
 

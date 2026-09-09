@@ -19,6 +19,9 @@ export const AUDIT = {
   MEMBER_ROLE_CHANGED: 'member.role_changed',
   INVITE_CODE_VIEWED: 'invite.code_viewed',
   WORKSPACE_TRASH_EMPTIED: 'workspace.trash_emptied',
+  // MCP ucuna geçersiz anahtarla yapılan deneme. Kullanıcı yok, workspace yok:
+  // kayıt yalnızca IP ve tarayıcı bilgisiyle "birisi kapıyı denedi" diyor.
+  MCP_AUTH_FAILED: 'mcp.auth_failed',
 };
 
 function clientIp(req) {
