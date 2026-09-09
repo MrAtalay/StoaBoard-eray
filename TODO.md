@@ -224,12 +224,72 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       alanı görünür tutuluyor; görev süzgeçleri (`col`, `assignee`, `overdue`)
       MCP katmanında uygulanıyor çünkü karşılık gelen uç yalnızca ham liste
       döndürüyor.
+      **Uçtan uca doğrulandı (9 Eylül, ev makinesi, yerel sunucu + Neon) —
+      21/21.** Protokol, kapı, yedi araç ve hata yolları; hepsi "StoaBoard"
+      çalışma alanının gerçek verisiyle (3 proje, 15 görev, 1 not).
+      **Tarama zinciri kıran bir kusur buldu ve kapatıldı:** `projectToDict` ve
+      `taskToDict` kimliği METİN döndürüyor (`id: String(p.id)`), oysa araç
+      şemaları `z.number().int()` istiyordu. `list_projects` `"21"` veriyor,
+      açıklama "project_id buradan alınır" diyor, `list_columns` ise
+      `-32602 expected number, received string` ile geri çeviriyordu — yani
+      belgelenen yolun tamamı (proje → kolon → görev) kullanılamaz durumdaydı.
+      Dört araçtan hiçbiri gerçek bir kimlikle çağrılamıyordu. Şemalar
+      `z.coerce` ile metni de kabul ediyor; düzeltme MCP katmanında, çünkü
+      `String(id)` sözleşmesini değiştirmek ön yüzü kırar.
+      Ayrıca `list_columns` açıklaması olmayan bir alana yönlendiriyordu:
+      kolon slug'ı yanıtta `slug` değil `id` adıyla duruyor (`columnToDict`
+      → `id: c.slug`); açıklama düzeltildi.
       **Bilinen sınır:** araçların saf birim testi yok; yetki ve veri kapsamı
-      mevcut API uçlarından geçerek doğrulanıyor. Okuma araçlarının gerçek
-      veriyle uçtan uca denemesi yazma araçlarından önce yapılmalı.
+      mevcut API uçlarından geçerek doğrulanıyor. Tarama betiği oturumlukçu,
+      repoda değil — kalıcı koşum istenirse veritabanı gerektirdiği için
+      birim testlerinden ayrı bir komuta bağlanmalı.
       Ürün riski düşük ve **değerin çoğu burada**: "Claude, kart aç" cümlesi panoda
       zaten iki tık; kazandıran cümle "bugün bende ne var, ne gecikti".
       Yalnızca yazma aracı koyan entegrasyonlar iki haftada terk ediliyor.
+- [ ] **`completed_at` boşluğu — pano "bitti" diyor, sistem "gecikmiş" diyor.**
+      Uçtan uca taramanın en değerli bulgusu; **veri kusuru, kod kusuru değil.**
+      İki katmanı var:
+
+      **(a) Bitiş kolonu işaretsiz.** Dört projenin üçünde hiçbir kolonda
+      `is_done` yok: proje 3 "Mobil Uygulama Geliştirme", proje 7 "ghghhg" ve
+      Mytherra alanındaki proje 21. Yalnızca proje 1 "Ana Proje" işaretli.
+      Kod suçsuz — `POST /api/projects` yeni projelerde
+      `isDone: slug === 'done'` yazıyor (`projects.js`, gerekçesi yorumda) —
+      ama o düzeltmeden önce açılmış projeler geri doldurulmadı.
+
+      **(b) İşaret sonradan konsa bile eski kartlar geri doldurulmuyor.**
+      Proje 1'de kolon işaretli olmasına rağmen `done` kolonundaki **9 karttan
+      8'inde `completed_at` yok.** Tek istisna #4, damgası
+      `2026-09-02T10:48` — yani işaretin konduğu gün. Ondan öncekiler kolon
+      işaretsizken taşındığı için `completedAt` hiç yazılmamış; #7'de
+      `progress` bile 0'da kalmış, kart `done` kolonunda duruyor.
+
+      **Bugünkü somut etkisi — ve MCP'nin bunu neden acil hâle getirdiği:**
+      `list_tasks(overdue: true)` proje 1'de **14 görev** döndürüyor, oysa
+      panoda 9 kart `done` kolonunda duruyor. "Bugün ne gecikti" sorusu —
+      TODO'nun kendi ifadesiyle *"kazandıran cümle"* — bugün **yanlış** cevap
+      veriyor. Ölçüt (`due < bugün && !completed_at`) doğru; besleyen veri
+      eksik. DEVIR'in "bayat bilgiye güvenmek hiç bilgi olmamasından kötüdür"
+      uyarısı soyut bir risk değil, ölçülmüş bir durum.
+
+      **Yarınki etkisi:** "kapatma ayrı uç değil, kartı `isDone` kolonuna
+      taşımak" — işaretli kolon yoksa `close_task` taşıyacak yer bulamaz.
+
+      **Yapılacak, bu sırayla:** (1) proje 3, 7 ve 21'de bitiş kolonunu
+      kolon menüsünden işaretle; (2) `done` kolonunda olup `completedAt`i boş
+      kartlar için tek seferlik geri doldurma — üretime yazan bir iş,
+      çalıştırmadan önce `DATABASE_URL`in nereyi gösterdiğine bak. Elle
+      düzeltmek de mümkün (kartı dışarı alıp geri koymak `completedAt` yazar)
+      ama on kartta hata payı yüksek. **İkisi de 3. adımdan önce.**
+- [ ] **MCP çalışma alanını göremiyor, değiştiremiyor.** Bütün araçlar
+      **aktif** çalışma alanına bakıyor ve o alan yalnızca tarayıcıdan
+      değişiyor. Sonuç: kullanıcının tarayıcısı başka bir alandayken Claude
+      diğer panoya hiç ulaşamıyor — üstelik o panonun var olduğunu bile
+      göremiyor, çünkü alanları listeleyen bir araç yok. Taramada tam olarak
+      bu yaşandı: aktif alan boş olan "Mytherra" idi, StoaBoard panosuna
+      erişilemedi. `whoami` ve liste yanıtlarının alan adını taşıması yanlış
+      alanı *fark ettiriyor* ama *düzeltmiyor*. En küçük çözüm salt-okuma bir
+      `list_workspaces`; alan değiştirmek yazma sayılır ve 3. adıma aittir.
 - [ ] **3. adım — yazma araçları.** En sona, çünkü **atama bildirim üretiyor.**
       Sohbet kapsam dışı bırakıldı, ama "sadece pano" dendiğinde bile dışa
       dokunan nokta bu: kart açmak sessiz, atamak arkadaşının ekranında beliriyor.

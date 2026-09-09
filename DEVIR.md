@@ -5,8 +5,87 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 9 Eylül 2026, ofis makinesinde (5432'nin kapalı olduğu ağ).
-`0566ecf` üzerine MCP entegrasyonunun 1. adımı yapıldı.
+**Son güncelleme:** 9 Eylül 2026 akşamı, **ev makinesinde** — `4039e33` çekildi
+ve 2. adım okuma araçları ilk kez gerçek veriyle uçtan uca tarandı.
+
+---
+
+## 0-A. 9 Eylül, ikinci tur — 2. adımın uçtan uca taraması (ev makinesi)
+
+Ofis makinesi 2. adımı yazıp "gerçek veriyle denenmedi" diye işaretlemişti.
+Bu tur o boşluğu kapattı ve **boşluğun ardında gerçek bir kusur çıktı.**
+
+**Ortam notu — kısıt sanıldığından dar:** ev ağında 5432 açık, `[db] warmup ok`.
+Yerel sunucu + production Neon ile tam tur atılabiliyor; canlıya dağıtım
+beklemeye gerek yok. Yerel `.env` **production veritabanını** gösteriyor, bu
+yüzden tarama bilinçli olarak salt-okuma tutuldu.
+
+**Sonuç: 21/21.** Protokol, kapı (anahtarsız/yanlış anahtar 401, GET 405), el
+sıkışma (`stoaboard / 0.2.0`), hız sınırı (600), durum tutmayan kip, yedi
+aracın listesi, `whoami`, `list_projects`, `list_columns`, `list_tasks` + üç
+süzgeci, `get_task`, `list_notes` (gövde sızdırmıyor), `get_note` ve hata
+yolları (404 → `isError`, yanlış tip ve olmayan araç reddi) doğrulandı.
+
+**Doğru çalışma alanında koşmak şart:** ilk turda aktif alan "Mytherra: Veil of
+The Ancient" idi (1 proje, 0 görev, 0 not) ve `get_task`/`get_note` başarı
+yolunda hiç çalıştırılamadı. Tarayıcıdan "StoaBoard" alanına geçilince
+(rol `member`, 7 izin — DEVIR'in 1. adım notundaki ölçümle birebir aynı)
+3 proje, 15 görev ve 1 notla ikisi de doğrulandı. **MCP'yi denerken önce
+`whoami` çağır ve alan adına bak** — boş alanda yeşil görünen bir tarama
+hiçbir şey kanıtlamıyor.
+
+**Bulunan ve kapatılan kusur — belgelenen yolun tamamı kırıktı.**
+`projectToDict`/`taskToDict` kimliği **metin** döndürüyor (`id: String(p.id)`,
+Python aslından gelen sözleşme), araç şemaları ise `z.number().int()`
+istiyordu. `list_projects` `"21"` veriyor, aracın kendi açıklaması "diğer
+araçların istediği project_id buradan alınır" diyor, `list_columns` o değeri
+`-32602 expected number, received string` ile geri çeviriyordu. **Kimlik alan
+dört aracın hiçbiri gerçek bir kimlikle çağrılamıyordu.** Şemalar `z.coerce`
+ile metni de kabul edecek şekilde düzeltildi — düzeltme MCP katmanında, çünkü
+`String(id)` sözleşmesini değiştirmek ön yüzü kırar.
+
+İkinci, daha sessiz kusur: `list_columns` açıklaması "kolonun **slug**
+değerini buradan al" diyordu ama yanıtta `slug` diye bir alan yok —
+`columnToDict` slug'ı `id` adıyla veriyor (`id: c.slug`, sayısal satır kimliği
+ise `db_id`). Model olmayan bir alanı arıyordu. Açıklama düzeltildi.
+
+**Bu turun dersi 3 Eylül'ünkinin eşi:** o tur *bir testin* yalan söylediğini
+göstermişti, bu tur *bir araç açıklamasının* yalan söylediğini gösterdi. İkisi
+de yeşil görünüyordu. 154 birim testin hiçbiri bu kusuru göremezdi, çünkü hepsi
+şemayı değil kodu ölçüyor — **kusur kodun içinde değil, iki sözleşmenin
+arasındaydı.** Yeni bir araç eklerken onu bir kez de gerçek yanıtın çıktısıyla
+besle; elle uydurduğun argümanla değil.
+
+**Taramanın asıl kazancı bir kod kusuru değil, bir VERİ kusuru oldu.**
+Gerçek veriye bakınca çıktı: `list_tasks(overdue: true)` proje 1'de **14 görev**
+diyor, oysa panoda 9 kart `done` kolonunda duruyor. Sebep, `done` kolonundaki
+9 karttan 8'inde `completed_at` olmaması — tek istisna #4, damgası
+`2026-09-02T10:48`, yani kolonun `isDone` işaretinin konduğu gün. Ondan
+öncekiler işaretsiz kolona taşındığı için `completedAt` hiç yazılmamış (#7'de
+`progress` bile 0'da kalmış). Dört projenin üçünde bitiş kolonu hâlâ hiç
+işaretli değil. Ayrıntı ve yapılacaklar TODO'da.
+
+**Bunun önemi MCP'nin ne için var olduğuyla ilgili.** TODO "kazandıran cümle
+'bugün bende ne var, ne gecikti'" diyor. O cümle bugün **yanlış** cevap
+veriyor ve yanlışlığı görünmüyor: ölçüt (`due < bugün && !completed_at`) doğru,
+araç doğru, besleyen veri eksik. DEVIR'in "bayat bilgiye güvenmek hiç bilgi
+olmamasından kötüdür" cümlesi artık soyut bir risk değil, ölçülmüş bir durum —
+ve yazma araçlarından önce kapatılması gereken şey bu.
+
+**İkinci yapısal boşluk TODO'ya yazıldı:** MCP yalnızca **aktif** çalışma
+alanını görüyor, alanları listeleyen ya da değiştiren araç yok. Aktif alan
+`users.currentWorkspaceId` sütununda duruyor (`currentMember`) — yani
+tarayıcıdan bir tıkla değişiyor ve MCP tarafında hiçbir uyarı çıkmıyor.
+Taramanın ilk turu tam olarak buna kurban gitti.
+
+**Tarayıcının açık olması gerekmiyor.** Aktif alan oturumda değil kullanıcı
+satırında tutulduğu ve `selfApi` kendi kısa ömürlü oturumunu ürettiği için MCP
+tarayıcıdan tamamen bağımsız çalışıyor. Tarayıcı yalnızca aktif alanı
+*değiştirmenin* tek yolu — okumanın koşulu değil.
+
+**Tarama betiği oturumluk, repoda değil.** Tekrarı için 0. bölümün sonundaki
+curl merdiveni yeterli; kalıcı bir koşum istenirse `server/test/` altına
+alınmalı (veritabanı istediği için birim testlerinden ayrı bir komutla).
 
 ---
 
