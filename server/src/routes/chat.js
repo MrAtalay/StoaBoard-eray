@@ -12,6 +12,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { requireAuth } from '../lib/session.js';
+import { emitSafely } from '../lib/emit.js';
 import {
   resolveWorkspaceId,
   memberForWorkspace,
@@ -298,14 +299,14 @@ chatRouter.delete(
         where: { id: msgId },
         data: { isDeleted: true },
       });
-      try {
+      emitSafely(io, 'message_deleted', (s) => {
         if (msg.receiverId) {
-          io?.to(`user_${msg.senderId}`).emit('message_deleted', { id: msgId, scope: 'all' });
-          io?.to(`user_${msg.receiverId}`).emit('message_deleted', { id: msgId, scope: 'all' });
+          s.to(`user_${msg.senderId}`).emit('message_deleted', { id: msgId, scope: 'all' });
+          s.to(`user_${msg.receiverId}`).emit('message_deleted', { id: msgId, scope: 'all' });
         } else if (msg.workspaceId) {
-          io?.to(`ws_${msg.workspaceId}`).emit('message_deleted', { id: msgId, scope: 'all' });
+          s.to(`ws_${msg.workspaceId}`).emit('message_deleted', { id: msgId, scope: 'all' });
         }
-      } catch {}
+      });
     } else {
       const hidden = parseHiddenFor(msg.hiddenFor);
       if (!hidden.includes(user.id)) {
@@ -370,14 +371,14 @@ chatRouter.post(
       to: msg.receiver?.slug || null,
     };
     const io = req.app.get('io');
-    try {
+    emitSafely(io, 'message_pinned', (s) => {
       if (msg.receiverId) {
-        io?.to(`user_${msg.senderId}`).emit('message_pinned', payload);
-        io?.to(`user_${msg.receiverId}`).emit('message_pinned', payload);
+        s.to(`user_${msg.senderId}`).emit('message_pinned', payload);
+        s.to(`user_${msg.receiverId}`).emit('message_pinned', payload);
       } else if (msg.workspaceId) {
-        io?.to(`ws_${msg.workspaceId}`).emit('message_pinned', payload);
+        s.to(`ws_${msg.workspaceId}`).emit('message_pinned', payload);
       }
-    } catch {}
+    });
     res.json({ ok: true, pinned: Boolean(updated.pinned) });
   }),
 );

@@ -17,6 +17,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { requireAuth } from '../lib/session.js';
+import { emitSafely } from '../lib/emit.js';
 import {
   resolveWorkspaceId,
   memberForWorkspace,
@@ -48,9 +49,8 @@ const NOTE_INCLUDE = {
 };
 
 function emitNoteEvent(io, event, payload, note, actorSlug) {
-  if (!io) return;
   const body = { ...payload, ...(actorSlug ? { actor: actorSlug } : {}) };
-  try {
+  emitSafely(io, event, (io) => {
     if (note.visibility === 'workspace') {
       io.to(`ws_${note.workspaceId}`).emit(event, body);
     } else {
@@ -63,7 +63,7 @@ function emitNoteEvent(io, event, payload, note, actorSlug) {
         io.to(`user_${uid}`).emit(event, body);
       }
     }
-  } catch {}
+  });
 }
 
 // ─── GET /api/notes ────────────────────────────────────────────────────────
@@ -339,16 +339,14 @@ notesRouter.delete(
     ]);
 
     const io = req.app.get('io');
-    if (io) {
-      const evtPayload = { id: note.id, workspace_id: note.workspaceId, visibility: note.visibility, actor: user.slug };
-      try {
-        if (note.visibility === 'workspace') {
-          io.to(`ws_${note.workspaceId}`).emit('note_deleted', evtPayload);
-        } else {
-          for (const uid of recipients) io.to(`user_${uid}`).emit('note_deleted', evtPayload);
-        }
-      } catch {}
-    }
+    const evtPayload = { id: note.id, workspace_id: note.workspaceId, visibility: note.visibility, actor: user.slug };
+    emitSafely(io, 'note_deleted', (s) => {
+      if (note.visibility === 'workspace') {
+        s.to(`ws_${note.workspaceId}`).emit('note_deleted', evtPayload);
+      } else {
+        for (const uid of recipients) s.to(`user_${uid}`).emit('note_deleted', evtPayload);
+      }
+    });
     res.json({ ok: true });
   }),
 );
@@ -375,18 +373,16 @@ notesRouter.delete(
 
     const io = req.app.get('io');
     const evtPayload = { id: note.id, workspace_id: note.workspaceId, visibility: note.visibility, actor: user.slug };
-    if (io) {
-      try {
-        const recipients = new Set((note.collaborators || []).map((c) => c.userId));
-        recipients.add(note.authorId);
-        if (note.workspace?.ownerId) recipients.add(note.workspace.ownerId);
-        if (note.visibility === 'workspace') {
-          io.to(`ws_${note.workspaceId}`).emit('note_deleted', evtPayload);
-        } else {
-          for (const uid of recipients) io.to(`user_${uid}`).emit('note_deleted', evtPayload);
-        }
-      } catch {}
-    }
+    emitSafely(io, 'note_deleted', (s) => {
+      const recipients = new Set((note.collaborators || []).map((c) => c.userId));
+      recipients.add(note.authorId);
+      if (note.workspace?.ownerId) recipients.add(note.workspace.ownerId);
+      if (note.visibility === 'workspace') {
+        s.to(`ws_${note.workspaceId}`).emit('note_deleted', evtPayload);
+      } else {
+        for (const uid of recipients) s.to(`user_${uid}`).emit('note_deleted', evtPayload);
+      }
+    });
     res.json({ ok: true });
   }),
 );

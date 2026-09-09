@@ -14,6 +14,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { requireAuth } from '../lib/session.js';
+import { emitSafely } from '../lib/emit.js';
 import { resolveWorkspaceId, memberForWorkspace, hasPermission } from '../lib/workspace.js';
 import {
   channelToDict,
@@ -37,10 +38,9 @@ async function loadUser(req) {
 const CHANNEL_INCLUDE = { members: { include: { user: true } } };
 
 function emitToUsers(io, event, payload, userIds) {
-  if (!io) return;
-  try {
-    for (const uid of userIds) io.to(`user_${uid}`).emit(event, payload);
-  } catch {}
+  emitSafely(io, event, (s) => {
+    for (const uid of userIds) s.to(`user_${uid}`).emit(event, payload);
+  });
 }
 
 const ICON_RE = /^[A-Za-z][A-Za-z0-9]*$/;

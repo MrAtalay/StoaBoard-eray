@@ -28,6 +28,7 @@ import crypto from 'node:crypto';
 import { prisma } from '../db.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { requireAuth } from '../lib/session.js';
+import { emitSafely } from '../lib/emit.js';
 import {
   currentMember,
   memberForWorkspace,
@@ -342,8 +343,8 @@ workspacesRouter.post(
         workspaceId: ws.id,
       });
     }
-    try {
-      io?.to(`ws_${ws.id}`).emit('join_request_new', {
+    emitSafely(io, 'join_request_new', (s) => {
+      s.to(`ws_${ws.id}`).emit('join_request_new', {
         id: joinReq.id,
         user: {
           id: joinReq.user.slug,
@@ -352,7 +353,7 @@ workspacesRouter.post(
         status: joinReq.status,
         time: joinReq.createdAt?.toISOString() || '',
       });
-    } catch {}
+    });
 
     res.json({ ok: true, pending: true, message: 'join_request_pending' });
   }),
@@ -471,14 +472,14 @@ workspacesRouter.post(
       }),
       workspaceId: joinReq.workspaceId,
     });
-    try {
-      io?.to(`user_${joinReq.userId}`).emit('join_request_approved', {
+    emitSafely(io, 'join_request_approved+member_joined', (s) => {
+      s.to(`user_${joinReq.userId}`).emit('join_request_approved', {
         workspace_id: joinReq.workspaceId,
       });
-      io?.to(`ws_${joinReq.workspaceId}`).emit('member_joined', {
+      s.to(`ws_${joinReq.workspaceId}`).emit('member_joined', {
         member: memberToDict(newMember),
       });
-    } catch {}
+    });
 
     res.json({ ok: true });
   }),
@@ -519,11 +520,11 @@ workspacesRouter.post(
       }),
       workspaceId: joinReq.workspaceId,
     });
-    try {
-      io?.to(`user_${joinReq.userId}`).emit('join_request_rejected', {
+    emitSafely(io, 'join_request_rejected', (s) => {
+      s.to(`user_${joinReq.userId}`).emit('join_request_rejected', {
         workspace_id: joinReq.workspaceId,
       });
-    } catch {}
+    });
 
     res.json({ ok: true });
   }),
@@ -625,10 +626,10 @@ workspacesRouter.post(
     ]).then((r) => [r[1], r[2]]);
 
     const io = req.app.get('io');
-    try {
-      io?.to(`ws_${member.workspaceId}`).emit('member_role_changed', memberToDict(newOwnerMember));
-      io?.to(`ws_${member.workspaceId}`).emit('member_role_changed', memberToDict(oldOwnerMember));
-    } catch {}
+    emitSafely(io, 'member_role_changed (sahiplik devri)', (s) => {
+      s.to(`ws_${member.workspaceId}`).emit('member_role_changed', memberToDict(newOwnerMember));
+      s.to(`ws_${member.workspaceId}`).emit('member_role_changed', memberToDict(oldOwnerMember));
+    });
 
     res.json({ ok: true });
   }),
@@ -970,9 +971,9 @@ workspacesRouter.patch(
     }
 
     const io = req.app.get('io');
-    try {
-      io?.to(`ws_${actor.workspaceId}`).emit('member_role_changed', result);
-    } catch {}
+    emitSafely(io, 'member_role_changed', (s) => {
+      s.to(`ws_${actor.workspaceId}`).emit('member_role_changed', result);
+    });
 
     res.json(result);
   }),
@@ -1036,9 +1037,9 @@ workspacesRouter.delete(
     });
 
     const io = req.app.get('io');
-    try {
-      io?.to(`ws_${actor.workspaceId}`).emit('member_removed', { id: targetUser.slug });
-    } catch {}
+    emitSafely(io, 'member_removed', (s) => {
+      s.to(`ws_${actor.workspaceId}`).emit('member_removed', { id: targetUser.slug });
+    });
 
     res.json({ ok: true });
   }),

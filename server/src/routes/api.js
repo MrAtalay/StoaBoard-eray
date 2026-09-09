@@ -66,10 +66,13 @@ async function loadCurrentUser(req) {
   if (!uid) return null;
   const user = await prisma.user.findUnique({ where: { id: uid } });
   if (user) {
-    // Best-effort; başarısız olursa request akışını bozmasın
+    // Best-effort; başarısız olursa request akışını bozmasın — ama sessiz de
+    // kalmasın. Bu yazma her kimlikli istekte çalışıyor, yani sürekli
+    // başarısız oluyorsa veritabanı tarafında bir sorun var demektir ve
+    // bunun tek görünür izi burası.
     prisma.user
       .update({ where: { id: user.id }, data: { lastSeen: new Date() } })
-      .catch(() => {});
+      .catch((err) => console.warn('[user] lastSeen güncellenemedi:', err?.message || err));
   }
   return user;
 }

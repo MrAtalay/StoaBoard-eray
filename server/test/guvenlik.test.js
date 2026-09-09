@@ -432,3 +432,56 @@ describe('parseMcpTokens — yapılandırma çözümlemesi', () => {
     assert.equal(lookupSlug(tokens, GECERLI), 'eray');
   });
 });
+
+// ─── Sessiz yutulan hata — statik kilit ────────────────────────────────────
+//
+// Korunan kusur (9 Eylül 2026): sunucudaki on iki soket yayını
+// `try { ... } catch {}` içindeydi. Ödünleşme doğruydu — gerçek zamanlı bir
+// olayın gönderilememesi kullanıcının işlemini başarısız kılmamalı — ama
+// uygulanışı yanlıştı: hata hiçbir yere yazılmıyordu. Yayın tamamen çalışmaz
+// hâle gelse (io kurulmamış, payload serileştirilemiyor, oda adı bozuk)
+// kayıtlarda tek satır iz kalmazdı. Belirti "gerçek zamanlı bazen çalışmıyor"
+// olurdu; bu depoda bir toplantıyı yakan sınıf tam olarak bu.
+//
+// Kural CLAUDE.md'de zaten yazılıydı: koşulun yokluk hâli ya reddetmeli ya
+// gürültü çıkarmalı. Yazılı olması yetmedi — dil kuralında olduğu gibi.
+// O yüzden kural belgeden teste taşındı (merdivende bir basamak yukarı).
+//
+// Sınır bilinçli: yorumsuz `catch {}` yasak, açıklamalı olan serbest. Yorum
+// yazmak kararı görünür kılıyor ve gözden geçirmede tartışılabilir hâle
+// getiriyor; asıl tehlikeli olan hiç düşünülmeden bırakılmış boş bloktur.
+
+describe('sessiz yutulan hata — sunucuda çıplak boş catch yok', () => {
+  const SRC = path.resolve(__dirname, '..', 'src');
+
+  function jsDosyalari(dizin) {
+    const out = [];
+    for (const ad of fs.readdirSync(dizin)) {
+      const tam = path.join(dizin, ad);
+      if (fs.statSync(tam).isDirectory()) out.push(...jsDosyalari(tam));
+      else if (ad.endsWith('.js')) out.push(tam);
+    }
+    return out;
+  }
+
+  test('hiçbir sunucu dosyasında yorumsuz catch {} yok', () => {
+    const bulgular = [];
+    for (const tam of jsDosyalari(SRC)) {
+      const src = fs.readFileSync(tam, 'utf8');
+      src.split(/\r?\n/).forEach((satir, i) => {
+        const kirpik = satir.trim();
+        // Yorum satırlarını atla: emit.js kusuru anlatırken kalıbı yazıyor.
+        if (kirpik.startsWith('//') || kirpik.startsWith('*')) return;
+        if (/catch\s*(\([^)]*\))?\s*\{\s*\}/.test(satir)) {
+          bulgular.push(`${path.relative(SRC, tam)}:${i + 1}  ${kirpik}`);
+        }
+      });
+    }
+    assert.deepEqual(
+      bulgular, [],
+      'Boş catch bloğu hatayı sessizce yutuyor. Ya hatayı yükselt, ya '
+      + 'console.warn ile gürültü çıkar (soket yayınları için lib/emit.js\'teki '
+      + 'emitSafely), ya da blok içine NEDEN yutulduğunu yazan bir yorum koy.',
+    );
+  });
+});
