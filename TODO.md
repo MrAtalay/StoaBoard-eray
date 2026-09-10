@@ -349,6 +349,35 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       yeniden tanımla ve okundu işaretlemeyi tamamen kullanıcıya bırak.
       (c) sekmeyi korur ve bugünkü davranışa en yakın olanıdır.
       Cevap verilmeden kod yazılmamalı; [BILDIRIMLER.md](BILDIRIMLER.md) oku.
+- [ ] **Bildirimler test altına alınmalı — bu depoda en çok kusur çıkan alan.**
+      Geçmiş sayıyor: bahsetme bildiriminin çalışma alanı/kanal kapsamını
+      aşması (`de25569`), panelin ikinci tıklamada kapanmaması, sohbet/bildirim
+      panel çakışması (`6e95261`), sekme açılınca dashboard'a kayma
+      (`28fce2a`), mobil turda çıkanlar (`6be4893`), ve bugün bulunan okundu
+      bilgisinin hiç yazılmaması. Hepsi elle bulundu; hiçbirini bir test
+      yakalamadı.
+
+      **Neden bu alan bu kadar kırılgan:** bildirim üç katmana birden
+      dokunuyor — veritabanı kaydı, soket yayını ve panel durumu — ve üçü
+      arasındaki tutarsızlık ekranda "sessiz yanlış" olarak görünüyor. Kusurun
+      hiçbiri istisna fırlatmıyor.
+
+      **Önce saf mantık, veritabanı gerektirmeyen kısım.** En değerlisi
+      **kapsam**: `de25569`'daki kusur bir bahsetmenin yanlış çalışma alanına
+      düşmesiydi — yani "bu bildirim kime gitmeli" sorusu. Bu soru saf bir
+      fonksiyona çekilebilirse (kim üye, kim kanalda, kim bahsedilmiş →
+      alıcı listesi) doğrudan test edilir ve aynı sızıntı bir daha geçemez.
+      `buildNotificationText`in ürettiği JSON şekli de sabitlenmeli; `throughput.js`
+      onu ayrıştırıyor ve biçim sessizce değişirse rapor boşalır.
+
+      Sonra okundu durumu: rozet sayısı ile veritabanındaki `read` alanı
+      arasındaki ilişki tek bir saf fonksiyona indirilmeli ki yukarıdaki
+      okundu kusuru bir daha sessizce dönemesin.
+
+      [BILDIRIMLER.md](BILDIRIMLER.md) önce okunmalı. Not: bu iş, bildirim
+      davranışının **yeniden tasarlanmasını** beklemek zorunda değil — mevcut
+      davranışı kilitlemek de değer üretir, çünkü tasarım değişirken neyin
+      bilerek değiştiğini görürsün.
 - [ ] **Giriş ekranındaki istatistikler uydurma.** `auth.jsx:673` "1.200+ aktif
       takım" ve "38k+ görev tamamlandı", `auth.jsx:1293` "6k+ takım", "%98
       memnuniyet", "15m+ görev" diyor. Veritabanında 11 çalışma alanı ve ana
