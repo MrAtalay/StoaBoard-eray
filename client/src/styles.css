@@ -9753,3 +9753,61 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   color: var(--ink);
 }
 .error-boundary-sub { font-size: 14px; max-width: 420px; line-height: 1.5; }
+
+/* ─── DASHBOARD — PANO DAGILIMI (yatay yigilmis cubuk) ─────────────────────
+   Dikey yigilmis sutunlarin yerini aldi. Iki sebep: eski grafigin "Ay"
+   verisi uydurmaydi, ve yigilmis sutunda en alttaki disinda hicbir dilim
+   karsilastirilamiyor - 9 kolonlu panoda okunmuyordu. Yatay tek cubukta pay
+   uzunlukla okunuyor, uzun kolon adlari sigiyor.
+
+   Dilimler arasindaki 2px bosluk yuzey renginde: bitisik iki rengin sinirini
+   goz kendisi ayirmak zorunda kalmiyor, renk korlugunde de dilim sayisi
+   sayilabiliyor. */
+.dist-chart { display: flex; flex-direction: column; gap: 16px; padding: 8px 0; }
+
+.dist-bar {
+  display: flex;
+  height: 44px;
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-subtle);
+  gap: 2px;
+}
+
+.dist-seg {
+  display: grid;
+  place-items: center;
+  min-width: 3px;
+  transition: filter 0.15s ease;
+}
+.dist-seg:hover { filter: brightness(1.08); }
+
+/* Sayi dilimin renginde degil, metin renginde. Ustunde durdugu dolgu koyu
+   da acik da olabildigi icin beyaz, altina hafif bir golge ile. */
+.dist-seg-val {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+}
+
+.dist-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.dist-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+}
+.dist-legend-name { color: var(--ink-dim); }
+.dist-legend-val { color: var(--ink); font-weight: 600; }
+
+@media (max-width: 768px) {
+  .dist-bar { height: 36px; }
+  .dist-legend { gap: 6px 14px; }
+}

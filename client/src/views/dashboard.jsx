@@ -6,7 +6,6 @@ import { Avatar, AvatarStack } from '../shell.jsx';
 import { fmtTimeAgo, renderActivityText } from '../data.jsx';
 
 function DashboardView({ tasks, onOpenTask, onView }) {
-  const [chartPeriod, setChartPeriod] = useDashState('week');
   const [teamSort, setTeamSort] = useDashState('open');
   const [teamSortOpen, setTeamSortOpen] = useDashState(false);
   const teamSortRef = useDashRef(null);
@@ -28,25 +27,23 @@ function DashboardView({ tasks, onOpenTask, onView }) {
   const chartCols = DATA.COLUMNS || [];
   const throughput = DATA.THROUGHPUT || [];
 
-  // Per-column weekly totals for monthly projection
-  const wkColTots = Object.fromEntries(chartCols.map(c => [c.id, 0]));
-  for (const d of throughput) {
-    for (const c of chartCols) wkColTots[c.id] = (wkColTots[c.id] || 0) + ((d.cols || {})[c.id] || 0);
-  }
-
-  const monthData = [
-    { day: 'H1', cols: Object.fromEntries(chartCols.map(c => [c.id, Math.round((wkColTots[c.id] || 0) * 0.9)])) },
-    { day: 'H2', cols: Object.fromEntries(chartCols.map(c => [c.id, Math.round((wkColTots[c.id] || 0) * 1.2)])) },
-    { day: 'H3', cols: Object.fromEntries(chartCols.map(c => [c.id, Math.round((wkColTots[c.id] || 0) * 0.8)])) },
-    { day: 'H4', cols: Object.fromEntries(chartCols.map(c => [c.id, wkColTots[c.id] || 0])) },
-  ];
-
-  const colTotal = (d) => chartCols.reduce((s, c) => s + ((d.cols || {})[c.id] || 0), 0);
-  const rawChartData = chartPeriod === 'week' ? throughput : monthData;
-  const chartData = chartPeriod === 'week'
-    ? rawChartData.filter(d => colTotal(d) > 0)
-    : rawChartData;
-  const maxBar = Math.max(...chartData.map(colTotal), 1);
+  // Panonun su anki dagilimi: her kolonda kac kart var.
+  //
+  // Burada eskiden gunluk "kac kart tasindi" grafigi duruyordu ve "Ay"
+  // gorunumu UYDURMAYDI: haftalik toplami 0.9 / 1.2 / 0.8 / 1.0 ile carpip
+  // dort hafta imal ediyordu. Ekranda "Ay" yaziyor, kullanici gercek
+  // saniyordu - bu deponun tekrar eden kusuru olan "yanlis ama makul gorunen
+  // sayi" kaliminin ta kendisi (10 Eylul 2026).
+  //
+  // Yerine gecen olcut kartlarin kendisinden okunuyor: hicbir defter, hicbir
+  // ayristirma, hicbir tahmin. Zaman ekseni bilerek birakildi - gercek zaman
+  // verisi task_transitions'ta birikiyor ve heniz anlamli bir egri cizecek
+  // kadar degil (8 gunde 8 hareket). Grafik veri olmadan degil, veri olunca
+  // geri gelir; ayrinti TODO'da.
+  const dist = chartCols
+    .map(c => ({ col: c, count: tasks.filter(t => t.col === c.id).length }))
+    .filter(d => d.count > 0);
+  const distTotal = dist.reduce((s, d) => s + d.count, 0);
 
   const doneColSlug = chartCols.find(c => c.is_done)?.slug;
   const weeklyDone = throughput.reduce((s, d) => s + (doneColSlug ? ((d.cols || {})[doneColSlug] || 0) : 0), 0);
@@ -164,63 +161,50 @@ function DashboardView({ tasks, onOpenTask, onView }) {
         <div className="panel">
           <div className="panel-head">
             <div>
-              <div className="panel-title">
-                {chartPeriod === 'week' ? window.t('dash_chart_week_title') : window.t('dash_chart_month_title')}
-              </div>
-              <div className="panel-sub">
-                {chartPeriod === 'week'
-                  ? window.t('dash_chart_week_sub')
-                  : window.t('dash_chart_month_sub')}
-              </div>
-            </div>
-            <div style={{ marginLeft: 'auto' }}>
-              <button className="filter-chip" data-active={chartPeriod === 'week'} onClick={() => setChartPeriod('week')}>{window.t('dash_week')}</button>
-              <button className="filter-chip" data-active={chartPeriod === 'month'} onClick={() => setChartPeriod('month')}>{window.t('dash_month')}</button>
+              <div className="panel-title">{window.t('dash_dist_title')}</div>
+              <div className="panel-sub">{window.t('dash_dist_sub')}</div>
             </div>
           </div>
           <div className="panel-body">
-            {chartData.length === 0 || maxBar <= 1 ? (
+            {distTotal === 0 ? (
               <div className="dash-empty-state">
                 <Icon name="chart" size={28} />
                 <div>{window.t('dash_chart_empty')}</div>
                 <div style={{ fontSize: 12, color: 'var(--ink-dim)' }}>{window.t('dash_chart_empty_sub')}</div>
               </div>
             ) : (
-              <div className="chart">
-                {chartData.map(d => {
-                  const totalD = colTotal(d);
-                  const h = totalD ? (totalD / maxBar) * 160 : 0;
-                  const lang = localStorage.getItem('stoa.lang') || 'tr';
-                  const dayLabel = d.date
-                    ? new Date(d.date).toLocaleDateString(lang === 'en' ? 'en-GB' : 'tr-TR', { weekday: 'short' })
-                    : (d.day || '');
-                  return (
-                    <div className="bar" key={d.date || d.day}>
-                      <div className="bar-tooltip">
-                        {dayLabel}: {chartCols.map(c => `${(d.cols || {})[c.id] || 0} ${c.title_tr || c.id}`).join(' · ')}
+              <div className="dist-chart">
+                <div className="dist-bar">
+                  {dist.map(({ col, count }) => {
+                    const pay = (count / distTotal) * 100;
+                    return (
+                      <div
+                        key={col.id}
+                        className="dist-seg"
+                        style={{ width: `${pay}%`, background: getColColor(col) }}
+                        title={`${col.title_tr || col.title || col.id}: ${count}`}
+                      >
+                        {/* Dogrudan etiket yalnizca sigdiginda. Her dilime sayi
+                            basmak dar dilimlerde ust uste biner; skala zaten
+                            asagidaki listede tam olarak yaziyor. */}
+                        {pay >= 9 && <span className="dist-seg-val">{count}</span>}
                       </div>
-                      <div className="bar-stack" style={{ height: h }}>
-                        {[...chartCols].reverse().map(c => (
-                          <div key={c.id} className="bar-seg" style={{
-                            height: `${totalD ? ((d.cols || {})[c.id] || 0) / totalD * 100 : 0}%`,
-                            background: c.color || 'var(--ink-faint)',
-                          }} />
-                        ))}
-                      </div>
-                      <div className="bar-label">{dayLabel}</div>
+                    );
+                  })}
+                </div>
+                {/* Gosterge hem kimligi renkten bagimsiz kiliyor hem de dar
+                    dilimlerin sayisini okunur tutuyor. */}
+                <div className="dist-legend">
+                  {dist.map(({ col, count }) => (
+                    <div key={col.id} className="dist-legend-item">
+                      <span className="legend-dot" style={{ background: getColColor(col) }} />
+                      <span className="dist-legend-name">{col.title_tr || col.title || col.id}</span>
+                      <span className="dist-legend-val">{count}</span>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
             )}
-          </div>
-          <div className="legend">
-            {chartCols.map(c => (
-              <div key={c.id} className="legend-item">
-                <div className="legend-dot" style={{ background: c.color || 'var(--ink-faint)' }} />
-                {c.title_tr || c.title || c.id}
-              </div>
-            ))}
           </div>
         </div>
 

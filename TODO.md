@@ -292,6 +292,34 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       araç açıklaması onu kullanıcıya aktarmayı söylüyor. **Eksik olan arayüz:**
       pano ve rapor ekranında "bu panoda tamamlandı kolonu yok, gecikme ve süre
       rakamları eksik" satırı. Dil kuralı gereği tr/en birlikte.
+- [ ] **Dashboard'un geri kalanı taranmalı — bir uydurma veri çıktı, başkası
+      olabilir.** 10 Eylül'de ilerleme grafiği değiştirilirken "Ay" görünümünün
+      **imal edilmiş** olduğu bulundu: haftalık toplamı 0.9 / 1.2 / 0.8 / 1.0
+      ile çarpıp dört hafta üretiyordu. Ekranda "Ay" yazıyor, kullanıcı gerçek
+      sanıyordu. Grafik panonun gerçek dağılımını gösteren yatay yığılmış
+      çubukla değiştirildi; veri artık kartların kendisinden okunuyor.
+
+      **Kalan iki iş:**
+
+      **(a) `throughput.js` yanlış deftere dayanıyor.** `ActivityLog`'un
+      serbest metnini JSON olarak ayrıştırıp kolon **başlığını** slug'a
+      eşliyor (`titleToSlug`). Kolon yeniden adlandırılırsa geçmiş eşleşmeyi
+      bırakıyor — sessizce, çünkü eşleşmeyen kayıt atlanıyor
+      (`if (!slug) continue`). Oysa `task_transitions` aynı olayı kolon
+      **kimliğiyle** doğru kaydediyor ve raporlama için zaten kurulmuş.
+      İki defter aynı olguyu tutuyor, dashboard kötü olanı okuyor.
+      Taşınmalı. Bu, "bu hafta tamamlandı" sayacını (`weeklyDone`) da
+      etkiliyor — o da aynı kaynaktan besleniyor.
+
+      **(b) Zaman grafiği veri birikince geri gelmeli.** Bilerek kaldırıldı:
+      `task_transitions` 2 Eylül'de açıldı ve 8 günde 8 hareket taşıyor.
+      Bu veriyle çizgi grafiği sıfırda yatan düz bir çizgi olurdu. Birkaç
+      hafta gerçek kullanımdan sonra yeniden değerlendirilmeli; o noktada
+      çizgi grafiği doğru form.
+
+      **Tarama kapsamı:** dashboard'daki her sayının kaynağı tek tek
+      doğrulanmalı. "Ay" verisinin uydurma olduğu iki oturum boyunca kimsenin
+      dikkatini çekmemişti; aynı ekranda başka bir tahmin daha olabilir.
 - [ ] **MCP çalışma alanını göremiyor, değiştiremiyor.** Bütün araçlar
       **aktif** çalışma alanına bakıyor ve o alan yalnızca tarayıcıdan
       değişiyor. Sonuç: kullanıcının tarayıcısı başka bir alandayken Claude
