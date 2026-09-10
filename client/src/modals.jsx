@@ -107,7 +107,7 @@ function DatePicker({ value, onChange, error }) {
             <button key={i} type="button" onClick={() => selectDay(cell.day, cell.other)} style={{
               padding: '5px 2px', borderRadius: 7, fontSize: 12,
               fontWeight: sel || tod ? 600 : 400, textAlign: 'center', cursor: 'pointer',
-              color: sel ? 'white' : tod ? 'var(--accent)' : cell.other ? 'var(--ink-dim)' : 'var(--ink)',
+              color: sel ? 'white' : tod ? 'var(--accent)' : cell.other ? 'var(--ink-faint)' : 'var(--ink)',
               background: sel ? 'var(--accent)' : 'transparent',
               border: tod && !sel ? '1.5px solid var(--accent)' : '1.5px solid transparent',
             }}>

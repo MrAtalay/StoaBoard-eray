@@ -112,7 +112,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
           <div className="stat-delta" data-up={weeklyDone > 0}>
             {weeklyDone > 0
               ? <><Icon name="arrowUp" size={11} strokeWidth={2} /> {window.t('dash_stat_weekly_done_prefix')}+{weeklyDone} {window.t('dash_stat_completed')}</>
-              : <span style={{ color: 'var(--ink-dim)' }}>{window.t('dash_stat_no_data')}</span>}
+              : <span style={{ color: 'var(--ink-muted)' }}>{window.t('dash_stat_no_data')}</span>}
           </div>
         </div>
         <div className="stat-card" data-clickable="true" onClick={() => onView?.('board')}>
@@ -121,7 +121,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
           <div className="stat-delta" data-up={weeklyDone > 0}>
             {weeklyDone > 0
               ? <><Icon name="check" size={11} strokeWidth={2} /> {window.t('dash_stat_weekly_done_prefix')}{weeklyDone}</>
-              : <span style={{ color: 'var(--ink-dim)' }}>{window.t('dash_stat_no_data')}</span>}
+              : <span style={{ color: 'var(--ink-muted)' }}>{window.t('dash_stat_no_data')}</span>}
           </div>
         </div>
         <div className="stat-card" data-clickable={overdue > 0} onClick={() => { if (overdue > 0) { localStorage.setItem('stoa.boardSubView', 'list'); onView?.('board'); } }}>
@@ -180,7 +180,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
               <div className="dash-empty-state">
                 <Icon name="chart" size={28} />
                 <div>{window.t('dash_chart_empty')}</div>
-                <div style={{ fontSize: 12, color: 'var(--ink-dim)' }}>{window.t('dash_chart_empty_sub')}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{window.t('dash_chart_empty_sub')}</div>
               </div>
             ) : (
               <div className="dist-chart">
