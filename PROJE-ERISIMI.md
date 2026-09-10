@@ -1,7 +1,7 @@
 # Proje bazlı erişim — tasarım notu
 
-**Durum:** Tasarım düşüncesi · kodlanmadı
-**Tarih:** 9 Eylül 2026
+**Durum:** Ürün kararları verildi · kodlanmadı
+**Tarih:** 9 Eylül 2026 (tasarım) · 10 Eylül 2026 (kararlar)
 
 Bu not, çalışma alanı üyeliği ile proje görünürlüğü arasındaki mevcut boşluğu
 ve olası çözüm yolunu kaydeder. Ürün kararı verilmeden şemaya ya da uçlara
@@ -82,20 +82,50 @@ kapsamı doğru kurulursa aynı erişim kararı oraya da yansır.
 Okuma kapısı kurulmadan yazma kapısını değiştirmek tutarsız bir güvenlik
 modeli üretir. Önce “görme” sınırı tek yerde doğru çalışmalı.
 
-## Açık ürün soruları
+## Verilen kararlar (10 Eylül 2026)
 
-- Projeye üyeyi kim ekleyebilir: çalışma alanı yöneticisi, proje sahibi, ikisi mi?
-- Çalışma alanı yöneticisi bütün projeleri varsayılan olarak görmeli mi?
-- Proje üyeliği kaldırılınca kişinin görev ve not geçmişi nasıl görünmeli?
+Geçiş sırasının 1. adımı — üyelik varsayılanı, yönetici davranışı ve proje
+atamasını kimin yapacağı — **cevaplandı.** Şema ve uçlar bu kararların
+üstüne kurulacak.
+
+**Projeye üyeyi kim ekler:** çalışma alanı yöneticisi her projeye, projeyi
+açan kişi kendi projesine. Yönetici darboğaz olmuyor, ama erişim de kendi
+kendine büyümüyor — projede çalışan biri arkadaşını kendi başına çağıramaz.
+
+**Yönetici bütün projeleri görür.** Zaten üyeleri, rolleri ve alanı yönetiyor;
+projeleri görmemesi tutarsız olurdu ve kendini ekleyerek nasılsa girebilirdi.
+Bilinçli karşılığı: yönetici rolü gerçek güven istiyor, dağıtırken buna göre
+davran. Alan sahibi ile yönetici arasına ayrım konmadı.
+
+**Yeni üye hiçbir proje görmez.** Çalışma alanına katılmak tek başına hiçbir
+projeye erişim vermez; açıkça eklenmesi gerekir. Özelliğin bütün amacı bu —
+kazayla veri görmek imkânsız hâle geliyor. Kabul edilen karşılığı: davet eden
+kişi ayrıca projeye de eklemeyi unutursa yeni üye boş ekranla karşılaşır.
+Arayüz bunu açıklamalı ("henüz bir projeye eklenmedin"), boş liste gösterip
+susmamalı.
+
+**Projeden çıkarılan kişinin adı kartlarda kalır**, projeye erişimi biter.
+Geçmiş olduğu gibi durur, raporlar delik çıkmaz. Bu karar deponun mevcut
+mantığıyla aynı yönde: raporlama tabloları bilerek ilişkisiz ve denormalize,
+çünkü kişi ya da görev silinse bile kayıt yaşamalı. "Eski üye" diye ayrı bir
+görünüm şimdilik yok; gerekirse sonra eklenir.
+
+## Hâlâ açık — sonraki dilimlere ait
+
+Bunlar ilk dilimi (okuma kapısı) bloklamıyor, o yüzden ertelendi:
+
 - Özel notlar proje üyeliğinden bağımsız kalabilir mi?
 - Bir görev birden fazla projeye bağlanabilir mi, yoksa kapsam yalnızca proje
   üzerinden mi kurulacak?
-- Genel kanal çalışma alanı düzeyinde mi kalacak, yoksa projeye bağlanacak mı?
+- Genel kanal çalışma alanı düzeyinde mi kalacak, yoksa projeye mi bağlanacak?
 - Raporlarda kişi ve proje görünürlüğü aynı kurala mı tabi olacak?
 
-## Karar verilene kadar
+## Sıradaki adım
 
-Bu konu “eksik özellik” diye sessizce uygulanmamalı. Mevcut çalışma alanı
-modelinin bilinçli bir ürün varsayımı olup olmadığı netleştirilmeli; karar
-verildiğinde önce [GUVENLIK.md](GUVENLIK.md) bölüm 4'teki sorular cevaplanmalı,
-sonra şema ve uçlar küçük bir dilimde değiştirilmeli.
+1. adım kapandı. Şimdi 2. adım: `ProjectMember` modeli ve şema değişikliği.
+Ardından 3. adım (mevcut üyelerin mevcut projelere bir defalık aktarılması) —
+bu ikisi birlikte planlanmalı, çünkü aktarım yapılmadan kapı açılırsa herkes
+her projeden düşer.
+
+Kod yazılmadan önce [GUVENLIK.md](GUVENLIK.md) bölüm 4'teki on soru
+cevaplanır ve cevaplar commit mesajına girer.
