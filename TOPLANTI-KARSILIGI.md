@@ -176,6 +176,146 @@ Confluence — ayrı ürünler, ayrı lisanslar).
 
 ---
 
+---
+
+## 7 · Büyüme fikirleri — arama, ücretlendirme, masaüstü/mobil
+
+*(10 Eylül 2026. Üç fikir sunuldu, üçü de burada tartılıyor. Ölçüt bu belgenin
+kendi ölçütü: "Jira'yı ağır yapan katmanı kovalamak iddiayı bitirir.")*
+
+### 7.1 · Sesli/görüntülü arama ve ekran paylaşımı
+
+**Değerlendirme: yapılmamalı — en azından şimdi değil.**
+
+Tezle çelişmiyor: bu belge farkı "içinde sohbet ve notlar olması" diye kuruyor
+ve arama o çizginin devamı sayılabilir. Ama fark **eşzamansız** olanda: işin
+yanında duran konuşma ve not. Arama eşzamanlı ve o pazar doymuş; ekibin zaten
+açık bir Meet/Discord'u var. Kimse proje aracını arama kalitesine bakarak
+seçmiyor.
+
+**Teknik yük bir özellik değil, ikinci bir ürün.** Sinyalleşme mevcut
+(Socket.IO). Geri kalanı yeni: STUN bedava ama bağlantıların yaklaşık altıda
+biri simetrik NAT arkasında kalıp **TURN** ister (bant genişliği faturası);
+3-4 kişiyi geçen aramada mesh çöker ve **SFU** gerekir. Yankı engelleme, cihaz
+izinleri, mobil tarayıcı tuhaflıkları, yeniden bağlanma.
+
+**Maliyet modeli değişiyor.** Bugün Railway + Neon aşağı yukarı sabit gider.
+Medya sayaçlı: dört kişilik bir saatlik görüşme 1-2 GB. Henüz gelir üretmeyen
+bir üründe kullandıkça artan bir kalem açmak demek.
+
+**Ucuz karşılığı, istenirse:** aramayı yapmak değil bağlamak. Projeye/kanala
+görüşme bağlantısı alanı (ekip ne kullanıyorsa), kartta "görüşmeye katıl",
+çevrimiçi bilgisi (zaten var). Değerin çoğu, işin çok azı. Gerçekten WebRTC
+yazılacaksa **yalnızca 1:1 ekran paylaşımı** — SFU gerekmez, en çok istenen
+kısım odur.
+
+**Kayda geçen çekince:** bu fikir heyecan verici olduğu için, sıkıcı ve zor
+işin (erişim modeli, bildirimler) önüne geçme riski taşıyor. Sıralamada en
+sonda durmasının sebebi maliyeti değil, bu.
+
+### 7.2 · Paketleme ve ücretlendirme (Basic / Pro / VIP)
+
+**Değerlendirme: niyet doğru, ama bugün sorulacak soru bu değil.**
+
+**Önce teknik ön koşul:** paket demek çalışma alanı başına sınır uygulamak
+demek — kaç üye, kaç proje, hangi özellik. Bu sınırların uygulandığı katman,
+yetkilendirmenin yaşadığı katmanla aynı. Bugün orada durum şu: *bir üye
+çalışma alanındaki her şeyi görüyor.* Yani **proje bazlı erişim yalnızca bir
+güvenlik açığı değil, satışın ön koşulu.** Bu, o işe girmek için ikinci ve
+bağımsız bir gerekçe.
+
+**Sonra asıl soru.** "Hangi kademeler" sorusu, satacak bir şey ve satılacak
+biri varken anlamlı. Bugün cevaplanması gereken soru *"birileri buna para
+verecek kadar istiyor mu"* ve bu üç-beş gerçek ekibi kullandırarak öğrenilir,
+kademe tasarlayarak değil.
+
+**En güçlü ücretli kanca muhtemelen MCP.** "Claude'a sor, panonu okusun"
+bugün Trello/Asana/Notion'da düzgün karşılığı olmayan bir şey. Ama MCP şu an
+salt okuma, tek kişilik ve ortam değişkeni elle düzenlenerek kuruluyor —
+satılabilir olması için en az kendi kendine anahtar üretme (TODO'da) gerekiyor.
+
+**İki tuzak:**
+
+- **Sızıntının tamiri paralı olmamalı.** Proje bazlı erişim "Pro özelliği"
+  yapılmamalı; üyelerin her şeyi görmesi bir açıksa kapatmak için para
+  istemek kötü okunur. İnce ayarlı roller ücretli olabilir, temel kapsamlama
+  olmamalı.
+- **Depolama satılmamalı — henüz.** Dosyalar veritabanında `bytea` olarak
+  duruyor ve TODO bunun ölçeklenmediğini yazıyor. Bozuk olduğu bilinen bir
+  sistemde kota satmak, sorunu müşteriye faturalamaktır.
+
+**Paket sayısı:** üç kademe erken. **Free + Pro** ile başlanmalı; üçüncüsü
+talep gelince. *VIP* adı tüketici uygulaması çağrıştırıyor; B2B karşılığı
+**Team** ya da **Business**.
+
+**Kod dışı engel:** faturalandırma. Şirket türü, KDV, Stripe'ın Türkiye
+durumu. Bu kalem tek başına lansmanı bloklayabilir ve yazılımla çözülmez —
+erken bakılmalı.
+
+### 7.3 · Masaüstü ve mobil uygulama
+
+**Değerlendirme: üçü içinde gerçekten değerli olan bu — ama sebebi
+"daha çok platform" değil.**
+
+Asıl gerekçe: **telefondan bakılamayan bir pano bakılmaz, bakılmayan pano
+ölür.** Bu bir dağıtım meselesi değil, kullanım sürekliliği meselesi.
+
+**PWA ile başlanmalı.** Uygulama zaten duyarlı ve mobil turu yapılmış
+(`6be4893`). Manifest + service worker ile ana ekrana kurulabilir, kendi
+penceresi olur, çevrimdışı kabuğu çalışır. Günler mertebesinde iş, hem
+masaüstü hem mobil kazanılır.
+
+**Masaüstü kabuğu: Electron değil Tauri.** Aynı uygulamayı sarar, çok daha
+küçük paket üretir. Gerçek kazanç görsellik değil: sistem tepsisi, yerel
+bildirim, global kısayol ve sürekli açık soket — yani bildirimin sekme kapalı
+iken de gelmesi.
+
+**React Native ile yerel mobil: hayır, henüz.** Bütün arayüzü yeniden yazmak
+demek. Kamera/dosya sistemi gibi gerçek bir yerel ihtiyaç kanıtlanmadan
+girilmemeli.
+
+**Ön koşul — atlanmamalı:** push bildirimi bozuk bir bildirim sistemini
+büyütür. 10 Eylül'de bulundu: okundu bilgisi sunucuya hiç yazılmıyor. Bu
+düzeltilmeden push açılırsa herkesin telefonunda günler önce okunmuş
+bildirimler için rozet yanar. Bildirimler zaten bu deponun en çok kusur çıkan
+alanı.
+
+### 7.4 · Üçünün de cevaplamadığı soru
+
+Üç fikir de "ürünü büyütme" fikri. Ama 10 Eylül'de MCP ile gerçek veriye
+bakıldığında çıkan tablo şu: pano **Mayıs'tan beri güncellenmemiş**, dört
+kartın açıklaması birebir aynı, çalışma alanlarının adları `asdasd`,
+`ghghhg`, `sadsada`.
+
+Bu veri bir dağıtım ya da paketleme sorununa işaret etmiyor. *"Birileri bunu
+gerçekten kullanıyor mu"* sorusuna işaret ediyor. Üç fikir de o soruyu
+cevaplamıyor, erteliyor.
+
+Ürün iyi kurulmuş — 211 test, düşünülmüş kararlar, gerçek mimari. Eksik olan
+kod değil. **Bir ekibin iki hafta gerçekten kullanması**, hangi özelliğin
+eksik olduğunu bu listeden daha iyi söyler. Bu belge zaten "kurumsal tarafın
+soracağı ilk soru proje bazlı üyelik" diyor; bir sonraki adım için kanıt
+elimizde, tahmine gerek yok.
+
+### 7.5 · Önerilen sıra
+
+1. **Proje bazlı erişim** — kararları verildi (`PROJE-ERISIMI.md`), açığı
+   kapatıyor ve **satışın ön koşulu**
+2. **Bildirim temizliği** — push'un ön koşulu, en kırılgan alan
+3. **PWA + Tauri kabuğu** — ucuz, algılanan değeri yüksek, yeni arka uç yok
+4. **Ücretlendirme** — 1 bitmeden başlanamaz
+5. **Arama** — en son, ve önce bağlama sürümüyle
+
+İlk ikisi sunulan listede yoktu ama üçünün de altında onlar duruyor. Bu
+aşamada yeni özellik eklemek, var olanı satılabilir hâle getirmekten daha az
+değer üretiyor.
+
+**Bu bölüm bir karar değil, değerlendirme.** Karar verildiğinde bu belgeye
+işlenmeli — özellikle 7.1'e "yine de yapılacak" denirse, gerekçesi buraya
+yazılmalı ki maliyetin bilerek kabul edildiği görünsün.
+
+---
+
 ## Bilinçli olarak yapılmayanlar
 
 Bunlar "yetişmedi" değil, **seçim**:
