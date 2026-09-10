@@ -120,6 +120,74 @@ Bunlar ilk dilimi (okuma kapısı) bloklamıyor, o yüzden ertelendi:
 - Genel kanal çalışma alanı düzeyinde mi kalacak, yoksa projeye mi bağlanacak?
 - Raporlarda kişi ve proje görünürlüğü aynı kurala mı tabi olacak?
 
+## Projesiz üye ekranı — tasarım yönü
+
+Kararın kabul edilen karşılığı, yeni üyenin bazen hiçbir projeye eklenmemiş
+olması. Bunun **iki** cevabı var ve ikisi de gerekli.
+
+**Birincisi, kazayla olmasını engellemek.** Alana katılma zaten onaydan
+geçiyor (`POST /workspaces/join-requests/:reqId/approve`), yani yeni üyenin
+girdiği tek kapıda bir yönetici duruyor. Proje seçimi o onay ekranına konur
+ve en az bir seçim yapılmadan onay tamamlanmaz. "Şimdilik projesiz kabul et"
+seçeneği bilinçli olarak durur — yasak değil, ama sessiz de değil. Böylece
+boş ekran kazara değil, yalnızca bilerek oluşur.
+
+**İkincisi, oluştuğunda ekranın kendini açıklaması.** Boş liste gösterip
+susmak bu deponun tekrar eden kusuru. Ekranın dili giriş sayfasından
+geliyor — ama `auth.jsx` incelendiğinde kopyalanmaması gereken beş nokta
+çıktı.
+
+### Giriş ekranı incelemesi — dikkat edilecekler
+
+**1. Bu bir tam ekran devralma olmamalı.** `.auth-page` `100vh/100vw`,
+`overflow: hidden` ve `grid-template-columns: 2fr 1fr`. Giriş ekranında
+doğru, çünkü kullanıcı henüz içeride değil. **Projesiz üye ise içeride:**
+sohbeti, notları, ayarları çalışıyor. Ekranı devralırsak çalışan bir
+uygulamayı kilitlemiş oluruz. Alınacak olan *estetik*, *devralma* değil —
+kart içerik alanında yaşamalı, üst çubuk ve kenar çubuğu yerinde kalmalı.
+
+**2. Mobilde görsel taraf tamamen kayboluyor.** `@media (max-width: 768px)`
+içinde `.auth-visual { display: none !important; }`. Kalıp olduğu gibi
+kopyalanırsa **telefonda hiçbir şey görünmez** — üstelik projesiz üyenin
+gördüğü tek ekran bu olduğu için tamamen boş bir sayfayla karşılaşır.
+Mobil düzen ayrıca kararlaştırılmalı: görsel gizlenebilir ama kart ve metin
+kalmak zorunda.
+
+**3. Emsal giriş ekranı değil, `workspace-page`.** `auth.jsx` içinde
+"çalışma alanın yok" ekranı zaten aynı iskeleti yeniden kullanıyor
+(`.auth-page.workspace-page`) ama sol tarafı farklı: fotoğraf kaydırıcısı
+yerine **blueprint SVG**, ve açık gradyan katmanı bilinçli olarak kapatılıyor
+(`.workspace-page .auth-visual::after { display: none }`). Yani "henüz bir
+şeyin yok" durumunun görsel dili bu depoda zaten kurulmuş. Projesiz üye
+ekranı giriş sayfasına değil **buna** benzemeli; aksi hâlde iki farklı
+"boşsun" estetiği doğar.
+
+**4. Kaydırıcı tembel yükleniyor, kopyalanırken korunmalı.** `loadedSlides`
+kümesi yalnızca sırası gelen kareyi yüklüyor; yedi adet 1920px Unsplash
+görseli aynı anda inmiyor. Geçiş 1.2sn opaklık, döngü 10 saniyede bir.
+Fotoğraf yolu seçilirse bu davranış birlikte taşınmalı.
+
+**5. Toz parçacıkları sonsuz animasyon.** `particleRise` sürekli dönüyor ve
+giriş ekranı `prefers-reduced-motion`'a bakmıyor. Projesiz üyenin ekranı
+uzun süre açık kalabilir; yeni ekranda hareket azaltma tercihi
+desteklenmeli. Mevcut ekranın eksiği, kopyalanacak bir davranış değil.
+
+### Kart içeriği
+
+"Henüz bir projeye eklenmedin." + yöneticiye haber verme eylemi. Alandaki
+projelerin **adını** göstermek sızıntı değil, içeriğini göstermek sızıntı —
+istersen ad listesi ve "erişim iste" düğmesi konabilir.
+
+`.glass-content` metin rengini tema bağımsız koyuya sabitliyor (kart her
+zaman krem), yani koyu temada da olduğu gibi çalışır. Ama kenar boşlukları
+(`margin: auto 48px 72px 8vw`) büyük sol panele göre ayarlı; içerik alanında
+yeniden ölçülmeli.
+
+Dil kuralı geçerli: metin `APP_I18N`e tr/en birlikte girer. `auth.jsx`in
+kendi `AUTH_I18N` sözlüğü burada kullanılmaz — bu ekran uygulama sözlüğü
+yüklendikten sonra çalışıyor. Giriş ekranının SVG etiketlerine tanınan
+muafiyet de bu ekranı kapsamaz.
+
 ## Sıradaki adım
 
 1. adım kapandı. Şimdi 2. adım: `ProjectMember` modeli ve şema değişikliği.
