@@ -167,7 +167,22 @@
   --line-strong: #d4d3ce;
 
   /* Accent — Stoaboard navy (#1a4a70) */
-  --accent: #1a4a70;
+  /* Vurgu secenekleri — ORNEK KARENIN VE UYGULANAN RENGIN TEK KAYNAGI.
+     Ayarlardaki kareler bu degiskenleri okuyor; asagidaki [data-accent]
+     bloklari da. Kusur (10 Eyl 2026): kareler settings.jsx ve tweaks.jsx
+     icinde ELLE yazilmisti ve yalnizca isikli tema degerini gosteriyordu.
+     Koyu temada navy karesi #1a4a70 gorunup uygulandiginda
+     oklch(70% 0.10 240) (≈ #60a7d6) oluyordu - secilen renk ile gorunen
+     renk farkliydi, ustelik iki dosyada birden. Deger tek yerde durursa
+     bir daha ayrisamaz. */
+  --accent-navy:       #1a4a70;
+  --accent-terracotta: oklch(55% 0.13 25);
+  --accent-sage:       oklch(55% 0.09 150);
+  --accent-slate:      oklch(50% 0.04 250);
+  --accent-indigo:     oklch(52% 0.15 270);
+  --accent-plum:       oklch(50% 0.14 340);
+
+  --accent: var(--accent-navy);
   --accent-soft:   color-mix(in oklch, var(--accent) 10%, transparent);
   --accent-softer: color-mix(in oklch, var(--accent) 5%,  transparent);
   --accent-ink:    oklch(from var(--accent) calc(l - 0.10) c h);
@@ -246,11 +261,11 @@
 
 /* Accent variations — light theme
    Default (no data-accent or "navy") uses :root above. */
-[data-accent="terracotta"] { --accent: oklch(55% 0.13 25);  --accent-soft: oklch(55% 0.13 25 / 0.10);  --accent-softer: oklch(55% 0.13 25 / 0.05);  --accent-ink: oklch(40% 0.10 25); }
-[data-accent="sage"]       { --accent: oklch(55% 0.09 150); --accent-soft: oklch(55% 0.09 150 / 0.10); --accent-softer: oklch(55% 0.09 150 / 0.05); --accent-ink: oklch(40% 0.08 150); }
-[data-accent="slate"]      { --accent: oklch(50% 0.04 250); --accent-soft: oklch(50% 0.04 250 / 0.10); --accent-softer: oklch(50% 0.04 250 / 0.05); --accent-ink: oklch(35% 0.04 250); }
-[data-accent="indigo"]     { --accent: oklch(52% 0.15 270); --accent-soft: oklch(52% 0.15 270 / 0.10); --accent-softer: oklch(52% 0.15 270 / 0.05); --accent-ink: oklch(38% 0.13 270); }
-[data-accent="plum"]       { --accent: oklch(50% 0.14 340); --accent-soft: oklch(50% 0.14 340 / 0.10); --accent-softer: oklch(50% 0.14 340 / 0.05); --accent-ink: oklch(35% 0.12 340); }
+[data-accent="terracotta"] { --accent: var(--accent-terracotta);  --accent-soft: oklch(55% 0.13 25 / 0.10);  --accent-softer: oklch(55% 0.13 25 / 0.05);  --accent-ink: oklch(40% 0.10 25); }
+[data-accent="sage"]       { --accent: var(--accent-sage); --accent-soft: oklch(55% 0.09 150 / 0.10); --accent-softer: oklch(55% 0.09 150 / 0.05); --accent-ink: oklch(40% 0.08 150); }
+[data-accent="slate"]      { --accent: var(--accent-slate); --accent-soft: oklch(50% 0.04 250 / 0.10); --accent-softer: oklch(50% 0.04 250 / 0.05); --accent-ink: oklch(35% 0.04 250); }
+[data-accent="indigo"]     { --accent: var(--accent-indigo); --accent-soft: oklch(52% 0.15 270 / 0.10); --accent-softer: oklch(52% 0.15 270 / 0.05); --accent-ink: oklch(38% 0.13 270); }
+[data-accent="plum"]       { --accent: var(--accent-plum); --accent-soft: oklch(50% 0.14 340 / 0.10); --accent-softer: oklch(50% 0.14 340 / 0.05); --accent-ink: oklch(35% 0.12 340); }
 /* Custom: --accent is set inline by JS; derivatives derive via color-mix */
 [data-accent="custom"] {
   --accent-soft:   color-mix(in oklch, var(--accent) 10%, transparent);
@@ -260,12 +275,23 @@
 
 /* Accent variations — dark theme (higher lightness for visibility on dark bg)
    Default dark = navy lighter. */
-[data-theme="dark"]                            { --accent: oklch(70% 0.10 240); --accent-soft: oklch(70% 0.10 240 / 0.18); --accent-softer: oklch(70% 0.10 240 / 0.10); --accent-ink: #fff; }
-[data-theme="dark"][data-accent="terracotta"]  { --accent: oklch(72% 0.14 25);  --accent-soft: oklch(72% 0.14 25 / 0.15);  --accent-softer: oklch(72% 0.14 25 / 0.08);  --accent-ink: #fff; }
-[data-theme="dark"][data-accent="sage"]        { --accent: oklch(70% 0.10 150); --accent-soft: oklch(70% 0.10 150 / 0.15); --accent-softer: oklch(70% 0.10 150 / 0.08); --accent-ink: #fff; }
-[data-theme="dark"][data-accent="slate"]       { --accent: oklch(68% 0.06 250); --accent-soft: oklch(68% 0.06 250 / 0.15); --accent-softer: oklch(68% 0.06 250 / 0.08); --accent-ink: #fff; }
-[data-theme="dark"][data-accent="indigo"]      { --accent: oklch(70% 0.17 270); --accent-soft: oklch(70% 0.17 270 / 0.15); --accent-softer: oklch(70% 0.17 270 / 0.08); --accent-ink: #fff; }
-[data-theme="dark"][data-accent="plum"]        { --accent: oklch(70% 0.16 340); --accent-soft: oklch(70% 0.16 340 / 0.15); --accent-softer: oklch(70% 0.16 340 / 0.08); --accent-ink: #fff; }
+/* Koyu temada ayni secenekler daha acik adimlarda — koyu zeminde okunsun
+   diye. Ornek kareler de bu degerleri gosteriyor, cunku ayni degiskeni
+   okuyorlar. */
+[data-theme="dark"] {
+  --accent-navy:       oklch(70% 0.10 240);
+  --accent-terracotta: oklch(72% 0.14 25);
+  --accent-sage:       oklch(70% 0.10 150);
+  --accent-slate:      oklch(68% 0.06 250);
+  --accent-indigo:     oklch(70% 0.17 270);
+  --accent-plum:       oklch(70% 0.16 340);
+}
+[data-theme="dark"]                            { --accent: var(--accent-navy); --accent-soft: oklch(70% 0.10 240 / 0.18); --accent-softer: oklch(70% 0.10 240 / 0.10); --accent-ink: #fff; }
+[data-theme="dark"][data-accent="terracotta"]  { --accent: var(--accent-terracotta);  --accent-soft: oklch(72% 0.14 25 / 0.15);  --accent-softer: oklch(72% 0.14 25 / 0.08);  --accent-ink: #fff; }
+[data-theme="dark"][data-accent="sage"]        { --accent: var(--accent-sage); --accent-soft: oklch(70% 0.10 150 / 0.15); --accent-softer: oklch(70% 0.10 150 / 0.08); --accent-ink: #fff; }
+[data-theme="dark"][data-accent="slate"]       { --accent: var(--accent-slate); --accent-soft: oklch(68% 0.06 250 / 0.15); --accent-softer: oklch(68% 0.06 250 / 0.08); --accent-ink: #fff; }
+[data-theme="dark"][data-accent="indigo"]      { --accent: var(--accent-indigo); --accent-soft: oklch(70% 0.17 270 / 0.15); --accent-softer: oklch(70% 0.17 270 / 0.08); --accent-ink: #fff; }
+[data-theme="dark"][data-accent="plum"]        { --accent: var(--accent-plum); --accent-soft: oklch(70% 0.16 340 / 0.15); --accent-softer: oklch(70% 0.16 340 / 0.08); --accent-ink: #fff; }
 [data-theme="dark"][data-accent="custom"] {
   --accent-soft:   color-mix(in oklch, var(--accent) 15%, transparent);
   --accent-softer: color-mix(in oklch, var(--accent) 8%,  transparent);

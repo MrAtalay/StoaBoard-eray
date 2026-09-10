@@ -1000,7 +1000,7 @@ function SettingsView({ tweaks, setTweak, onLogout, onWsLogoChange, onMembersCha
           <div className="tweak-group">
             <div className="tweak-label">{_t('set_app_accent','Vurgu rengi')}</div>
             <div className="swatch-row">
-              {[['navy','#1a4a70'],['terracotta','oklch(55% 0.13 25)'],['sage','oklch(55% 0.09 150)'],['slate','oklch(50% 0.04 250)'],['indigo','oklch(52% 0.15 270)'],['plum','oklch(50% 0.14 340)']].map(([k,v]) => (
+              {[['navy','var(--accent-navy)'],['terracotta','var(--accent-terracotta)'],['sage','var(--accent-sage)'],['slate','var(--accent-slate)'],['indigo','var(--accent-indigo)'],['plum','var(--accent-plum)']].map(([k,v]) => (
                 <button key={k} className="swatch" data-active={tweaks.accent===k} style={{ background:v }} onClick={() => setTweak('accent',k)} title={k} />
               ))}
               <label
