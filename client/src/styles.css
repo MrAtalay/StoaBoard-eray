@@ -951,6 +951,27 @@ input, textarea, select, [contenteditable="true"] {
   flex-shrink: 0;
 }
 
+/* "Tamamlandi" kolonu isaretli degilse cikan uyari.
+   Kolonu silmek serbest birakildi (yasaklamak, kolonu silmeden isareti
+   kaldirma yolunu acik biraktigi icin deligi kapatmiyordu) - o yuzden tek
+   koruma bu satirin gorunur olmasi. Sessiz kalirsa gecikme ve sure rakamlari
+   yanlis ama makul gorunur; 10 Eylul 2026'da olculen durum tam olarak buydu. */
+.board-done-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  font-size: 12.5px;
+  color: var(--status-amber);
+  background: oklch(65% 0.11 70 / 0.08);
+  border-bottom: 1px solid oklch(65% 0.11 70 / 0.22);
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .board-done-warning { padding: 8px 12px; }
+}
+
 /* Dar ekranda arac cubugu tasip kirpiliyordu: Liste/Kanban/Tablo/Cizelge
    sekmeleri ve filtre ekran disinda kalip erisilemez oluyordu. Artik yatay
    kayiyor; cubuk gizli ama parmak/trackpad ile geziniyor. */

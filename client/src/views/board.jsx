@@ -1297,6 +1297,17 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
         </div>
       )}
     </div>
+    {/* Hicbir kolon "tamamlandi" isaretli degilse pano bunu soylemek zorunda.
+        Sessiz kaldiginda kart Done kolonuna gidiyor, kullanici isi bitmis
+        saniyor, ama completedAt yazilmiyor ve gecikme listesi bitmis isleri
+        gecikmis gosteriyor - yanlis ama makul gorunen bir sayi. Kusur
+        10 Eylul 2026'da olculdu; 18 panodan altisi bu durumdaydi. */}
+    {columns.length > 0 && !columns.some(c => c.is_done) && (
+      <div className="board-done-warning" role="status">
+        <Icon name="alertTriangle" size={14} style={{ flexShrink: 0 }} />
+        <span>{window.t?.('board_no_done_col') || 'Bu panoda "tamamlandı" olarak işaretli kolon yok.'}</span>
+      </div>
+    )}
     {filterOpen && (
       <FilterBar
         activeLabels={activeLabels}
