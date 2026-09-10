@@ -158,9 +158,10 @@
   --bg-sunken: #ededea;
   --ink: #1a1a17;
   --ink-2: #3a3a36;
-  --ink-muted: #76766f;
-  /* 2.29:1 idi - metin icin okunmuyordu, olculdu ve duzeltildi (10 Eyl 2026) */
-  --ink-faint: #767670;
+  --ink-muted: #5b5b56;
+  /* Metin olcegi: her adim --bg VE --bg-raised uzerinde >= 4.5:1.
+     dil/kontrast testi bunu kilitliyor (kontrast.test.js). */
+  --ink-faint: #6f6f6a;
   /* METIN ICIN DEGIL: 1.68:1. Kenarlik, avatar dolgusu, devre disi oge. */
   --ink-dim: #c4c4bc;
   --line: #e5e4df;
@@ -230,8 +231,8 @@
   --bg-sunken: #e4dfd5;
   --ink: #231f1a;
   --ink-2: #4a4238;
-  --ink-muted: #7d7366;
-  --ink-faint: #736b5e;
+  --ink-muted: #5c554b;
+  --ink-faint: #6f695f;
   /* METIN ICIN DEGIL - bkz. varsayilan tema notu */
   --ink-dim: #c8bfae;
   --line: #dfd7c8;
@@ -246,9 +247,8 @@
   --bg-sunken: #0c0c0b;
   --ink: #ededea;
   --ink-2: #c8c8c2;
-  --ink-muted: #8a8a82;
-  /* 2.51:1 idi - koyu temada da metin icin okunmuyordu */
-  --ink-faint: #82827a;
+  --ink-muted: #9f9f96;
+  --ink-faint: #87877e;
   /* METIN ICIN DEGIL: 1.62:1 */
   --ink-dim: #3e3e38;
   --line: #2b2b28;

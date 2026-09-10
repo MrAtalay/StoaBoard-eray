@@ -320,6 +320,59 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       **Tarama kapsamı:** dashboard'daki her sayının kaynağı tek tek
       doğrulanmalı. "Ay" verisinin uydurma olduğu iki oturum boyunca kimsenin
       dikkatini çekmemişti; aynı ekranda başka bir tahmin daha olabilir.
+- [ ] **Bildirim okundu bilgisi sunucuya hiç yazılmıyor.** *(Bildirildi ve
+      doğrulandı, 10 Eylül 2026.)* Belirti: her girişte rozet dolu görünüyor,
+      panel açılınca sıfırlanıyor, günler önce okunmuş bildirim tekrar tekrar
+      geri geliyor.
+
+      **Mekanizma:** paneli açan ve kapatan her yol `setNotifCount(0)`
+      çağırıyor (`app.jsx` 1098, 1104, 1229, 1231, 1232) — bu **yalnızca yerel
+      React durumu.** Hiçbiri sunucuya istek atmıyor. Açılışta ise
+      `setNotifCount(unread)` (`app.jsx:633`) gerçek veritabanı sayısını
+      okuyor. Yani döngü şu: bildirim `read: false` olarak duruyor, panel
+      açılınca rozet yerel olarak sıfırlanıyor, bir sonraki girişte sunucu
+      "hâlâ okunmadı" diyor ve rozet geri geliyor. Kayıt asla değişmiyor.
+
+      Sunucu tarafı suçsuz: `POST /api/notifications/read-all` ve
+      `POST /api/notifications/:id/read` ikisi de doğru çalışıyor
+      (`notifications.js`). Sorun onların **hiç çağrılmaması** — `markAllRead`
+      yalnızca "hepsini okundu işaretle" düğmesine bağlı.
+
+      Bu, deponun tekrar eden kalıbı: arayüz bir şey yapmış gibi görünüyor,
+      aslında hiçbir şey yazılmıyor. Sessiz atlama.
+
+      **Karar gerekiyor — düz bir hata değil, ürün sorusu:** paneli açmak
+      *her şeyi* okundu saysın mı? Sayarsa "Okunmamış" sekmesi anlamsızlaşır.
+      Seçenekler: (a) panel açılınca `markAllRead` çağır — en basit, sekme
+      işlevsizleşir; (b) yalnızca ekranda görünen bildirimleri okundu yap;
+      (c) rozeti "okunmamış sayısı" değil "son bakıştan beri gelen" diye
+      yeniden tanımla ve okundu işaretlemeyi tamamen kullanıcıya bırak.
+      (c) sekmeyi korur ve bugünkü davranışa en yakın olanıdır.
+      Cevap verilmeden kod yazılmamalı; [BILDIRIMLER.md](BILDIRIMLER.md) oku.
+- [ ] **Giriş ekranındaki istatistikler uydurma.** `auth.jsx:673` "1.200+ aktif
+      takım" ve "38k+ görev tamamlandı", `auth.jsx:1293` "6k+ takım", "%98
+      memnuniyet", "15m+ görev" diyor. Veritabanında 11 çalışma alanı ve ana
+      projede 15 görev var. Bunlar pazarlama metni ve öyle olduğu sürece bir
+      **ürün kararı**, kusur değil — ama uydurma "Ay" grafiğiyle aynı aileden:
+      gerçek gibi sunulan sayı. Ya gerçek sayılara bağlanmalı, ya da açıkça
+      hedef/iddia diline çevrilmeli. Karar senin.
+- [ ] **Özel vurgu rengi koyu temada açılmıyor.** Hazır altı seçenek koyu
+      temada bilinçli olarak açılıyor (L %50-55 → %68-72) ama "özel renk"
+      seçeneğinde `--accent` JS ile satır içi veriliyor ve olduğu gibi
+      kalıyor (`styles.css`, `[data-theme="dark"][data-accent="custom"]`
+      yalnızca soft/softer/ink tanımlıyor). Kullanıcı kendi seçtiği rengi
+      aynen aldığı için bugün yanlış bir şey göstermiyor; ama koyu bir özel
+      renk seçilirse koyu zeminde okunmaz. Hazır seçenekler için yapılan
+      düzeltme buraya uygulanmadı.
+- [ ] **Serileştirici sözleşmesi teste bağlanmalı.** Aynı kusur iki gün üst
+      üste, iki ayrı yerde çıktı: `columnToDict` slug'ı `id` adıyla veriyor,
+      tüketici `.slug` diye arıyor (9 Eylül MCP araçları, 10 Eylül
+      `weeklyDone`). İki tarafa ayrı ayrı bakınca ikisi de doğru görünüyor;
+      kusur sözleşmelerin **arasında** ve hiçbir birim testi göremiyor.
+      Önerilen: her `*ToDict` fonksiyonunun ürettiği alan kümesini teste
+      sabitle. Şekil değişince test kırılır ve tüketicilere bakmak zorunlu
+      hâle gelir. Kontrast ve vurgu testleri (10 Eylül) bu merdivenin aynı
+      basamağında; bu üçüncüsü.
 - [ ] **MCP çalışma alanını göremiyor, değiştiremiyor.** Bütün araçlar
       **aktif** çalışma alanına bakıyor ve o alan yalnızca tarayıcıdan
       değişiyor. Sonuç: kullanıcının tarayıcısı başka bir alandayken Claude
