@@ -15,12 +15,45 @@ import { config } from '../config.js';
 import { lookupSlug } from './mcpToken.js';
 import { recordAudit, AUDIT } from './audit.js';
 
-/** `Authorization: Bearer <anahtar>` başlığından anahtarı çıkarır. */
+/**
+ * Anahtarı istekten çıkarır. İki başlık kabul edilir.
+ *
+ * `Authorization: Bearer <anahtar>` asıl biçim ve komut satırı istemcileri
+ * (`claude mcp add --header`) bunu kullanıyor.
+ *
+ * `X-Auth-Token: <anahtar>` ise Claude'un tarayıcı içindeki bağlayıcı ekranı
+ * için var (10 Eylül 2026). O ekran asıl kimliği OAuth ile kuruyor ve ek
+ * başlıklar için kapalı bir ad listesi sunuyor — `Authorization` o listede
+ * yok, `x-auth-token` var. StoaBoard'da OAuth yetkilendirme sunucusu
+ * bulunmadığı için bağlayıcı "couldn't register" ile düşüyordu; ikinci başlık
+ * o ekranı OAuth yazmadan çalışır hâle getiriyor.
+ *
+ * Güvenlik açısından bir gevşeme değil: taşınan sır aynı sır, yalnızca
+ * geldiği başlık farklı. Doğrulama tek yerde (`lookupSlug`, özet
+ * karşılaştırması) ve iki yol da oradan geçiyor. "Anahtar yoksa geç" hâli
+ * hiçbir dalda yok.
+ *
+ * `Bearer ` öneki X-Auth-Token'da da hoş görülüyor: kullanıcı alışkanlıkla
+ * yazarsa sessizce başarısız olmasın — sessiz başarısızlık bu deponun
+ * tekrar eden kusuru.
+ */
 function bearerToken(req) {
-  const header = req.get?.('authorization') || '';
-  const m = /^Bearer\s+(\S+)\s*$/i.exec(header.trim());
-  return m ? m[1] : null;
+  const auth = (req.get?.('authorization') || '').trim();
+  const m = /^Bearer\s+(\S+)$/i.exec(auth);
+  if (m) return m[1];
+
+  const alt = (req.get?.('x-auth-token') || '').trim();
+  if (!alt) return null;
+  const am = /^(?:Bearer\s+)?(\S+)$/i.exec(alt);
+  if (!am) return null;
+  // Yalnızca "Bearer" yazılmışsa ardında anahtar yok demektir; desen onu
+  // anahtar sanıyordu. Testte yakalandı (guvenlik.test.js).
+  return /^Bearer$/i.test(am[1]) ? null : am[1];
 }
+
+// Saf mantık; testten çağrılabilsin diye dışa açık. Kapının kendisi
+// `requireMcpToken`, bu yalnızca başlık ayrıştırma.
+export { bearerToken as _bearerToken };
 
 /**
  * MCP anahtarını doğrular ve isteği kullanıcıya bağlar.

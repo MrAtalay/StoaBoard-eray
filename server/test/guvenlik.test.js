@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { csvCell, toCsv, CSV_BOM } from '../src/lib/csv.js';
+import { _bearerToken } from '../src/lib/mcpAuth.js';
 import {
   ALL_PERMISSIONS,
   memberPermissions,
@@ -483,5 +484,71 @@ describe('sessiz yutulan hata — sunucuda çıplak boş catch yok', () => {
       + 'console.warn ile gürültü çıkar (soket yayınları için lib/emit.js\'teki '
       + 'emitSafely), ya da blok içine NEDEN yutulduğunu yazan bir yorum koy.',
     );
+  });
+});
+
+// ─── MCP anahtarının başlıktan çıkarılması ──────────────────────────────────
+//
+// 10 Eylül 2026'da ikinci bir başlık tanıtıldı. Sebep: Claude'un tarayıcı
+// içindeki bağlayıcı ekranı asıl kimliği OAuth ile kuruyor ve ek başlıklar
+// için kapalı bir ad listesi sunuyor; `Authorization` o listede yok,
+// `x-auth-token` var. StoaBoard'da OAuth sunucusu olmadığı için bağlayıcı
+// "couldn't register" ile düşüyordu.
+//
+// Bir kimlik kapısını genişletmek, gevşetmenin en kolay yoludur. Bu testler
+// kapının hangi durumda AÇILMAYACAĞINI kilitliyor: yokluk hâli her dalda
+// null dönmeli, "başlık varsa geç" gibi bir kısayol oluşmamalı.
+describe('MCP anahtarı — başlık ayrıştırma', () => {
+  const istek = (basliklar) => ({
+    get: (ad) => basliklar[ad.toLowerCase()] ?? undefined,
+  });
+
+  test('Authorization: Bearer <anahtar> okunur', () => {
+    assert.equal(_bearerToken(istek({ authorization: 'Bearer abc123' })), 'abc123');
+  });
+
+  test('Bearer öneki büyük/küçük harfe duyarsız', () => {
+    assert.equal(_bearerToken(istek({ authorization: 'bearer abc123' })), 'abc123');
+  });
+
+  test('X-Auth-Token ham değerle okunur', () => {
+    assert.equal(_bearerToken(istek({ 'x-auth-token': 'abc123' })), 'abc123');
+  });
+
+  test('X-Auth-Token içinde Bearer öneki hoş görülür', () => {
+    assert.equal(_bearerToken(istek({ 'x-auth-token': 'Bearer abc123' })), 'abc123');
+  });
+
+  test('Authorization varsa X-Auth-Token\'a düşülmez', () => {
+    const t = _bearerToken(istek({ authorization: 'Bearer birinci', 'x-auth-token': 'ikinci' }));
+    assert.equal(t, 'birinci', 'iki başlık da varsa asıl biçim kazanmalı');
+  });
+
+  // Yokluk hâlleri — hepsi null dönmeli. Bir tanesi bile boş dize ya da
+  // undefined dönerse lookupSlug'a çöp gider; orada da uzunluk kapısı var ama
+  // iki kapının aynı anda doğru olmasına güvenmek yerine burada kesiliyor.
+  for (const [ad, basliklar] of [
+    ['hiç başlık yok', {}],
+    ['Authorization boş', { authorization: '' }],
+    ['Authorization yalnızca "Bearer"', { authorization: 'Bearer' }],
+    ['Authorization şeması yanlış', { authorization: 'Basic abc123' }],
+    ['Authorization anahtarsız boşluk', { authorization: 'Bearer    ' }],
+    ['X-Auth-Token boş', { 'x-auth-token': '' }],
+    ['X-Auth-Token yalnızca boşluk', { 'x-auth-token': '   ' }],
+    ['X-Auth-Token yalnızca "Bearer"', { 'x-auth-token': 'Bearer' }],
+  ]) {
+    test(`reddedilir: ${ad}`, () => {
+      assert.equal(
+        _bearerToken(istek(basliklar)), null,
+        `"${ad}" durumunda anahtar çıkarılmamalı — yokluk hâli sessizce `
+        + 'geçerli sayılmamalı.',
+      );
+    });
+  }
+
+  test('Authorization içindeki fazladan sözcük anahtar sayılmaz', () => {
+    // "Bearer abc def" -> tek bir anahtar değil; kabul edilirse hangi parçanın
+    // sır olduğu belirsizleşir.
+    assert.equal(_bearerToken(istek({ authorization: 'Bearer abc def' })), null);
   });
 });
