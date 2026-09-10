@@ -246,41 +246,52 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       Ürün riski düşük ve **değerin çoğu burada**: "Claude, kart aç" cümlesi panoda
       zaten iki tık; kazandıran cümle "bugün bende ne var, ne gecikti".
       Yalnızca yazma aracı koyan entegrasyonlar iki haftada terk ediliyor.
-- [ ] **`completed_at` boşluğu — pano "bitti" diyor, sistem "gecikmiş" diyor.**
-      Uçtan uca taramanın en değerli bulgusu; **veri kusuru, kod kusuru değil.**
-      İki katmanı var:
+- [x] **`completed_at` boşluğu — pano "bitti" diyor, sistem "gecikmiş" diyor.**
+      *(Kapatıldı 10 Eylül 2026.)* Dünkü teşhis "veri kusuru, kod kusuru değil"
+      diyordu. **Yanlıştı — altında yaşayan bir kod kusuru vardı.**
 
-      **(a) Bitiş kolonu işaretsiz.** Dört projenin üçünde hiçbir kolonda
-      `is_done` yok: proje 3 "Mobil Uygulama Geliştirme", proje 7 "ghghhg" ve
-      Mytherra alanındaki proje 21. Yalnızca proje 1 "Ana Proje" işaretli.
-      Kod suçsuz — `POST /api/projects` yeni projelerde
-      `isDone: slug === 'done'` yazıyor (`projects.js`, gerekçesi yorumda) —
-      ama o düzeltmeden önce açılmış projeler geri doldurulmadı.
+      **Kök sebep:** pano iki yerde kuruluyor. `projects.js` `isDone`u
+      koyuyordu, şablonla çalışma alanı açan `workspaces.js` yolu **hiç
+      koymuyordu**. Panolar geri doldurulmadığı için değil, o yoldan
+      doğdukları için işaretsizdi; kusur bugüne kadar yaşıyor, her yeni
+      çalışma alanında yeniden üretiliyordu. Düzeltildi ve
+      `raporlama.test.js`te altı testle kilitlendi (şablon başına iki).
 
-      **(b) İşaret sonradan konsa bile eski kartlar geri doldurulmuyor.**
-      Proje 1'de kolon işaretli olmasına rağmen `done` kolonundaki **9 karttan
-      8'inde `completed_at` yok.** Tek istisna #4, damgası
-      `2026-09-02T10:48` — yani işaretin konduğu gün. Ondan öncekiler kolon
-      işaretsizken taşındığı için `completedAt` hiç yazılmamış; #7'de
-      `progress` bile 0'da kalmış, kart `done` kolonunda duruyor.
+      İşaret şablon verisine **açıkça** kondu, ada göre tahmin edilmiyor:
+      tasarım şablonunun bitiş kolonu `delivery` ("Delivered"). `slug ===
+      'done'` kuralı oraya taşınsaydı o şablonu sessizce kaçırırdı.
 
-      **Bugünkü somut etkisi — ve MCP'nin bunu neden acil hâle getirdiği:**
-      `list_tasks(overdue: true)` proje 1'de **14 görev** döndürüyor, oysa
-      panoda 9 kart `done` kolonunda duruyor. "Bugün ne gecikti" sorusu —
-      TODO'nun kendi ifadesiyle *"kazandıran cümle"* — bugün **yanlış** cevap
-      veriyor. Ölçüt (`due < bugün && !completed_at`) doğru; besleyen veri
-      eksik. DEVIR'in "bayat bilgiye güvenmek hiç bilgi olmamasından kötüdür"
-      uyarısı soyut bir risk değil, ölçülmüş bir durum.
+      **Kapsam dörde değil 18 projeye yayılmıştı** (11 çalışma alanı). Dünkü
+      "dört projenin üçü" ölçümü eksikti, çünkü MCP yalnızca aktif çalışma
+      alanını görüyor — aşağıdaki maddenin teorik olmadığının kanıtı.
+      Altı panoda `is_done` SQL ile işaretlendi (kolon kimlikleri 10, 32, 49,
+      73, 77, 102); işaretsiz pano sayısı 0 olarak doğrulandı.
 
-      **Yarınki etkisi:** "kapatma ayrı uç değil, kartı `isDone` kolonuna
-      taşımak" — işaretli kolon yoksa `close_task` taşıyacak yer bulamaz.
+      **39 karta sahte tarih yazılmadı — bilinçli karar.** Geçiş defteri
+      sağlam (8 kayıt, 2 Eylül 10:48 - 10 Eylül 08:25, 2'si bitiş geçişi;
+      ilk kaydın damgası tek damgalı kartınkiyle saniyesine aynı) ama 39
+      kartın hiçbirinin kaydı yok: hepsi defter açılmadan önce taşınmış.
+      Dürüst bir geriye dönük tarih yok; uydurulanı rapora sahte bir zirve
+      olarak girerdi.
 
-      **Yapılacak, bu sırayla:** (1) proje 3, 7 ve 21'de bitiş kolonunu
-      kolon menüsünden işaretle; (2) `done` kolonunda olup `completedAt`i boş
-      kartlar için tek seferlik geri doldurma — üretime yazan bir iş,
-      çalıştırmadan önce `DATABASE_URL`in nereyi gösterdiğine bak. Elle
-      düzeltmek de mümkün (kartı dışarı alıp geri koymak `completedAt` yazar)
-      ama on kartta hata payı yüksek. **İkisi de 3. adımdan önce.**
+      Onun yerine ölçüt düzeltildi: `completed_at` türetilmiş bir kopyadır
+      (bitiş kolonuna girince yazılır, çıkınca silinir - `tasks.js`), **kolon
+      gerçeğin kendisidir.** MCP `list_tasks` artık kolona bakıyor; kart bitiş
+      kolonundaysa damgası olmasa da gecikmiş sayılmıyor. Üretim verisine tek
+      satır yazılmadan çözüldü.
+
+      **Kabul edilen sınır:** 3 Eylül öncesi işlerin bitiş tarihi bilinmiyor;
+      dönem raporları o aralığı kapsamayacak.
+- [ ] **İşaretsiz panoda arayüz uyarısı.** *(10 Eylül'de yarısı yapıldı.)*
+      Ürün kararı: bitiş kolonunu silmek ve işareti kaldırmak **serbest
+      kalsın**, ama sistem sessiz kalmasın. Silmeyi engellemek yeni bir tuzak
+      kurardı ve deliği de kapatmazdı - kolonu silmeden işareti kaldırmak aynı
+      sonucu veriyor; üstelik "her panonun tamamlandı kavramı olmak zorunda"
+      kuralı her pano için doğru değil.
+      MCP tarafı yapıldı: `list_tasks` yanıtına `warning` alanı giriyor ve
+      araç açıklaması onu kullanıcıya aktarmayı söylüyor. **Eksik olan arayüz:**
+      pano ve rapor ekranında "bu panoda tamamlandı kolonu yok, gecikme ve süre
+      rakamları eksik" satırı. Dil kuralı gereği tr/en birlikte.
 - [ ] **MCP çalışma alanını göremiyor, değiştiremiyor.** Bütün araçlar
       **aktif** çalışma alanına bakıyor ve o alan yalnızca tarayıcıdan
       değişiyor. Sonuç: kullanıcının tarayıcısı başka bir alandayken Claude

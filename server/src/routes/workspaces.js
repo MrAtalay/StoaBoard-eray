@@ -76,7 +76,14 @@ async function uniqueInviteCode() {
 
 // ── Workspace template'ları (create_workspace) ────────────────────────────
 
-const TEMPLATES = {
+// Kolon dizisi: [slug, title, titleTr, color, position, isDone?]
+//
+// Son eleman bilerek açık: bitiş kolonu ADINDAN tahmin edilemiyor. Tasarım
+// şablonunun bitiş kolonu 'delivery' ("Delivered"), 'done' değil — yani
+// projects.js'teki `slug === 'done'` kuralı buraya taşınsaydı o şablonu
+// sessizce kaçırırdı. İşaret veriyle birlikte duruyor ki yeni bir şablon
+// eklendiğinde unutulması testte görünsün (raporlama.test.js).
+export const TEMPLATES = {
   software: {
     project: 'Ana Proje',
     color: 'oklch(52% 0.15 270)',
@@ -85,7 +92,7 @@ const TEMPLATES = {
       ['todo', 'To Do', 'Yapılacak', 'oklch(55% 0.09 230)', 1],
       ['doing', 'In Progress', 'Devam Ediyor', 'oklch(65% 0.11 70)', 2],
       ['review', 'In Review', 'İncelemede', 'oklch(58% 0.13 10)', 3],
-      ['done', 'Done', 'Tamamlandı', 'oklch(55% 0.09 150)', 4],
+      ['done', 'Done', 'Tamamlandı', 'oklch(55% 0.09 150)', 4, true],
     ],
     labels: [
       ['bug', 'Bug', 'Bug', 'rose'],
@@ -102,7 +109,7 @@ const TEMPLATES = {
       ['draft', 'Draft', 'Taslak', 'oklch(55% 0.09 230)', 1],
       ['design', 'Design', 'Tasarım', 'oklch(52% 0.15 270)', 2],
       ['revision', 'Revision', 'Revizyon', 'oklch(58% 0.13 10)', 3],
-      ['delivery', 'Delivered', 'Teslim', 'oklch(55% 0.09 150)', 4],
+      ['delivery', 'Delivered', 'Teslim', 'oklch(55% 0.09 150)', 4, true],
     ],
     labels: [
       ['ui', 'UI', 'UI', 'purple'],
@@ -118,7 +125,7 @@ const TEMPLATES = {
       ['ideas', 'Ideas', 'Fikirler', 'oklch(55% 0.02 250)', 0],
       ['thisweek', 'This Week', 'Bu Hafta', 'oklch(65% 0.11 70)', 1],
       ['doing', 'Doing', 'Yapıyor', 'oklch(58% 0.13 10)', 2],
-      ['done', 'Done', 'Tamamlandı', 'oklch(55% 0.09 150)', 3],
+      ['done', 'Done', 'Tamamlandı', 'oklch(55% 0.09 150)', 3, true],
     ],
     labels: [
       ['goal', 'Goal', 'Hedef', 'blue'],
@@ -182,8 +189,15 @@ workspacesRouter.post(
       const project = await tx.project.create({
         data: { workspaceId: ws.id, name: tmpl.project, color: tmpl.color },
       });
-      for (const [colSlug, title, titleTr, color, pos] of tmpl.cols) {
+      for (const [colSlug, title, titleTr, color, pos, isDone] of tmpl.cols) {
         await tx.boardColumn.create({
+          // isDone buraya hiç yazılmıyordu ve kusur 10 Eylül 2026'ya kadar
+          // yaşadı: projects.js işareti koyuyor, bu yol koymuyordu. Şablonla
+          // açılan her çalışma alanı "tamamlandı" kavramı tanımsız doğuyordu —
+          // kart bitiş kolonuna taşınsa bile completedAt yazılmıyor, ilerleme
+          // %100'e çekilmiyor, gecikme listesi bitmiş işleri gecikmiş
+          // gösteriyordu. Altı pano bu yüzden işaretsizdi (Szy, Dershane,
+          // Cardali, Staj x2, asdasd) ve elle SQL ile düzeltildi.
           data: {
             projectId: project.id,
             slug: colSlug,
@@ -191,6 +205,7 @@ workspacesRouter.post(
             titleTr,
             color,
             position: pos,
+            isDone: Boolean(isDone),
           },
         });
       }

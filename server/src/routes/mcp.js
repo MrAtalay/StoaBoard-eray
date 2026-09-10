@@ -47,7 +47,7 @@ export const mcpRouter = Router();
 // durumda 401 döndüğü için "yeni kod canlıda mı" sorusu dışarıdan
 // cevaplanamıyor. Yüzeyi değiştiren her commit'te bump et; `initialize`
 // yanıtındaki serverInfo.version dağıtım kanıtı olarak okunabilsin.
-const MCP_VERSION = '0.2.1';
+const MCP_VERSION = '0.2.2';
 
 // ─── Yardımcılar ───────────────────────────────────────────────────────────
 
@@ -205,8 +205,9 @@ function buildMcpServer(user) {
       description:
         'Bir projenin görevlerini listeler. Süzgeçler birleşimli çalışır: col '
         + 'kolon slug\'ı, assignee kullanıcı slug\'ı, overdue=true ise yalnızca '
-        + 'tarihi geçmiş ve henüz tamamlanmamış olanlar döner. Süzgeç vermezsen '
-        + 'projedeki bütün açık görevler gelir.',
+        + 'tarihi geçmiş ve bitiş kolonunda olmayanlar döner. Süzgeç vermezsen '
+        + 'projedeki bütün açık görevler gelir. Yanıtta warning alanı varsa '
+        + 'onu kullanıcıya aktar: sayının güvenilirliğiyle ilgilidir.',
       inputSchema: {
         project_id: kimlik('list_projects içindeki id'),
         col: z.string().optional().describe('kolon slug\'ı — list_columns yanıtındaki id, örn. "todo"'),
@@ -219,17 +220,56 @@ function buildMcpServer(user) {
       const yanit = await callSelf(user, `/api/projects/${project_id}/tasks`);
       if (!yanit.ok) return hata(yanit);
 
+      // Gecikme ölçütü kolona bakar, damgaya değil.
+      //
+      // `completed_at` türetilmiş bir kopyadır: kart bitiş kolonuna girince
+      // yazılıyor, çıkınca siliniyor (tasks.js). Kolonun kendisi gerçektir.
+      // Kopyaya güvenmek 10 Eylül 2026'da ölçüldü ve yanlış çıktı: geçiş
+      // defteri 2 Eylül'de açıldığı için ondan önce bitiş kolonuna taşınan
+      // 39 kartta damga hiç yazılmamıştı. "Ana Proje"de gecikmiş sayısı 14
+      // görünüyordu, oysa 9 kart panoda bitmiş kolonda duruyordu.
+      //
+      // Damgayı geriye dönük uydurmak yerine soru doğru yere soruluyor:
+      // kart bitiş kolonundaysa gecikmiş değildir, damgası olmasa bile.
+      let bitisKolonlari = null;
+      if (overdue) {
+        const kolonlar = await callSelf(user, `/api/projects/${project_id}/columns`);
+        if (!kolonlar.ok) return hata(kolonlar);
+        bitisKolonlari = new Set(
+          (Array.isArray(kolonlar.data) ? kolonlar.data : [])
+            .filter((c) => c.is_done)
+            .map((c) => c.id),
+        );
+      }
+
       const bugun = new Date().toISOString().slice(0, 10);
       const gorevler = (Array.isArray(yanit.data) ? yanit.data : []).filter((t) => {
         if (col && t.col !== col) return false;
         if (assignee && !(t.assignees || []).includes(assignee)) return false;
-        // Gecikme ölçütü: tarihi geçmiş VE henüz tamamlanmamış. Yalnızca
-        // tarihe bakmak, bitmiş işleri de gecikmiş gösterirdi.
-        if (overdue && !(t.due && t.due < bugun && !t.completed_at)) return false;
+        if (overdue) {
+          if (!(t.due && t.due < bugun)) return false;
+          if (t.completed_at) return false;
+          if (bitisKolonlari.has(t.col)) return false;
+        }
         return true;
       });
 
-      return sonuc({ project_id, count: gorevler.length, tasks: gorevler });
+      // İşaretsiz panoda listeyi sessizce doğruymuş gibi vermek, bu deponun
+      // tekrar tekrar yandığı sessiz başarısızlık kalıbı. Kolon tanımlı
+      // değilse "bitmiş" diye eleyebileceğimiz hiçbir kart yok; sayı
+      // olduğundan büyük çıkar ve bunu yalnızca yanıt söyleyebilir.
+      const uyari = overdue && bitisKolonlari.size === 0
+        ? 'Bu panoda "tamamlandı" olarak işaretli kolon yok. Bitmiş kartlar '
+          + 'ayırt edilemediği için gecikme listesi olduğundan uzun. '
+          + 'Kullanıcıya bunu söyle.'
+        : null;
+
+      return sonuc({
+        project_id,
+        count: gorevler.length,
+        ...(uyari ? { warning: uyari } : {}),
+        tasks: gorevler,
+      });
     },
   );
 

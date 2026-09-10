@@ -5,8 +5,68 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 9 Eylül 2026 akşamı, **ev makinesinde** — `4039e33` çekildi
-ve 2. adım okuma araçları ilk kez gerçek veriyle uçtan uca tarandı.
+**Son güncelleme:** 10 Eylül 2026, **ofis makinesinde** (5432 kapalı) —
+`f467e02` çekildi, `completed_at` boşluğu kapatıldı. Ayrıntı 0-B'de.
+
+---
+
+## 0-B. 10 Eylül — `completed_at` boşluğu kapandı, kök sebep bulundu
+
+Dünkü tarama "pano bitti diyor, sistem gecikmiş diyor" boşluğunu bulmuştu.
+Bugün kapatıldı — ama **teşhis yanlıştı ve sorun daha büyüktü.**
+
+**Sorun geri doldurma eksikliği değil, yaşayan bir kusurdu.** Pano iki ayrı
+yerde kuruluyor: `projects.js` işareti koyuyordu (`isDone: slug === 'done'`),
+şablonla çalışma alanı açan yol `workspaces.js` ise `isDone`u **hiç
+yazmıyordu**. Yani altı pano geri doldurulmadığı için değil, **o yoldan
+doğdukları için** işaretsizdi — ve bugün yeni bir çalışma alanı açan herkes
+aynı kusuru üretmeye devam ediyordu. Düzeltildi, testle kilitlendi.
+
+İşaret şablon verisine **açıkça** kondu (`[slug, title, titleTr, color, pos,
+isDone]`), ada göre tahmin edilmiyor: tasarım şablonunun bitiş kolonu
+`delivery` ("Delivered"), `done` değil. `slug === 'done'` kuralı oraya
+taşınsaydı o şablonu sessizce kaçırırdı.
+
+**Kapsam dünkünün dört katıydı.** DEVIR "dört projenin üçünde işaret yok"
+diyordu; veritabanının tamamına bakınca **18 proje / 11 çalışma alanı** çıktı.
+Dünkü ölçüm eksikti çünkü MCP yalnızca aktif çalışma alanını görüyor — TODO'ya
+"yapısal boşluk" diye yazılan madde, dünkü ölçümü fiilen yanlış göstermiş.
+**MCP'nin gördüğüyle veritabanında olanı bir tutma.**
+
+**39 karta sahte tarih yazılmadı — bilinçli.** Geçiş defteri sorgulandı:
+8 kayıt, 2 Eylül 10:48'den 10 Eylül 08:25'e, bunların 2'si bitiş geçişi.
+İlk kaydın damgası tek damgalı kartın (#4) damgasıyla saniyesine aynı, yani
+defter sağlam. Ama 39 kartın hiçbirinin kaydı yok: hepsi defter açılmadan
+önce taşınmış. **Dürüst bir geriye dönük tarih yok.** Bugünü yazmak raporda
+"39 iş 10 Eylül'de bitti" diye sahte bir zirve üretirdi.
+
+Onun yerine soru doğru yere soruldu: `completed_at` türetilmiş bir kopyadır
+(kart bitiş kolonuna girince yazılıyor, çıkınca siliniyor — `tasks.js`),
+**kolon ise gerçeğin kendisi**. MCP'nin gecikme ölçütü kolona bakacak şekilde
+değiştirildi; kart bitiş kolonundaysa damgası olmasa da gecikmiş sayılmıyor.
+Üretim verisine tek satır yazmadan sorun bitti.
+
+**Kabul edilen sınır:** 3 Eylül öncesi işlerin bitiş tarihi bilinmiyor.
+"Bu ay kaç iş bitti / ortalama kaç günde bitiyor" raporları o dönemi
+kapsamayacak. Uydurmak bunu kapatmaz, gizler.
+
+**İşaretsiz pano artık sessiz kalmıyor.** Ürün kararı: kolonu silmek/işareti
+kaldırmak serbest kalsın, ama sistem sussun demesin. Silmeyi engellemek yeni
+bir tuzak kurardı ve deliği de kapatmazdı — kolonu silmeden **işareti
+kaldırmak** aynı sonucu veriyor. MCP `list_tasks` yanıtına `warning` alanı
+ekleniyor. **Arayüz tarafındaki uyarı henüz yok, sıradaki iş.**
+
+**Üretimde elle yapılanlar (SQL Editor, ofis ağında HTTPS ile):** altı panoda
+`is_done` işaretlendi (kolon kimlikleri 10, 32, 49, 73, 77, 102). Doğrulandı:
+işaretsiz pano sayısı 0.
+
+**`UPDATE`e her zaman `RETURNING` ekle.** SQL Editor `UPDATE` için "no result"
+yazıyor — satır döndürmediği için, hata olduğu için değil. Bu bugün gerçek bir
+kayba yol açtı: yazma sorgusu çalıştı, "no result" hata sanıldı, geri alma
+sorgusu çalıştırıldı ve değişiklik geri alındı. `returning` eklendiğinde sorgu
+kendi kanıtını gösteriyor.
+
+Test sayısı **160** (154'tü), hepsi geçiyor.
 
 ---
 

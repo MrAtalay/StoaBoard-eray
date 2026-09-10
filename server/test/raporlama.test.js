@@ -11,6 +11,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { parseDuration } from '../src/routes/reports.js';
+import { TEMPLATES } from '../src/routes/workspaces.js';
 import {
   parseRangeDate,
   resolveRange,
@@ -187,4 +188,42 @@ describe('formatDurationLong — belirgin süre (TR/EN)', () => {
     assert.equal(formatDurationLong(-5, 'en'), '0 minutes');
     assert.equal(formatDurationLong(NaN, 'tr'), '0 dakika');
   });
+});
+
+// ─── Şablon panolarında bitiş kolonu ────────────────────────────────────────
+//
+// Kusur (10 Eylül 2026): şablon yolundan doğan panolarda hiçbir kolon isDone
+// taşımıyordu. projects.js işareti koyuyordu, workspaces.js koymuyordu — yani
+// "Ana Proje"yi elle açarsan tamamlandı kolonu işaretli, çalışma alanını
+// şablonla açarsan değil. Altı pano bu yüzden işaretsiz doğmuştu.
+//
+// Sessizliği tehlikeli yapan şey: hiçbir şey bozulmuyor. Kart "Done"
+// kolonuna gidiyor, kullanıcı işi bitmiş sanıyor, ama completedAt yazılmıyor,
+// ilerleme %100'e çekilmiyor ve gecikme listesi bitmiş işleri gecikmiş
+// gösteriyor. Rapor yanlış ama makul görünüyor.
+//
+// Ada göre tahmin bu kusuru kapatmaz: tasarım şablonunun bitiş kolonu
+// 'delivery'. Bu yüzden işaret şablon verisinde açıkça duruyor ve test de
+// açıkça orada arıyor — yeni bir şablon eklendiğinde unutulursa burada patlar.
+describe('Çalışma alanı şablonları — bitiş kolonu işareti', () => {
+  for (const [ad, tmpl] of Object.entries(TEMPLATES)) {
+    test(`${ad} şablonunda tam olarak bir bitiş kolonu var`, () => {
+      const bitis = tmpl.cols.filter((c) => c[5] === true);
+      assert.equal(
+        bitis.length, 1,
+        `${ad}: bitiş kolonu sayısı 1 olmalı, ${bitis.length} bulundu. `
+        + 'Kolon dizisinin 6. elemanı (isDone) işaretlenmemiş olabilir.',
+      );
+    });
+
+    test(`${ad} şablonunda bitiş kolonu en sonda`, () => {
+      const [bitis] = tmpl.cols.filter((c) => c[5] === true);
+      const enSon = Math.max(...tmpl.cols.map((c) => c[4]));
+      assert.equal(
+        bitis[4], enSon,
+        `${ad}: bitiş kolonu son sırada değil. Akışın ortasındaki bir kolonu `
+        + '"tamamlandı" saymak tamamlanma süresini olduğundan kısa gösterir.',
+      );
+    });
+  }
 });
