@@ -5,8 +5,104 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 10 Eylül 2026, **ofis makinesinde** (5432 kapalı) —
-`f467e02` çekildi, `completed_at` boşluğu kapatıldı. Ayrıntı 0-B'de.
+**Son güncelleme:** 10 Eylül 2026 akşamı, **ofis makinesinde** (5432 kapalı).
+MCP Claude içinde canlı bağlandı, görsel kusurlar ölçülüp teste bağlandı.
+Günün tamamı 0-C ve 0-B bölümlerinde; 0-C daha yeni.
+
+---
+
+## 0-C. 10 Eylül, öğleden sonra — MCP canlı bağlandı, görsel kusurlar ölçüldü
+
+**Ortam:** ofis makinesi, 5432 kapalı. Uygulama yerelde çalışmıyor; her şey
+canlıda test edildi. Neon SQL Editor HTTPS üzerinden çalıştı.
+
+### MCP artık Claude'un içinde çalışıyor
+
+Tarayıcı içindeki bağlayıcı ekranı **OAuth istiyor** ve StoaBoard'da
+yetkilendirme sunucusu olmadığı için ilk deneme *"Couldn't register with
+StoaBoard's sign-in service"* ile düştü. Ekran ek istek başlıklarına izin
+veriyor ama başlık adı **kapalı bir listeden** seçiliyor; `Authorization` o
+listede yok, `x-auth-token` var.
+
+Bu yüzden MCP kimlik kapısı ikinci bir başlık kabul ediyor
+(`f6c58a7`). Gevşeme değil: taşınan sır aynı sır, doğrulama yine tek yerde
+(`lookupSlug`), `Authorization` varsa o kazanıyor. Kapının hangi durumda
+**açılmayacağı** teste bağlandı — boş başlık, yalnızca `Bearer`, yanlış
+şema, fazladan sözcük. Testi yazarken kendi kodumdaki bir kusur çıktı:
+`X-Auth-Token: Bearer` (ardında anahtar yok) "Bearer" dizesini anahtar
+sanıyordu; düzeltildi.
+
+**Bağlandı ve uçtan uca denendi.** Yedi araç, gerçek panoyla. Sonuç: dünkü ve
+bugünkü düzeltmelerin ikisi de tuttu — gecikme **6** (14 değil, `done`
+kolonundaki kartlar artık sayılmıyor), kolon zinciri hatasız (dün
+`expected number, received string` ile tamamen kırıktı), hata yolu tipli,
+not gövdesi listede sızmıyor.
+
+**Sürüm 0.2.3.** Yüzeyi değiştiren commit'te bump etmeyi bir kez atladım ve
+sonra düzelttim; `serverInfo.version` dağıtımın indiğini anlamanın tek yolu.
+
+**OAuth hâlâ yok ve ölçeklenme sorunu orada.** Bugün her yeni kişi için
+Railway'deki `STOA_MCP_TOKENS` elle düzenleniyor + yeniden dağıtım
+gerekiyor. Ortak "servis hesabı" fikri elendi ve gerekçesi TODO'da: aktif
+çalışma alanı `users.currentWorkspaceId` sütununda, yani **kullanıcı başına
+tek** — ortak hesapta iki kişi birbirinin panosunu sessizce değiştirir.
+
+### Görsel kusurlar — göz kararıyla değil, hesapla
+
+"Beyaz modda bazı yazılar sönük" diye bildirildi. Ölçüldüğünde sorun
+tahminden genişti: **üç temanın üçünde de** iki mürekkep tonu metin için
+okunamaz durumdaydı (`--ink-faint` 2.29:1, `--ink-dim` 1.68:1; AA 4.5:1
+istiyor). `--ink-faint` 71 yerde metin rengiydi.
+
+İlk düzeltme kontrastı düzeltirken **hiyerarşiyi bozdu** — faint, muted ile
+eşitlendi, cream'de sıra tersine döndü. Bunu ancak ölçerek gördüm. Üç temaya
+hesaplanmış, eşit aralıklı bir ölçek konuldu ve **testle kilitlendi**
+(`kontrast.test.js`): test hangi tokenların metin olarak kullanıldığını
+kendisi buluyor, sıralamayı da ayrıca doğruluyor.
+
+**Vurgu renkleri:** örnek kareler elle yazılmış sabit değerlerdi ve her zaman
+ışıklı tema değerini gösteriyordu; koyu tema seçenekleri bilinçli olarak
+açtığı için kullanıcı `#1a4a70` seçip `≈#60a7d6` alıyordu. Üstelik liste
+**iki dosyada** kopyalanmıştı. Tek kaynağa bağlandı (`--accent-<ad>`
+değişkenleri) ve teste kilitlendi.
+
+### Dashboard
+
+**"Ay" görünümündeki veri uydurmaydı:** haftalık toplamı 0.9 / 1.2 / 0.8 / 1.0
+ile çarpıp dört hafta imal ediyordu. Silindi. Yerine panonun gerçek dağılımı
+geldi — yatay yığılmış çubuk, veri kartların kendisinden okunuyor.
+
+**`weeklyDone` hep sıfırdı** ve muhtemelen hiç çalışmamıştı: `columnToDict`
+slug'ı `id` adıyla veriyor, dashboard `.slug` okuyordu. Dünkü MCP kusurunun
+tıpatıp aynısı — **kusur kodun içinde değil, iki sözleşmenin arasında.**
+Aynı sınıf iki gün üst üste iki ayrı yerde çıktığı için serileştirici
+şekillerinin teste sabitlenmesi TODO'ya yazıldı.
+
+### Sayılar
+
+Test **211** (sabah 154'tü), hepsi geçiyor. Yeni dosya `kontrast.test.js`.
+Ön yüz derlemesi temiz. Üretimde elle yapılan tek şey: altı panoda `is_done`
+işaretlendi; işaretsiz pano sayısı 0.
+
+### Karar verilenler
+
+Proje bazlı erişimin **ilk dilimi açıldı** (`f789c37`): projeye üyeyi yönetici
+ve projeyi açan ekler · yönetici bütün projeleri görür · yeni üye hiçbir
+proje görmez · çıkarılan kişinin adı kartlarda kalır. Kalan dört soru
+sonraki dilimlere ait. Projesiz üye ekranının tasarım yönü de kayıtlı ve
+`auth.jsx` incelemesinden çıkan beş uyarı içeriyor — en önemlisi, o ekran
+**tam ekran devralma olmamalı** (kullanıcı içeride, uygulaması çalışıyor) ve
+`.auth-visual` mobilde tamamen gizleniyor.
+
+### Sıradaki iş — üç seçenek
+
+1. **MCP 2.5. adım:** `list_members`, `search_tasks`, `list_workspaces`.
+   Üçü de salt okuma, bildirim üretmiyorlar. **Ev makinesinde** yapılmalı;
+   gerçek yanıtla beslenmeden yazılan araç yalan söylüyor (iki kez kanıtlandı).
+2. **İlerleme kusuru:** geciken 6 kartın 5'i `progress: 100` taşırken
+   `todo` kolonunda. Küçük iş, ofis makinesinde yapılabilir.
+3. **Proje bazlı erişim:** kararlar verildi, şema ve `ProjectMember` sırada.
+   En büyük iş; makine engeli yok, şema Neon SQL Editor'den geçebilir.
 
 ---
 
