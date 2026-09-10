@@ -9811,3 +9811,12 @@ body { margin: 0; padding: 0; overflow: hidden; font-family: var(--font-ui); }
   .dist-bar { height: 36px; }
   .dist-legend { gap: 6px 14px; }
 }
+
+/* Dagilim paneli icerigi kadar yer kaplasin.
+   .dash-row bir grid ve grid ogeleri varsayilan olarak esitleniyor; yanindaki
+   "Takim yuku" paneli uye sayisina gore uzayinca dagilim panelinin altinda
+   kocaman bos bir alan kaliyordu (10 Eylul, canlida goruldu). Eski dikey
+   grafik 160px yuksekligindeydi ve bosluk gorunmuyordu; yatay cubuk kisa
+   oldugu icin ortaya cikti. Yalnizca bu panel hedefleniyor, satirin geri
+   kalani eskisi gibi esitlenmeye devam ediyor. */
+.dist-panel { align-self: start; }

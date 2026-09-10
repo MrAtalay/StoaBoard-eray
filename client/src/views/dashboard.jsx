@@ -45,7 +45,17 @@ function DashboardView({ tasks, onOpenTask, onView }) {
     .filter(d => d.count > 0);
   const distTotal = dist.reduce((s, d) => s + d.count, 0);
 
-  const doneColSlug = chartCols.find(c => c.is_done)?.slug;
+  // Kolonun slug'i yanitta `id` adiyla duruyor (`columnToDict` → `id: c.slug`),
+  // `slug` diye bir alan YOK. `.slug` okumak her zaman undefined donduruyordu,
+  // dolayisiyla weeklyDone hep 0 kaliyor ve iki kart da kalici olarak
+  // "bu hafta veri yok" yaziyordu — kart bitis kolonuna tasinmis olsa bile.
+  // Canlida goruldu (10 Eylul 2026): etkinlik akisi "Roller HK → Tamamlandi,
+  // 51 dk once" derken sayaclar veri yok diyordu.
+  //
+  // Dunku MCP kusurunun tipatip aynisi: sunucu slug'i `id` adiyla veriyor,
+  // tuketici `.slug` diye ariyor. Kusur kodun icinde degil, iki sozlesmenin
+  // arasinda.
+  const doneColSlug = chartCols.find(c => c.is_done)?.id;
   const weeklyDone = throughput.reduce((s, d) => s + (doneColSlug ? ((d.cols || {})[doneColSlug] || 0) : 0), 0);
   const highPriority = tasks.filter(t => t.priority === 'high' && !doneColIds.has(t.col)).length;
 
@@ -158,7 +168,7 @@ function DashboardView({ tasks, onOpenTask, onView }) {
       )}
 
       <div className="dash-row">
-        <div className="panel">
+        <div className="panel dist-panel">
           <div className="panel-head">
             <div>
               <div className="panel-title">{window.t('dash_dist_title')}</div>
