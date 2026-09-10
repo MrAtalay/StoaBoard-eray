@@ -456,6 +456,39 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       çıkıyor — orada mevcut gerekçe hâlâ geçerli olabilir. Ayrım yapılmalı,
       ikisi aynı kefeye konmamalı. Dosyanın başındaki not da düzeltilmeli;
       bugün yanlış bir şey öğretiyor.
+- [ ] **MCP 2.5. adım — iki salt-okuma aracı eksik, ikisi de yazma araçlarından
+      önce gelebilir.** 10 Eylül'deki uçtan uca denemede modelin kendisi
+      söyledi: hangi soruları cevaplayamadığını en iyi o biliyor.
+
+      **(a) `list_members` — ekip görünürlüğü.** Bugün model üyeleri yalnızca
+      kartların üzerindeki slug'lardan tanıyor. "Ekipte kim var", "kimin
+      üzerinde kaç iş var", "Umut neye bakıyor" soruları ancak bütün kartları
+      tarayıp dolaylı çıkarımla cevaplanabiliyor — hem yanlış hem pahalı.
+      Dashboard'daki "Takım yükü" paneli bu veriyi zaten hesaplıyor.
+
+      **(b) `search_tasks` — metin araması.** "Şu kelimenin geçtiği kartı bul"
+      için bugün her projeyi tek tek listelemek gerekiyor. Pano büyüdükçe
+      kullanılamaz hâle gelir.
+
+      İkisi de salt okuma, yani **bildirim üretmiyorlar** — 3. adımın
+      beklemesinin sebebi olan riski taşımıyorlar. `list_workspaces` ile
+      birlikte planlanmalı; üçü bir dilim.
+
+      Denemede çıkan diğer eksikler daha düşük öncelikli: etiket listesi,
+      proje detayı, ek dosya içeriği.
+
+      **Sohbet bilinçli olarak kapsam dışı** ve öyle kalmalı — ama bir
+      tutarsızlık var: kullanıcı `manage_channels` ve `delete_messages`
+      izinlerini taşıyor, MCP'de karşılığı olan araç yok. Model bunu fark
+      etti. Kusur değil, ama `whoami` izin listesini olduğu gibi verdiği için
+      modelde "yapabilirim" beklentisi yaratıyor. `whoami` yanıtında MCP'nin
+      hangi izinleri **kullanmadığını** belirtmek ucuz bir düzeltme olur.
+- [ ] **Not önizlemesi uzun gövdede kırpılıyor mu — doğrulanmadı.**
+      `list_notes` gövdeyi vermiyor, sözleşme doğru. Ama denemedeki tek notun
+      gövdesi o kadar kısaydı ki `preview` alanı pratikte içeriğin tamamını
+      verdi. Uzun gövdeli bir notla tekrar bakılmalı: preview gerçekten
+      kırpıyor mu, yoksa kısa notlarda tesadüfen mi doğru görünüyor?
+      Model bunu "kusur değil, doğrulanmamış" diye işaretledi — doğru ayrım.
 - [ ] **MCP çalışma alanını göremiyor, değiştiremiyor.** Bütün araçlar
       **aktif** çalışma alanına bakıyor ve o alan yalnızca tarayıcıdan
       değişiyor. Sonuç: kullanıcının tarayıcısı başka bir alandayken Claude
@@ -689,6 +722,15 @@ Ofiste dal itmek, yerelde **alınamayan** bir doğrulama sağlıyor.
 - [ ] Alt görevi olmayan bir kart "tamamlandı" kolonundan çıkarılınca ilerleme
       %100 kalıyor. Alt görev yoksa hesaplanacak bir kaynak da yok; bilinçli
       olarak dokunulmadı.
+      **Kararı yeniden düşün — 10 Eylül'de ölçüldü ve kenar durum değilmiş.**
+      MCP ile gerçek panoya bakıldığında geciken 6 kartın **5'i**
+      `progress: 100` taşırken `todo`/`doing` kolonunda duruyor ve
+      `completed_at` boş. Yani ilerleme yüzdesi kolon durumundan tamamen
+      kopmuş: kart "%100" diyor, pano "yapılacak" diyor, sistem "gecikmiş"
+      diyor. Üçü aynı anda doğru olamaz. "Hesaplanacak kaynak yok" gerekçesi
+      hâlâ geçerli ama sonucu yanlış: kaynak yoksa **sıfırlamak**, eski
+      değeri korumaktan daha dürüst. Alternatif, alt görevi olmayan kartta
+      ilerlemeyi hiç göstermemek.
 - [x] ~~Paket boyutu 787 KB, kod bölme yapılmadı.~~ **Yapıldı (2 Eylül).**
       Satıcı bölme (react-vendor 143 KB, realtime 42 KB ayrı, önbelleklenir) +
       altı açılış-dışı görünüm tembel yükleniyor (reports, notes, settings,
