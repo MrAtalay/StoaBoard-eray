@@ -498,6 +498,77 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       erişilemedi. `whoami` ve liste yanıtlarının alan adını taşıması yanlış
       alanı *fark ettiriyor* ama *düzeltmiyor*. En küçük çözüm salt-okuma bir
       `list_workspaces`; alan değiştirmek yazma sayılır ve 3. adıma aittir.
+- [ ] **MCP sunucu iyileştirmeleri — gerçek istemci denemesinden çıkan liste.**
+      10 Eylül'de Claude uçtan uca kullandı ve eksikleri kendisi raporladı.
+      Aşağıdakiler bu depoda kayıtlı olmayan ya da keskinleşen maddeler;
+      `list_members`, `search_tasks`, not önizlemesi ve izin/araç uyumsuzluğu
+      zaten yukarıda duruyor.
+
+      **Yazma araçlarına zorunlu `workspace_id` + uyuşmazlıkta 409.** Bu
+      listenin en iyi fikri ve "alanları listeleyen araç ekleyelim"den daha
+      güçlü: o, sorunu *görünür* kılıyordu; bu **imkânsız** kılıyor. Aktif alan
+      `users.currentWorkspaceId`'de ve tarayıcıdan bir tıkla değişiyor; yazma
+      aracı sessizce o anki alana yazmak yerine reddetmeli. **Yalnızca yazma
+      araçları geldiğinde anlamlı** — bugün uygulanacak bir şey yok.
+
+      **Bağlam her yanıta girmeli.** `whoami` ve `list_projects` çalışma alanını
+      taşıyor, `list_tasks` / `get_task` / `list_notes` taşımıyor. Ucuz ve
+      mevcut tasarım niyetiyle aynı yönde (`mcp.js`, `aktifAlan` yorumuna bak).
+
+      **Kimlik tipleri tek tip olmalı.** `list_projects`/`list_tasks` metin,
+      `list_notes` sayı dönüyor. **Düzeltme MCP katmanında yapılmalı:**
+      `String(id)` ön yüzün yaslandığı bilinçli bir sözleşme ve
+      `serializers.js`te değiştirilirse arayüz kırılır (kodda yorumu var).
+      Yanıt üretilirken normalize et, ortak serileştiriciye dokunma.
+
+      **Görevde `created_at` / `updated_at`.** `createdAt` şemada **var**, sadece
+      `taskToDict` yayımlamıyor — kolay. `updatedAt` **yok**, sütun eklemek
+      gerekiyor. **Tuzak:** sütun eklendiğinde mevcut kartların geçmişi
+      olmayacak, yani "hangi kart aylardır kımıldamadı" haftalarca yanlış cevap
+      verecek. Bu, `completed_at` ile bugün yaşadığımızın aynısı; orada sahte
+      tarih yazmamayı seçtik. Aynı karar burada da **bilinçli** verilmeli,
+      varsayıma bırakılmamalı.
+
+      **Görevde `col_is_done`.** Kartın bitmiş kolonda olup olmadığı için
+      ayrıca `list_columns` çağırmak gerekmesin.
+
+      **"Açık görev" tanımı belgelenmeli** ve `include_done` parametresi
+      eklenmeli. Süzgeçsiz `list_tasks`'in ne döndürdüğü şu an yazılı değil.
+
+      **Token verimliliği — hesaba katılmamıştı.** `list_tasks` her kart için
+      tam `desc`, bütün atananlar ve bütün etiketleri dönüyor. Bugünkü 15
+      kartta sorun değil, 200 kartlık panoda istemcinin belleğini yer. Listede
+      `desc` kırpılmalı (tamamı `get_task`te zaten var) ya da `fields`
+      parametresi gelmeli. Sayfalama (`limit` + `cursor`) da aynı başlıkta;
+      veri küçükken bile **yanıt biçimi** şimdiden ona göre kurulursa sonra
+      kırıcı değişiklik gerekmez.
+
+      **`updated_ago` gerçek bir kusur:** `updated_at` ile birebir aynı ISO
+      damgayı dönüyor. Ad göreli süre vaat ediyor, değer mutlak. Ya gerçek
+      göreli değer üret ya alanı kaldır.
+
+      **`allowed_next` her kolonda boş.** Kısıt sunucuda uygulanıyor ama hiçbir
+      panoda tanımlı değil. Sürekli boş kalan alan istemciyi onu yok saymaya
+      itiyor — ya bir panoda gerçekten kullanılsın ya da boşken hiç
+      döndürülmesin.
+
+      **`list_tasks`in `warning` alanı belgelenmeli, kaldırılmamalı.** Yalnızca
+      `overdue: true` iken **ve** panoda hiç `is_done` kolonu yokken çıkıyor.
+      10 Eylül sabahı bütün panolarda o işaret konduğu için artık tetiklenemez;
+      istemci bu yüzden hiç görmedi ve "ölü alan" sandı. Koşul araç
+      açıklamasına yazılmalı.
+
+      **Uygulama sırası:** (1) salt-okuma iyileştirmeleri — bağlam, kimlik tipi,
+      `col_is_done`, `include_done`, token kırpma, `updated_ago`, `warning`
+      belgesi; (2) `updatedAt` şema değişikliği, ayrı, çünkü üretime yazıyor;
+      (3) zorunlu `workspace_id` kapısı; (4) yazma araçları; (5) sayfalama ve
+      `list_labels`.
+
+      **Kabul ölçütü — istemcinin kendi koyduğu ve haklı:** yeni araç
+      açıklamaları mevcutların kalitesinde olmalı; sadece ne yaptığını değil,
+      belirsizlikte istemcinin **ne yapması gerektiğini** de söylemeli
+      ("beklediğin alan değilse kullanıcıya sor, devam etme"). Bu açıklamalar
+      sunucunun en güçlü tarafı.
 - [ ] **3. adım — yazma araçları.** En sona, çünkü **atama bildirim üretiyor.**
       Sohbet kapsam dışı bırakıldı, ama "sadece pano" dendiğinde bile dışa
       dokunan nokta bu: kart açmak sessiz, atamak arkadaşının ekranında beliriyor.
