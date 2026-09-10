@@ -402,6 +402,60 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       sabitle. Şekil değişince test kırılır ve tüketicilere bakmak zorunlu
       hâle gelir. Kontrast ve vurgu testleri (10 Eylül) bu merdivenin aynı
       basamağında; bu üçüncüsü.
+- [ ] **MCP anahtarı kendi kendine alınabilmeli — bugün her kişi için Railway
+      elle düzenleniyor.** Bugünkü akış: anahtar üret → `STOA_MCP_TOKENS`
+      sonuna ekle → yeniden dağıt → anahtarı kişiye özel olarak ulaştır.
+      İki-üç kişide katlanılır, beşte dayanılmaz, ekip değiştikçe imkânsız.
+
+      **Ortak "servis hesabı" bu sorunu çözmez, elendi.** Gerekçeyi buraya
+      yazıyorum çünkü soru tekrar sorulacak. Teknik olarak kırılıyor: aktif
+      çalışma alanı `users.currentWorkspaceId` sütununda, yani **kullanıcı
+      başına tek**. Ortak hesapta iki kişi aynı anda kullanırsa birbirlerinin
+      panosunu değiştirirler — hata vermeden, sessizce yanlış cevap üreterek.
+      Üstüne denetim kaydı anlamsızlaşır ("bunu kim yaptı" → hep aynı hesap),
+      izinler herkesin işini görecek kadar geniş olmak zorunda kalır (proje
+      bazlı erişimle kapatmaya çalıştığımız açığın ta kendisi), "bana atanan
+      işler" ölür, ve bir kişinin erişimi herkesinkini kesmeden iptal
+      edilemez. `mcpToken.js` bunu zaten yazıyor: *"Anahtar kişiye bağlıdır,
+      ekibe değil."*
+
+      **İki basamak var ve birincisi ikincisinin ön koşulu:**
+
+      **(a) Kendi kendine anahtar üretme sayfası.** Kullanıcı StoaBoard'a
+      zaten giriş yapmış durumda; ayarlarda "Claude bağlantısı" bölümünden
+      kendi anahtarını üretir, bir kez görür, kopyalar. Railway'e dokunmak ve
+      yeniden dağıtım gerekmez. Anahtarlar ortam değişkeninden **veritabanına**
+      taşınır — özet olarak saklanır (ham hâli asla), oluşturulurken bir kez
+      gösterilir, iptal edilebilir, son kullanım tarihi tutulur. Ortam
+      değişkeni yolu ilk kurulum için kalabilir.
+      Kullanıcı yine de anahtarı elle bağlayıcıya yapıştırır.
+
+      **(b) OAuth.** Kullanıcı Claude'da "Connect" der, kendi StoaBoard
+      hesabıyla giriş yapar, jeton otomatik gelir. Hiç kopyala-yapıştır yok.
+      Zincir: 401 yanıtında `WWW-Authenticate` → `/.well-known/oauth-protected-resource`
+      ve `/.well-known/oauth-authorization-server` → `/register` (dinamik
+      istemci kaydı, bağlayıcının bugün aradığı ve bulamadığı şey) → PKCE'li
+      `/authorize` → `/token`. `/authorize` mevcut oturuma (`req.session.userId`)
+      yaslanabilir, yani sıfırdan kimlik sistemi kurulmuyor.
+
+      (a) yapılırsa (b) için gereken jeton deposu da kurulmuş olur; boşa iş
+      değil. **İkisi de 3. adımdan (yazma araçları) önce gelmeli** — jetonun
+      kimi temsil ettiği ve nasıl iptal edildiği, kart atayan bir araçta çok
+      daha kritik.
+
+      Auth yazmak aceleye gelmez; bu madde "bir oturumda bitir" işi değil.
+- [ ] **MCP araç başlıkları kullanıcıya görünüyor — dil kuralı buraya da
+      geçerli.** `mcp.js`'in başındaki not "buradaki açıklamaları kullanıcı
+      görmüyor, model okuyor" diyor ve araçlar bu gerekçeyle yalnızca Türkçe
+      yazıldı. **Varsayım yanlış:** Claude'un bağlayıcı ekranı araç
+      başlıklarını listeliyor (10 Eylül, ekran görüntüsüyle doğrulandı) —
+      "Not detayı", "Görev detayı", "Kolonlar". İngilizce arayüz kullanan biri
+      bu listeyi Türkçe görüyor.
+      `title` alanları kullanıcı metni sayılmalı. `description` tartışmalı:
+      onu gerçekten model okuyor ve modelin cevabı zaten kullanıcının dilinde
+      çıkıyor — orada mevcut gerekçe hâlâ geçerli olabilir. Ayrım yapılmalı,
+      ikisi aynı kefeye konmamalı. Dosyanın başındaki not da düzeltilmeli;
+      bugün yanlış bir şey öğretiyor.
 - [ ] **MCP çalışma alanını göremiyor, değiştiremiyor.** Bütün araçlar
       **aktif** çalışma alanına bakıyor ve o alan yalnızca tarayıcıdan
       değişiyor. Sonuç: kullanıcının tarayıcısı başka bir alandayken Claude
