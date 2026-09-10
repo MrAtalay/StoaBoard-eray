@@ -47,7 +47,7 @@ export const mcpRouter = Router();
 // durumda 401 döndüğü için "yeni kod canlıda mı" sorusu dışarıdan
 // cevaplanamıyor. Yüzeyi değiştiren her commit'te bump et; `initialize`
 // yanıtındaki serverInfo.version dağıtım kanıtı olarak okunabilsin.
-const MCP_VERSION = '0.2.2';
+const MCP_VERSION = '0.2.3';
 
 // ─── Yardımcılar ───────────────────────────────────────────────────────────
 
