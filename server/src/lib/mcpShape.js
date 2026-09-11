@@ -10,6 +10,7 @@
 //
 // Biçimlendirmenin tamamı buraya taşındı ki `mcp.test.js` veritabanı
 // istemeden koşsun. Kural: bu dosya `prisma`, `fetch` ya da `req` görmez.
+// Tek içe aktarması `permissions.js` — o da saf.
 //
 // ── Girdi ne ──────────────────────────────────────────────────────────────
 //
@@ -18,6 +19,8 @@
 // MCP katmanı zaten API'nin üstünde duruyor; biçim düzeltmesi de orada
 // yapılmalı, ortak serileştiricide değil — `String(id)` sözleşmesini
 // değiştirmek ön yüzü kırar (serializers.js'teki yoruma bak).
+
+import { memberPermissions } from './permissions.js';
 
 // ─── Kimlik ────────────────────────────────────────────────────────────────
 
@@ -35,6 +38,36 @@
  */
 export function metinKimlik(deger) {
   return deger === null || deger === undefined ? null : String(deger);
+}
+
+/**
+ * Yanıtın içindeki bütün kimlik alanlarını metne çeker — derinlemesine.
+ *
+ * 0.3.0'da kimlikler alan alan çevrildi ve biri kaçtı: `list_workspaces` "1"
+ * dönerken `whoami` ve her yanıttaki `workspace.id` 1 (sayı) dönüyordu, çünkü
+ * o alan Prisma'dan geliyordu. Canlı denemede istemci yakaladı. Alan alan
+ * çevirmek, her yeni alanda aynı kaçağı yeniden davet etmek demek.
+ *
+ * Kural bu yüzden tek noktada ve adla tanımlı: adı `id` olan ya da `_id` ile
+ * biten her alan, değeri sayıysa metne çevrilir. `sonuc()` her yanıtı buradan
+ * geçiriyor; yeni bir araç ya da yeni bir alan kuralı unutamaz.
+ *
+ * **Neden metin, sayı değil.** Temel kod tabanı karışık: alan kimlikleri
+ * sayı, proje/görev kimlikleri metin (Python aslından). MCP yüzeyinde ise
+ * metin çoğunluktaydı ve proje/görev kimlikleri 0.2'den beri metin — sayıya
+ * çekmek en çok kullanılan kimlikleri kırardı. En az kıran yön metin.
+ */
+export function kimlikleriMetinle(deger) {
+  if (Array.isArray(deger)) return deger.map(kimlikleriMetinle);
+  if (deger && typeof deger === 'object') {
+    const d = {};
+    for (const [anahtar, v] of Object.entries(deger)) {
+      const kimlikAlani = anahtar === 'id' || anahtar.endsWith('_id');
+      d[anahtar] = kimlikAlani && typeof v === 'number' ? String(v) : kimlikleriMetinle(v);
+    }
+    return d;
+  }
+  return deger;
 }
 
 // ─── Metin karşılaştırma ───────────────────────────────────────────────────
@@ -57,6 +90,32 @@ export function katla(metin) {
     .toLowerCase();
 }
 
+/**
+ * Metni sınırda keser — kelimenin ortasından değil.
+ *
+ * 0.3.0 düz `slice` kullanıyordu ve istemci "...için efek" gibi yarım
+ * kelimeyle biten açıklamalar gördü. Kesme son boşlukta yapılıyor ve sona
+ * "…" konuyor; metnin devam ettiği göz kararıyla da anlaşılıyor.
+ *
+ * İki kenar durumu:
+ * - Kesme noktası zaten bir boşluğa denk geliyorsa son kelime tamdır, geri
+ *   gidilmiyor — yoksa sağlam bir kelime boşuna düşerdi.
+ * - Son boşluk sınırın çok gerisindeyse (tek, çok uzun bir sözcük ya da
+ *   boşluksuz bir adres) kelime sınırı aranmıyor: 200 karakterlik kotayı 20
+ *   karaktere indirmek, kırpmayı kırpılan şeyden daha zararlı yapardı.
+ *
+ * Sonuç en fazla `sinir + 1` karakter (üç nokta tek karakter).
+ */
+export function kelimedeKes(metin, sinir) {
+  const s = String(metin ?? '');
+  if (s.length <= sinir) return s;
+  const kaba = s.slice(0, sinir);
+  if (/\s/.test(s[sinir])) return `${kaba.trimEnd()}…`;
+  const bosluk = kaba.search(/\s\S*$/);
+  const kesit = bosluk >= sinir * 0.6 ? kaba.slice(0, bosluk) : kaba;
+  return `${kesit.trimEnd()}…`;
+}
+
 // ─── Görev ─────────────────────────────────────────────────────────────────
 
 /** Liste yanıtlarında görev açıklamasının kırpıldığı sınır. */
@@ -73,9 +132,10 @@ export const DESC_SINIRI = 200;
  *
  * **`desc` kırpma.** Uçtan uca denemede istemcinin saydığı ilk maliyet buydu:
  * 15 kartta sorun değil, 200 kartlık panoda yanıt istemcinin bağlamını yiyor.
- * Tamamı `get_task`te duruyor ve araç açıklaması oraya yönlendiriyor. Kırpma
- * olduğunda `desc_truncated` işaretleniyor — sessizce kısaltmak, modelin
- * eksik metni tam sanması demek olurdu.
+ * Tamamı `get_task`te duruyor ve araç açıklaması oraya yönlendiriyor. Kesme
+ * kelime sınırında (`kelimedeKes`). Kırpma olduğunda `desc_truncated`
+ * işaretleniyor — sessizce kısaltmak, modelin eksik metni tam sanması demek
+ * olurdu.
  */
 export function gorevOzeti(gorev, { bitisKolonlari, descSiniri = DESC_SINIRI } = {}) {
   const desc = String(gorev.desc ?? '');
@@ -85,7 +145,7 @@ export function gorevOzeti(gorev, { bitisKolonlari, descSiniri = DESC_SINIRI } =
     ...gorev,
     id: metinKimlik(gorev.id),
     project_id: metinKimlik(gorev.project_id),
-    desc: kirpildi ? desc.slice(0, descSiniri) : desc,
+    desc: kirpildi ? kelimedeKes(desc, descSiniri) : desc,
   };
   if (kirpildi) d.desc_truncated = true;
   // Set verilmemişse alan hiç konmuyor: `false` yazmak "bitmiş değil" diye
@@ -175,6 +235,47 @@ export function listeUyarisi({ bitisKolonSayisi, includeDone = false, overdue = 
     + 'olduğundan yüksek. Kullanıcıya bunu söyle.';
 }
 
+// ─── Aktif alan kapsamı ────────────────────────────────────────────────────
+//
+// 11 Eylül canlı denemesinin P0 bulgusu: aktif alan StoaBoard iken
+// `list_columns {project_id: 21}` Mytherra'nın kolonlarını döndürdü ve üstüne
+// `workspace: StoaBoard` damgası bastı.
+//
+// Kök neden API'nin sorusu: `loadProjectWithAccess` "kullanıcı projenin
+// alanının ÜYESİ mi" diye soruyor, "proje AKTİF alanda mı" diye değil.
+// Kullanıcı Mytherra'nın sahibi olduğu için kapı açıldı. Yetkisiz birine
+// sızıntı yok; sorun bağlam: yanıt başka alanın verisini bu alanınmış gibi
+// etiketliyordu. Yazma araçları geldiğinde bu, kartın yanlış panoya açılması
+// demek olurdu.
+//
+// Düzeltme API'de değil burada, çünkü kural MCP'ye özgü: tarayıcı üye olduğun
+// her alanın kaydını açabilmeli (bildirimden gelen bağlantılar böyle
+// çalışıyor), MCP ise yalnızca aktif alanı görür. "Aktif alanın projeleri"
+// tanımı da uydurulmuyor — `GET /api/projects`in döndürdüğü liste, yani
+// API'nin kendi tanımı. İkinci bir kapsam modeli doğmuyor.
+
+/** Aktif alanın proje listesinde kimliği ara — metin/sayı farkı gözetmeden. */
+export function projeyiBul(projeler, projectId) {
+  if (projectId === null || projectId === undefined) return null;
+  const aranan = String(projectId);
+  return (Array.isArray(projeler) ? projeler : [])
+    .find((p) => String(p.id) === aranan) || null;
+}
+
+/**
+ * Not aktif alana mı ait?
+ *
+ * İki taraftan biri bilinmiyorsa HAYIR — kapalı başarısızlık. `if (not &&
+ * ...)` kalıbı bu depoda üç kusurun kök sebebiydi: satır yoksa kontrol hiç
+ * çalışmıyor ve sessizce geçiliyordu.
+ */
+export function notAlandaMi(not, workspaceId) {
+  if (workspaceId === null || workspaceId === undefined) return false;
+  const notAlani = not?.workspace_id;
+  if (notAlani === null || notAlani === undefined) return false;
+  return String(notAlani) === String(workspaceId);
+}
+
 // ─── Not ───────────────────────────────────────────────────────────────────
 
 /**
@@ -207,6 +308,13 @@ export function notOzeti(not) {
  * üyelik, sohbet uçlarının tamamı kullanıcıyı bu slug ile adresliyor. MCP'de
  * adı açıkça `slug` konuyor: `id` demek, kimliğin sayısal olduğu diğer
  * araçlarla karışırdı.
+ *
+ * **İzinler `memberPermissions`ten geliyor, `role_permissions`ten değil.**
+ * 0.3.0'da owner `permissions: []` dönüyordu ve model bunu "sahibin izni yok"
+ * diye okudu. Sebep yine iki okuyucu, tek olgu: `memberToDict` izinleri rol
+ * satırından alıyor ve owner'ın rol satırı yok; `memberPermissions` ise
+ * owner'ı kısa devreyle tam yetkili sayıyor — `whoami` de onu kullanıyor.
+ * Artık ikisi aynı fonksiyondan besleniyor.
  */
 export function uyeOzeti(uye, { acikGorev = null } = {}) {
   const d = {
@@ -215,7 +323,10 @@ export function uyeOzeti(uye, { acikGorev = null } = {}) {
     title: uye.role || '',
     ws_role: uye.ws_role || null,
     role_name: uye.role_name || null,
-    permissions: uye.role_permissions || [],
+    permissions: memberPermissions({
+      role: uye.ws_role,
+      workspaceRole: { permissions: uye.role_permissions },
+    }),
   };
   if (acikGorev !== null) d.open_tasks = acikGorev;
   return d;
@@ -296,6 +407,9 @@ export const ARAC_BASLIKLARI = {
  * Yedek 'tr', deponun her yerindeki kuralla aynı. Çözülen dil `whoami`
  * yanıtında görünüyor: sinyal gelmediğinde bunu ancak yanıt söyleyebilir,
  * yoksa "neden hâlâ Türkçe" sorusunun cevabı hiçbir yerde olmaz.
+ *
+ * Yalnızca araç BAŞLIKLARINI belirliyor; veri alanlarının diline dokunmuyor
+ * (kolon adı `title` İngilizce, `title_tr` Türkçe — `columnToDict`).
  */
 export function araclarinDili({ sorgu, acceptLanguage } = {}) {
   const acik = String(sorgu ?? '').toLowerCase();

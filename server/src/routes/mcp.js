@@ -22,8 +22,9 @@
 // da yok.
 //
 // Yanıtların BİÇİMİ ayrı bir dosyada (`lib/mcpShape.js`) ve saf: kimlik
-// normalizasyonu, kırpma, süzme, uyarı metni. Sebebi test — bu dosyanın
-// hiçbir satırı veritabanı olmadan koşamıyor, orası koşuyor.
+// normalizasyonu, kırpma, süzme, uyarı metni, alan kapsamı kontrolü. Sebebi
+// test — bu dosyanın hiçbir satırı veritabanı olmadan koşamıyor, orası
+// koşuyor.
 //
 // ── Başlık kullanıcı metnidir, açıklama değildir ──────────────────────────
 //
@@ -40,6 +41,16 @@
 //
 // Hata alanları dil kuralına tabi ve `err_` kodu taşıyor — `dil.test.js` bu
 // dosyayı da tarıyor.
+//
+// ── Araç listesi bağlantı başında bir kez okunur ──────────────────────────
+//
+// İstemci `tools/list`i bağlantı kurulurken çekip saklıyor. Sunucu "liste
+// değişti" diyemiyor: durum tutmayan kipte sunucudan istemciye kanal yok ve
+// `listChanged` yeteneği bildirilmiyor. 11 Eylül'de yaşandı — 0.3.0
+// dağıtıldıktan sonra açık kalan sohbet yedi araç görmeye devam etti, yeni
+// sohbet on araç gördü. Araç ÇAĞRILARI her zaman canlı sunucuya gidiyor;
+// yalnızca LİSTE bayat kalıyor. Araç yüzeyini değiştiren her dağıtımdan
+// sonra yeni sohbet açılmalı.
 
 import { Router } from 'express';
 import { z } from 'zod';
@@ -53,6 +64,7 @@ import { currentMember, memberPermissions } from '../lib/workspace.js';
 import { callSelf } from '../lib/selfApi.js';
 import {
   metinKimlik,
+  kimlikleriMetinle,
   gorevOzeti,
   gorevDetayi,
   gorevSuz,
@@ -60,6 +72,8 @@ import {
   notOzeti,
   uyeOzeti,
   aramaEslesir,
+  projeyiBul,
+  notAlandaMi,
   kullanilmayanIzinler,
   araclarinDili,
   baslik,
@@ -73,7 +87,8 @@ export const mcpRouter = Router();
 // durumda 401 döndüğü için "yeni kod canlıda mı" sorusu dışarıdan
 // cevaplanamıyor. Yüzeyi değiştiren her commit'te bump et; `initialize`
 // yanıtındaki serverInfo.version dağıtım kanıtı olarak okunabilsin.
-const MCP_VERSION = '0.3.0';
+// Sürüm geçmişi ve kırıcı değişiklikler: MCP-SURUMLER.md.
+const MCP_VERSION = '0.3.1';
 
 /**
  * Araçların fiilen kullandığı izinler.
@@ -93,9 +108,23 @@ const ARACLARIN_KULLANDIGI_IZINLER = new Set();
 
 // ─── Yardımcılar ───────────────────────────────────────────────────────────
 
-/** Başarılı araç yanıtı. */
+/**
+ * Başarılı araç yanıtı — her yanıtın tek çıkış kapısı.
+ *
+ * İki iş yapıyor ve ikisi de burada olmak zorunda, çünkü kural ancak tek
+ * noktada unutulamaz:
+ *
+ * **Kimlikler metne çekiliyor** (`kimlikleriMetinle`). 0.3.0'da alan alan
+ * yapıldı ve `workspace.id` kaçtı.
+ *
+ * **JSON sıkışık basılıyor.** 0.3.0 `JSON.stringify(veri, null, 2)` ile
+ * girintili basıyordu; 15 kartlık bir `list_tasks` yanıtında karakterlerin
+ * %29'u saf boşluktu (11 Eylül'de ölçüldü: 11.143 → 7.924). Girinti insan
+ * okuru içindir; bu yanıtı model okuyor ve her token istemcinin kotasından
+ * düşüyor. Alanlara dokunmadan yapılabilen tek kazanç buydu.
+ */
 function sonuc(veri) {
-  return { content: [{ type: 'text', text: JSON.stringify(veri, null, 2) }] };
+  return { content: [{ type: 'text', text: JSON.stringify(kimlikleriMetinle(veri)) }] };
 }
 
 /**
@@ -129,10 +158,51 @@ function hata(yanit) {
     content: [
       {
         type: 'text',
-        text: JSON.stringify({ status: yanit.status, ...(yanit.data || {}) }, null, 2),
+        text: JSON.stringify({ status: yanit.status, ...(yanit.data || {}) }),
       },
     ],
   };
+}
+
+/**
+ * "Bulunamadı" — alan dışı ile hiç var olmayanı AYIRT ETMEDEN.
+ *
+ * Aktif alanda olmayan bir kayıt için dönen yanıt, var olmayan kayıtla
+ * birebir aynı. Aksi hâlde yanıt bir kahin olurdu: "21 numaralı proje var
+ * ama senin alanında değil" bilgisi, kimliğin tahmin edilebilir olduğu bir
+ * sistemde (ardışık tamsayılar) başka alanların içini yoklamaya yarar.
+ * API'nin kendisinde bu kahin duruyor — üye olmadığın alanın projesi 403,
+ * olmayan proje 404 (GUVENLIK.md soru 8) — MCP onu devralmıyor.
+ *
+ * Hata kodu API'ninkiyle aynı, mesaja yalnızca yönlendirme eklendi: modelin
+ * aynı kimliği yeniden denemek yerine doğru aracı çağırması için.
+ */
+const BULUNAMADI = {
+  proje: {
+    error: 'err_project_not_found',
+    message: 'Proje bulunamadı — geçerli kimlikler için list_projects kullan',
+  },
+  gorev: {
+    error: 'err_task_not_found',
+    message: 'Görev bulunamadı — geçerli kimlikler için list_tasks ya da search_tasks kullan',
+  },
+  not: {
+    error: 'err_note_not_found',
+    message: 'Not bulunamadı — geçerli kimlikler için list_notes kullan',
+  },
+};
+
+function bulunamadi(tur) {
+  return { ok: false, status: 404, data: { ...BULUNAMADI[tur] } };
+}
+
+/**
+ * API'nin "göremezsin" ve "yok" yanıtları MCP'de tek bir "bulunamadı"ya iner.
+ * Başka her hata (500, 429…) olduğu gibi geçer — onları gizlemek sessiz
+ * başarısızlık olurdu.
+ */
+function erisimYoksaBulunamadi(yanit, tur) {
+  return yanit.status === 403 || yanit.status === 404 ? bulunamadi(tur) : yanit;
 }
 
 /**
@@ -158,10 +228,33 @@ async function aktifAlan(user) {
   return { member, workspace: workspace || null };
 }
 
-/** Bağlamı (çalışma alanı) her yanıtın başına koyan sarmal. */
-async function baglamli(user, veri) {
-  const { workspace } = await aktifAlan(user);
-  return sonuc({ workspace, ...veri });
+/**
+ * Bağlamı (çalışma alanı) her yanıtın başına koyan sarmal. Çağıran alanı
+ * zaten okuduysa ikinci kez okunmuyor.
+ */
+async function baglamli(user, veri, workspace) {
+  const alan = workspace === undefined ? (await aktifAlan(user)).workspace : workspace;
+  return sonuc({ workspace: alan, ...veri });
+}
+
+/**
+ * Proje kimliğini AKTİF alana göre çözer — proje alan her aracın tek kapısı.
+ *
+ * Aktif alanın projeleri `GET /api/projects`ten geliyor; kimlik o listede
+ * yoksa, başka alanda da olsa hiç var olmasa da, aynı "bulunamadı" dönüyor.
+ * Gerekçenin tamamı `lib/mcpShape.js`teki "Aktif alan kapsamı" notunda.
+ * `mcp.test.js`, `project_id` alan her aracın bu kapıdan geçtiğini tarıyor.
+ *
+ * Yan kazanç: proje adı da buradan geliyor, yani `list_tasks` kartları
+ * `search_tasks` kartlarıyla aynı şekli (`project_name` dahil) taşıyabiliyor.
+ */
+async function aktifProje(user, projectId) {
+  const yanit = await callSelf(user, '/api/projects');
+  if (!yanit.ok) return { ok: false, yanit };
+  const projeler = Array.isArray(yanit.data) ? yanit.data : [];
+  const proje = projeyiBul(projeler, projectId);
+  if (!proje) return { ok: false, yanit: bulunamadi('proje') };
+  return { ok: true, proje, projeler };
 }
 
 /**
@@ -252,7 +345,9 @@ function buildMcpServer(user, dil) {
         + 'adına hareket ettiğini doğrulamak için kullan. '
         + 'permissions_without_tools alanı, kullanıcının sahip olduğu ama '
         + 'MCP üzerinden kullanılamayan izinleri sayar — o işler için '
-        + 'kullanıcıyı tarayıcıya yönlendir, deneme.',
+        + 'kullanıcıyı tarayıcıya yönlendir, deneme. '
+        + 'server.title_language yalnızca araç başlıklarının dilidir; veri '
+        + 'alanlarının (kolon adı, kart başlığı) dilini belirlemez.',
       annotations: salt,
     },
     async () => {
@@ -282,6 +377,9 @@ function buildMcpServer(user, dil) {
         + 'is_current=true olan, bütün diğer araçların baktığı alandır — '
         + 'MCP yalnızca aktif alanı görür. Aradığın proje ya da kart '
         + 'bulunamıyorsa önce buraya bak: büyük ihtimalle başka bir alandadır. '
+        + 'Kullanıcı belirli bir alan adı verdiyse ve is_current olan alan o '
+        + 'değilse dur ve kullanıcıya söyle; öteki alanın verilerine bu '
+        + 'bağlantıdan ulaşılamaz. '
         + 'Alanı DEĞİŞTİREMEZSİN; bu yalnızca tarayıcıdan yapılıyor. '
         + 'Kullanıcıdan alanı değiştirmesini iste, sonra yeniden dene.',
       annotations: salt,
@@ -312,6 +410,8 @@ function buildMcpServer(user, dil) {
         + '"Ekipte kim var", "kimin üzerinde kaç iş var", "X neye bakıyor" '
         + 'sorularının doğru başlangıcı burasıdır — kartların üzerindeki '
         + 'slug\'lardan dolaylı çıkarım yapma, listeyi buradan al. '
+        + 'Sahip (ws_role: owner) her zaman bütün izinlere sahiptir ve '
+        + 'permissions bunu gösterir; role_name onda boş olabilir. '
         + 'with_task_counts=true (varsayılan) her üyenin açık iş sayısını da '
         + 'getirir; bunun için bütün projeler taranır, pano büyükse yavaştır. '
         + 'Sayı gerekmiyorsa false ver.',
@@ -379,9 +479,12 @@ function buildMcpServer(user, dil) {
         'Aktif çalışma alanındaki projeleri, açık görev sayılarıyla birlikte '
         + 'listeler. "Açık" = bitmiş olarak işaretli kolonda olmayan kart; '
         + 'list_tasks varsayılan olarak aynı kümeyi döndürür. '
-        + 'Diğer araçların istediği project_id buradan alınır. '
+        + 'Diğer araçların istediği project_id buradan alınır; burada olmayan '
+        + 'bir kimlik diğer araçlarda "bulunamadı" döner. '
         + 'Yanıttaki workspace alanı hangi panoda olduğunu söyler — beklediğin '
-        + 'alan değilse kullanıcıya sor, devam etme; list_workspaces öteki '
+        + 'alan değilse kullanıcıya sor, devam etme. Kullanıcı belirli bir alan '
+        + 'ya da proje adı verdiyse ve workspace.name ya da proje listesi onunla '
+        + 'uyuşmuyorsa dur ve kullanıcıya söyle; list_workspaces öteki '
         + 'alanları gösterir.',
       annotations: salt,
     },
@@ -405,19 +508,29 @@ function buildMcpServer(user, dil) {
         'Bir projenin kolonlarını sırasıyla döner. Yanıttaki id alanı kolonun '
         + 'slug\'ıdır ("todo", "doing", …) — list_tasks\'in col süzgecine ve '
         + 'görevlerin col alanına giren değer budur; db_id sayısal satır '
-        + 'kimliğidir, araçlarda kullanma. "Tamamlandı" anlamına gelen kolon '
+        + 'kimliğidir, araçlarda kullanma. Kolon ADI iki alanda durur: title '
+        + 'İngilizce, title_tr Türkçe addır — kullanıcıya onun dilindekini '
+        + 'göster. "Tamamlandı" anlamına gelen kolon '
         + 'is_done ile işaretlidir; hiçbir kolonda işaretli değilse bu pano '
         + '"bitti" kavramını tanımlamamış demektir, kullanıcıya söyle. '
         + 'allowed_next doluysa o kolondan yalnızca listedeki kolonlara '
         + 'geçilebilir; bütün panolarda boşsa hiçbir kısıt tanımlanmamış '
-        + 'demektir, alanı yok sayma — pano sahibi yarın tanımlayabilir.',
+        + 'demektir, alanı yok sayma — pano sahibi yarın tanımlayabilir. '
+        + 'Proje aktif alanda değilse "bulunamadı" döner.',
       inputSchema: { project_id: kimlik('list_projects içindeki id') },
       annotations: salt,
     },
     async ({ project_id }) => {
+      const proje = await aktifProje(user, project_id);
+      if (!proje.ok) return hata(proje.yanit);
+
       const yanit = await callSelf(user, `/api/projects/${project_id}/columns`);
       if (!yanit.ok) return hata(yanit);
-      return baglamli(user, { project_id: metinKimlik(project_id), columns: yanit.data });
+      return baglamli(user, {
+        project_id: metinKimlik(project_id),
+        project_name: proje.proje.name,
+        columns: yanit.data,
+      });
     },
   );
 
@@ -434,12 +547,15 @@ function buildMcpServer(user, dil) {
         + 'Süzgeçler birleşimli çalışır: col kolon slug\'ı, assignee kullanıcı '
         + 'slug\'ı (list_members\'tan al), overdue=true ise yalnızca tarihi '
         + 'geçmiş ve bitmemiş kartlar. '
-        + 'Her kartta col_is_done alanı var; kartın bitip bitmediğini anlamak '
-        + 'için ayrıca list_columns çağırma. '
-        + 'Açıklamalar bu listede kırpılıyor (desc_truncated=true ise tamamı '
-        + 'için get_task kullan). '
+        + 'Her kartta col_is_done ve project_name var; kartın bitip bitmediğini '
+        + 'anlamak için ayrıca list_columns çağırma. '
+        + 'Açıklamalar bu listede kelime sınırında kırpılıyor. İsteğe bağlı '
+        + 'alanlar yalnızca doluyken gelir: desc_truncated yoksa açıklama '
+        + 'tamdır (varsa tamamı için get_task kullan); subtasks yoksa alt görev '
+        + 'yoktur, varsa "tamamlanan/toplam" biçimindedir. '
         + 'Yanıtta warning alanı varsa onu kullanıcıya aktar: panonun bitiş '
-        + 'kolonu tanımlı değil demektir, yani liste olduğundan uzun.',
+        + 'kolonu tanımlı değil demektir, yani liste olduğundan uzun. '
+        + 'Proje aktif alanda değilse "bulunamadı" döner.',
       inputSchema: {
         project_id: kimlik('list_projects içindeki id'),
         col: z.string().optional().describe('kolon slug\'ı — list_columns yanıtındaki id, örn. "todo"'),
@@ -451,6 +567,9 @@ function buildMcpServer(user, dil) {
       annotations: salt,
     },
     async ({ project_id, col, assignee, overdue = false, include_done = false }) => {
+      const proje = await aktifProje(user, project_id);
+      if (!proje.ok) return hata(proje.yanit);
+
       const yanit = await callSelf(user, `/api/projects/${project_id}/tasks`);
       if (!yanit.ok) return hata(yanit);
 
@@ -465,7 +584,10 @@ function buildMcpServer(user, dil) {
         includeDone: include_done,
         bitisKolonlari: kolonlar.kume,
         bugun: bugunISO(),
-      }).map((g) => gorevOzeti(g, { bitisKolonlari: kolonlar.kume }));
+      }).map((g) => ({
+        ...gorevOzeti(g, { bitisKolonlari: kolonlar.kume }),
+        project_name: proje.proje.name,
+      }));
 
       const uyari = listeUyarisi({
         bitisKolonSayisi: kolonlar.kume.size,
@@ -475,6 +597,7 @@ function buildMcpServer(user, dil) {
 
       return baglamli(user, {
         project_id: metinKimlik(project_id),
+        project_name: proje.proje.name,
         count: gorevler.length,
         include_done,
         ...(uyari ? { warning: uyari } : {}),
@@ -495,8 +618,10 @@ function buildMcpServer(user, dil) {
         + 'Belirli bir projeyle sınırlamak için project_id ver; vermezsen '
         + 'bütün projeler taranır. Varsayılan olarak yalnızca açık kartlar '
         + 'aranır (include_done=true ile bitmişler de girer). '
-        + 'Yanıtta truncated=true varsa eşleşmelerin tamamı dönmedi — '
-        + 'aramayı daralt, listeyi tam sanma.',
+        + 'Kartlar list_tasks ile aynı şekildedir. İsteğe bağlı alanlar '
+        + 'yalnızca doluyken gelir: truncated yoksa bütün eşleşmeler döndü '
+        + 'demektir; varsa dönmedi — aramayı daralt, listeyi tam sanma. '
+        + 'desc_truncated yoksa açıklama tamdır.',
       inputSchema: {
         q: z.string().min(2).describe('aranacak metin, en az 2 karakter'),
         project_id: kimlik('yalnızca bu projede ara — list_projects içindeki id').optional(),
@@ -511,16 +636,17 @@ function buildMcpServer(user, dil) {
     async ({ q, project_id, assignee, include_done = false, limit = 20 }) => {
       let taranan;
       if (project_id) {
+        const proje = await aktifProje(user, project_id);
+        if (!proje.ok) return hata(proje.yanit);
+
         const [gorevYanit, kolonlar] = await Promise.all([
           callSelf(user, `/api/projects/${project_id}/tasks`),
           bitisKolonlariniGetir(user, project_id),
         ]);
         if (!gorevYanit.ok) return hata(gorevYanit);
         if (!kolonlar.ok) return hata(kolonlar.yanit);
-        // Proje adı bilinmiyor: tek proje aranırken proje listesi çekilmiyor.
-        // `name: null` yazmak "adı yok" diye okunurdu; alan hiç konmuyor.
         taranan = [{
-          proje: { id: metinKimlik(project_id) },
+          proje: proje.proje,
           gorevler: Array.isArray(gorevYanit.data) ? gorevYanit.data : [],
           bitisKolonlari: kolonlar.kume,
         }];
@@ -542,7 +668,7 @@ function buildMcpServer(user, dil) {
         for (const g of eslesen) {
           bulunan.push({
             ...gorevOzeti(g, { bitisKolonlari }),
-            ...(proje.name ? { project_name: proje.name } : {}),
+            project_name: proje.name,
           });
         }
       }
@@ -570,24 +696,34 @@ function buildMcpServer(user, dil) {
       description:
         'Tek bir görevin tamamını döner: açıklama, alt görevler, yorumlar, '
         + 'etiketler, atananlar ve tarihler. Bir işi anlamadan önce buraya bak; '
-        + 'list_tasks yalnızca özet veriyor ve açıklamayı kırpıyor.',
+        + 'list_tasks yalnızca özet veriyor ve açıklamayı kırpıyor. '
+        + 'col_is_done yalnızca kolonlar okunabildiyse gelir; yoksa bilinmiyor '
+        + 'demektir, "bitmemiş" diye okuma. '
+        + 'Görev aktif alanda değilse "bulunamadı" döner.',
       inputSchema: { task_id: kimlik('list_tasks içindeki id') },
       annotations: salt,
     },
     async ({ task_id }) => {
       const yanit = await callSelf(user, `/api/tasks/${task_id}`);
-      if (!yanit.ok) return hata(yanit);
+      if (!yanit.ok) return hata(erisimYoksaBulunamadi(yanit, 'gorev'));
 
-      // Kartın bitmiş kolonda olup olmadığı detayda da bulunsun. Proje
-      // kimliği yanıtın içinde geldiği için ikinci bir arama gerekmiyor.
-      const projeId = yanit.data?.project_id;
-      let bitisKolonlari;
-      if (projeId) {
-        const kolonlar = await bitisKolonlariniGetir(user, projeId);
-        if (kolonlar.ok) bitisKolonlari = kolonlar.kume;
-      }
+      // API "üyesi olduğun alandaki görev" diye soruyor, MCP "aktif alandaki
+      // görev" diye. Görevin projesi aktif alanın proje listesinde yoksa
+      // yanıt, hiç var olmayan görevle aynı.
+      const projeler = await callSelf(user, '/api/projects');
+      if (!projeler.ok) return hata(projeler);
+      const proje = projeyiBul(projeler.data, yanit.data?.project_id);
+      if (!proje) return hata(bulunamadi('gorev'));
 
-      return baglamli(user, { task: gorevDetayi(yanit.data, { bitisKolonlari }) });
+      const kolonlar = await bitisKolonlariniGetir(user, proje.id);
+      const bitisKolonlari = kolonlar.ok ? kolonlar.kume : undefined;
+
+      return baglamli(user, {
+        task: {
+          ...gorevDetayi(yanit.data, { bitisKolonlari }),
+          project_name: proje.name,
+        },
+      });
     },
   );
 
@@ -599,10 +735,11 @@ function buildMcpServer(user, dil) {
       title: B('list_notes'),
       description:
         'Aktif çalışma alanında görebildiğin notları listeler — gövde metni '
-        + 'olmadan. preview alanı gövdenin ilk 240 karakteridir, tamamı değil; '
-        + 'içeriği okumak için get_note kullan. Yalnızca çalışma alanı '
-        + 'görünürlüğündeki notlar ve senin yazarı ya da ortak yazarı olduğun '
-        + 'özel notlar döner.',
+        + 'olmadan. preview gövdenin tamamı DEĞİLDİR: markdown işaretleri '
+        + 'temizlendikten sonraki ilk 240 karakterdir ve kelime ortasında '
+        + 'kesilebilir; içeriği okumak için get_note kullan. Yalnızca çalışma '
+        + 'alanı görünürlüğündeki notlar ve senin yazarı ya da ortak yazarı '
+        + 'olduğun özel notlar döner.',
       inputSchema: {
         archived: z.boolean().optional().describe('true ise arşivlenmiş notlar da gelir'),
       },
@@ -625,14 +762,21 @@ function buildMcpServer(user, dil) {
       description:
         'Tek bir notun gövdesini ve bağlı olduğu görevleri döner. Bir kartın '
         + 'neden var olduğunu anlamak için: gereksinim notu genellikle görevlere '
-        + 'bağlıdır ve get_task yanıtındaki bağlı notlardan buraya gelinir.',
+        + 'bağlıdır ve get_task yanıtındaki bağlı notlardan buraya gelinir. '
+        + 'Not aktif alanda değilse "bulunamadı" döner.',
       inputSchema: { note_id: kimlik('list_notes içindeki id') },
       annotations: salt,
     },
     async ({ note_id }) => {
       const yanit = await callSelf(user, `/api/notes/${note_id}`);
-      if (!yanit.ok) return hata(yanit);
-      return baglamli(user, { note: notOzeti(yanit.data) });
+      if (!yanit.ok) return hata(erisimYoksaBulunamadi(yanit, 'not'));
+
+      // `canViewNote` başka alandaki notu o alanın SAHİBİNE gösteriyor —
+      // tarayıcı için doğru, MCP için değil. Alan eşleşmiyorsa yok say.
+      const { workspace } = await aktifAlan(user);
+      if (!notAlandaMi(yanit.data, workspace?.id)) return hata(bulunamadi('not'));
+
+      return baglamli(user, { note: notOzeti(yanit.data) }, workspace);
     },
   );
 
