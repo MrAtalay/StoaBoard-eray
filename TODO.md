@@ -423,8 +423,8 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       **API'deki 403/404 kahini duruyor** (üye olmadığın alanın projesi 403,
       olmayan 404 — GUVENLIK.md soru 8); MCP onu devralmıyor ama API geneline
       yayılmış hâli ayrı bir iş.
-- [ ] **Görev ataması alan üyeliğini kontrol etmiyor — güvenlik.**
-      *(Bulundu 11 Eylül 2026, düzeltilmedi.)* `POST /projects/:id/tasks`
+- [x] **Görev ataması alan üyeliğini kontrol etmiyor — güvenlik.**
+      *(Bulundu ve kapatıldı 11 Eylül 2026.)* `POST /projects/:id/tasks`
       (`tasks.js` ~190) ve `PATCH /tasks/:id` (~383) atanacak kişiyi
       `tx.user.findUnique({ where: { slug } })` ile arıyor: platformdaki
       HERHANGİ bir kullanıcı atanabiliyor ve ona görev başlığını taşıyan
@@ -435,6 +435,17 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       karar (sessiz atlamak bu deponun bilinen kusur kalıbı; 400 tercih
       edilmeli). Regresyon testi `guvenlik.test.js`e. `efe-kapan-1` gibi
       yetim slug'ların muhtemel iki kaynağından biri bu (öteki aşağıda).
+
+      **Kapatıldı (DEVIR 0-G):** yeni eklenen atanan alan üyesi değilse 400
+      (`err_assignee_not_member`), işlem başlamadan. Kartta zaten atanmış
+      kişi korunur — arayüz listenin tamamını geri gönderiyor ve `f789c37`
+      çıkarılanın adını kartta tutuyor. Platformda olmayan slug da aynı 400'ü
+      alıyor (eskiden sessizce atlanıyordu): "üye değil / yok" farkı bir
+      kahin olurdu. Karar saf `lib/assignees.js`te, iki uç `atamalariCoz`tan
+      geçiyor; kaynak taraması beş mutasyonla sınandı. Kart kopyalama
+      atananları bugünkü üyelere süzüyor. Uçtan uca, veri yazmadan
+      doğrulandı: kart #6'da `efe-kapan-1` korundu, yanına eklenen hayalet
+      slug reddedildi.
 - [ ] **Yetim atanan slug'ları — MCP'de işaretlenmeli.** 11 Eylül denemesinde
       5 ve 6 numaralı kartlarda `efe-kapan-1` göründü; alan üyesi
       `efe-kapan`. `-1` eki `uniqueSlug`tan geliyor (`lib/user.js`): aynı adla

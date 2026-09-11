@@ -7,10 +7,54 @@ güven, düzyazıya değil.
 
 **Son güncelleme:** 11 Eylül 2026 gecesi, **ev makinesinde** (5432 açık).
 
-> **0.3.1 canlıda ve doğrulandı** (11 Eylül gecesi): canlı anahtarla, `www`
-> üzerinden `npm run mcp:tara` → `initialize → stoaboard 0.3.1`, 53 geçti,
-> 0 kaldı, 2 atlandı. Kalan: yeni sohbette Cowork son onayı. Sıradaki iş
-> atama üyelik açığı (0-F'nin sonu).
+> **0.3.1 canlıda ve doğrulandı** (11 Eylül gecesi, 53 geçti / 0 kaldı).
+> **Atama üyelik açığı kapatıldı** (0-G) ve bu kayıtla canlıya gidiyor.
+> Sıradaki iş MCP yazma araçları (0.4.0): zorunlu `workspace_id` + 409.
+
+---
+
+## 0-G. 11 Eylül, gece — atama üyelik açığı kapandı
+
+**Ortam:** ev makinesi. 304 test (293'tü), ön yüz derleniyor.
+
+**Kusur:** görev oluşturma ve atama değişikliği atanacak kişiyi yalnızca
+slug'ıyla arıyordu; `manage_tasks` izni olan bir üye platformdaki herhangi
+bir kullanıcıyı atayabiliyor, ona görev başlığını taşıyan bildirim
+gidiyordu. MCP yazma araçlarının önündeki kapı buydu.
+
+**Kural:** yeni eklenen atanan alan üyesi değilse 400
+(`err_assignee_not_member`), işlem başlamadan — sessiz atlama yok. İki
+istisna, ikisi de bilinçli:
+
+- **Kartta zaten atanmış kişi korunur**, alandan çıkarılmış olsa bile.
+  Arayüz atama listesinin tamamını geri gönderiyor (`drawer.jsx`); kaba bir
+  kural o kartları düzenlenemez yapardı. `f789c37`'nin ürün kararıyla aynı
+  yönde.
+- **Platformda olmayan slug da aynı 400'ü alır.** Eskiden sessizce
+  atlanıyordu; "üye değil" 400 / "yok" 201 bir kullanıcı yoklama kahini
+  olurdu.
+
+Karar saf `lib/assignees.js`te (`atananlariDenetle`), sorgular
+`tasks.js`teki `atamalariCoz`ta — toplu ve işlemin dışında. Kart kopyalama
+atananları bugünkü üyelere süzüyor; yoksa çıkarılmış birinin atandığı kartı
+kopyalamak 400 alırdı.
+
+**Doğrulama:**
+- 11 yeni test. İki ucun da kapıdan geçtiğini yorumları silerek tarayan
+  testler **beş mutasyonla** sınandı, beşi de yakalandı: iki uçta erken
+  dönüşü kaldırmak, dönüşü yoruma almak (yorum tuzağı), kararı gevşetmek,
+  kapıyı atlayan ikinci bir slug yolu eklemek.
+- **Uçtan uca, veri yazmadan** (geçici yerel sunucu + `callSelf`): üye
+  olmayanla ve olmayan slug'la kart açma aynı 400'ü aldı, kart sayısı
+  değişmedi. Kart #6'ya (`efe-kapan-1` + `eray-atalay`) hayalet slug eklemek
+  400 aldı ve reddedilenler listesinde **yalnızca hayalet** vardı — korunma
+  kuralı çalışan kodda, hiçbir şey yazmadan kanıtlandı.
+
+**Mevcut yetimler yerinde:** `efe-kapan-1` gibi zaten atanmış üye
+olmayanlara dokunulmadı; yeni yetim artık yalnızca üye çıkarmayla doğabilir.
+
+**Sıradaki iş:** MCP yazma araçları (0.4.0) — zorunlu `workspace_id` +
+uyuşmazlıkta 409, her yazma denetim kaydına.
 
 ---
 

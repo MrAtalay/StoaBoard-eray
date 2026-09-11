@@ -53,15 +53,15 @@ dışı, gerekçesi dosyanın başında). Yol boyunca çıkan kusur: açık gör
 
 Aynı akşam **0.3.1**: gerçek istemcinin bulguları. En önemlisi, MCP başka
 alandaki kaydı aktif alanınmış gibi döndürüyordu; artık tek kapıdan
-(`aktifProje`) geçiyor. Yol boyunca açık bir güvenlik kusuru bulundu ve
-**düzeltilmedi**: görev ataması alan üyeliğini kontrol etmiyor (TODO).
+(`aktifProje`) geçiyor. Yol boyunca açık bir güvenlik kusuru bulundu: görev ataması alan
+üyeliğini kontrol etmiyordu — aynı gece kapatıldı (DEVIR 0-G).
 
 Gece, ev makinesinde: 0.3.1 uçtan uca doğrulandı, `main`e birleştirildi
 (`23c34f0`) ve canlıda da tarandı (53 geçti, 0 kaldı). MCP taraması artık
 depoda (`npm run mcp:tara`); canlıya karşı `MCP_URL=https://www.stoaboard.com/mcp`
 ile koşulur (DEVIR 0-F).
 
-Test sayısı **293**, hepsi geçiyor. Ayrıntılı durum için **her zaman
+Test sayısı **304**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
 tarihli ve daha güvenilir.
 
@@ -120,7 +120,7 @@ tarayıcı içi SQL Editor'ü HTTPS üzerinden çalıştığı için o ağlarda 
 
 ## Çalışma biçimi
 
-**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 293 test,
+**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 304 test,
 veritabanı gerektirmez, birkaç saniye sürer. Çıktıda `[db] warmup failed` /
 "Can't reach database server" görürsen bu bir test hatası **değil**: uygulama
 modülü yüklenirken bağlantıyı deniyor, kurumsal ağda 5432 kapalı. Ölçüt en
@@ -149,7 +149,7 @@ derlemeyi çalıştırıp kırmızıysa push'u iptal ediyor. Kancalar `.git/hook
 içinde takip edilmediği için depoda `.githooks/` klasöründe duruyorlar; komut
 git'e oraya bakmasını söylüyor. Bilerek atlamak için `git push --no-verify`.
 
-**Kanca ofis ağında da çalışır.** 293 testin hiçbiri veritabanı istemiyor;
+**Kanca ofis ağında da çalışır.** 304 testin hiçbiri veritabanı istemiyor;
 çalışmayan tek şey uygulamanın kendisi. Kanca sahte bir `DATABASE_URL` ile
 koşuyor ki test koşusu ağa bağımlı hale gelip asılı kalmasın.
 
