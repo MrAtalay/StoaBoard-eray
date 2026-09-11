@@ -36,6 +36,7 @@ import {
 import { buildNotificationText, createAndPush } from '../lib/notifications.js';
 import { recordTransition } from '../lib/reporting.js';
 import { reqLang } from '../lib/lang.js';
+import { atananlariDenetle, atamaSluglari } from '../lib/assignees.js';
 
 export const projectTasksRouter = Router({ mergeParams: true }); // /projects/:projectId/tasks
 export const tasksRouter = Router();         // /tasks/:taskId
@@ -105,6 +106,52 @@ async function loadTaskWithAccess(req, res, taskId, { permission = null, include
   return { denied: false, user, task, project, member };
 }
 
+// ─── Atama denetimi ────────────────────────────────────────────────────────
+
+/**
+ * Atama listesini çözer ve alan üyeliğine göre denetler — atama yazan iki uç
+ * (görev oluşturma, görev güncelleme) da buradan geçiyor. Kural ve iki
+ * istisnası `lib/assignees.js`in başında.
+ *
+ * İşlem başlamadan çağrılır: reddedilen bir atanan, kartın öbür alanlarının
+ * yarım yazılmasına yol açmasın. Sorgular toplu — eskiden her slug için
+ * işlemin içinde ayrı bir `findUnique` atılıyordu.
+ *
+ * Alan bilinmiyorsa (`workspaceId` boş) üye kümesi boş kalır ve hiçbir yeni
+ * atanan geçmez: kapalı başarısızlık.
+ */
+async function atamalariCoz(girdi, { workspaceId, mevcutIdler } = {}) {
+  const istenen = atamaSluglari(girdi);
+  if (!istenen.length) return { gecerli: [], reddedilen: [] };
+  const kullanicilar = await prisma.user.findMany({
+    where: { slug: { in: istenen } },
+    select: { id: true, slug: true },
+  });
+  const uyeler = workspaceId == null ? [] : await prisma.workspaceMember.findMany({
+    where: { workspaceId, userId: { in: kullanicilar.map((k) => k.id) } },
+    select: { userId: true },
+  });
+  return atananlariDenetle({
+    istenen,
+    kullanicilar,
+    uyeIdleri: new Set(uyeler.map((u) => u.userId)),
+    mevcutIdler,
+  });
+}
+
+/**
+ * Reddedilen atananlar için yanıt. Slug'lar istemcinin kendi gönderdikleri;
+ * geri vermek yeni bilgi sızdırmıyor, çünkü "yok" ile "üye değil" aynı daldan
+ * geliyor (`lib/assignees.js`).
+ */
+function atamaReddi(res, reddedilen) {
+  return res.status(400).json({
+    error: 'err_assignee_not_member',
+    message: 'Atanan kişi bu çalışma alanının üyesi değil',
+    invalid_assignees: reddedilen,
+  });
+}
+
 // ─── GET /projects/:projectId/tasks ────────────────────────────────────────
 
 projectTasksRouter.get(
@@ -150,6 +197,10 @@ projectTasksRouter.post(
     const title = (data.title || '').trim();
     if (!title) return res.status(400).json({ error: 'err_title_required', message: 'Başlık zorunludur' });
 
+    // Atananlar işlem başlamadan denetleniyor; kural ve istisnaları lib/assignees.js'te.
+    const atama = await atamalariCoz(data.assignees, { workspaceId: project.workspaceId });
+    if (atama.reddedilen.length) return atamaReddi(res, atama.reddedilen);
+
     const colSlug = data.col || 'todo';
     let col = project.columns.find((c) => c.slug === colSlug);
     if (!col) col = project.columns[0] || null;
@@ -185,11 +236,9 @@ projectTasksRouter.post(
         }
       }
 
-      // Atamalar
+      // Atamalar — liste işlemden önce denetlendi (atamalariCoz); burada yalnızca yazılıyor.
       const notifsToPush = [];
-      for (const userSlug of data.assignees || []) {
-        const assignee = await tx.user.findUnique({ where: { slug: userSlug } });
-        if (!assignee) continue;
+      for (const assignee of atama.gecerli) {
         await tx.taskAssignee.create({
           data: { taskId: task.id, userId: assignee.id },
         });
@@ -354,6 +403,17 @@ tasksRouter.patch(
       }
     }
 
+    // Atananlar işlem başlamadan denetleniyor. Kartta zaten atanmış kişi
+    // korunur, alandan çıkarılmış olsa bile — ayrıntı lib/assignees.js'te.
+    let atama = null;
+    if (Array.isArray(data.assignees)) {
+      atama = await atamalariCoz(data.assignees, {
+        workspaceId: project.workspaceId,
+        mevcutIdler: new Set(task.assignees.map((a) => a.userId)),
+      });
+      if (atama.reddedilen.length) return atamaReddi(res, atama.reddedilen);
+    }
+
     const io = req.app.get('io');
     const notifsToPush = [];
 
@@ -376,17 +436,15 @@ tasksRouter.patch(
         }
       }
 
-      if (Array.isArray(data.assignees)) {
+      if (atama) {
         const oldIds = new Set(task.assignees.map((a) => a.userId));
         await tx.taskAssignee.deleteMany({ where: { taskId } });
         const newIds = new Set();
-        for (const slug of data.assignees) {
-          const u = await tx.user.findUnique({ where: { slug } });
-          if (!u) continue;
+        for (const k of atama.gecerli) {
           await tx.taskAssignee.create({
-            data: { taskId, userId: u.id },
+            data: { taskId, userId: k.id },
           });
-          newIds.add(u.id);
+          newIds.add(k.id);
         }
         for (const newId of newIds) {
           if (!oldIds.has(newId) && newId !== user.id) {

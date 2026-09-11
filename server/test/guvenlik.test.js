@@ -26,6 +26,7 @@ import {
 } from '../src/lib/permissions.js';
 import { renderNotification } from '../src/lib/mailer.js';
 import { parseMcpTokens, lookupSlug, MIN_TOKEN_LENGTH } from '../src/lib/mcpToken.js';
+import { atananlariDenetle, atamaSluglari } from '../src/lib/assignees.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -550,5 +551,114 @@ describe('MCP anahtarı — başlık ayrıştırma', () => {
     // "Bearer abc def" -> tek bir anahtar değil; kabul edilirse hangi parçanın
     // sır olduğu belirsizleşir.
     assert.equal(_bearerToken(istek({ authorization: 'Bearer abc def' })), null);
+  });
+});
+
+// ─── Görev ataması alan üyeliği ister ──────────────────────────────────────
+//
+// Kusur (11 Eylül 2026): görev oluşturma ve atama değişikliği atanacak kişiyi
+// yalnızca slug'ıyla arıyordu; alan üyeliğine bakılmıyordu. `manage_tasks`
+// izni olan bir üye platformdaki herhangi bir kullanıcıyı atayabiliyor ve ona
+// görev başlığını taşıyan bildirim gidiyordu — başka bir şirketin kullanıcısına
+// bildirim atmak ve başlığı sızdırmak mümkündü. MCP yazma araçları bu kapı
+// kapanmadan açılamazdı. Kural ve iki istisnası lib/assignees.js'in başında.
+
+describe('atananlariDenetle — görev ataması alan üyeliği ister', () => {
+  const eray = { id: 1, slug: 'eray' };
+  const umut = { id: 2, slug: 'umut' };
+  const yabanci = { id: 9, slug: 'baska-sirket' };
+  const kullanicilar = [eray, umut, yabanci];
+  const uyeIdleri = new Set([1, 2]);
+
+  test('alan üyesi yeni atanan geçer', () => {
+    const r = atananlariDenetle({ istenen: ['umut'], kullanicilar, uyeIdleri });
+    assert.deepEqual(r, { gecerli: [umut], reddedilen: [] });
+  });
+
+  test('üye olmayan yeni atanan reddedilir — kusurun kendisi', () => {
+    const r = atananlariDenetle({ istenen: ['eray', 'baska-sirket'], kullanicilar, uyeIdleri });
+    assert.deepEqual(r.reddedilen, ['baska-sirket']);
+    assert.deepEqual(r.gecerli, [eray]);
+  });
+
+  test('platformda olmayan slug da aynı dalda reddedilir — var/yok kahini yok', () => {
+    const yok = atananlariDenetle({ istenen: ['hayalet'], kullanicilar, uyeIdleri });
+    const uyeDegil = atananlariDenetle({ istenen: ['baska-sirket'], kullanicilar, uyeIdleri });
+    assert.deepEqual(yok, { gecerli: [], reddedilen: ['hayalet'] });
+    assert.deepEqual(uyeDegil, { gecerli: [], reddedilen: ['baska-sirket'] });
+  });
+
+  test('kartta zaten atanmış kişi korunur, alandan çıkarılmış olsa bile', () => {
+    // f789c37: çıkarılan kişinin adı kartlarda kalır. Arayüz atama listesinin
+    // tamamını geri gönderdiği için bu kişi reddedilseydi kart düzenlenemezdi.
+    const r = atananlariDenetle({
+      istenen: ['eray', 'baska-sirket'], kullanicilar, uyeIdleri, mevcutIdler: new Set([9]),
+    });
+    assert.deepEqual(r, { gecerli: [eray, yabanci], reddedilen: [] });
+  });
+
+  test('aynı slug iki kez gelirse tek atanır', () => {
+    const r = atananlariDenetle({ istenen: ['umut', 'umut'], kullanicilar, uyeIdleri });
+    assert.deepEqual(r.gecerli, [umut]);
+  });
+
+  test('üye kümesi boşsa hiçbir yeni atanan geçmez — kapalı başarısızlık', () => {
+    const r = atananlariDenetle({ istenen: ['umut'], kullanicilar, uyeIdleri: new Set() });
+    assert.deepEqual(r.reddedilen, ['umut']);
+  });
+});
+
+describe('atamaSluglari — girdi biçimi', () => {
+  test('dizi olmayan girdi atama sayılmaz — metin harf harf dolaşılmaz', () => {
+    assert.deepEqual(atamaSluglari('eray'), []);
+    assert.deepEqual(atamaSluglari(undefined), []);
+    assert.deepEqual(atamaSluglari({ 0: 'eray' }), []);
+  });
+
+  test('tekrarlar elenir, değerler metne çevrilir', () => {
+    assert.deepEqual(atamaSluglari(['eray', 'eray', 5]), ['eray', '5']);
+  });
+});
+
+// İki uç da kapıdan geçmeli. Veritabanı olmadan uç kaynağında doğrulanıyor;
+// yorumlar önce siliniyor, çünkü kuralı anlatan yorum ihlali örtebiliyor
+// (CLAUDE.md, 11 Eylül). Bu testler mutasyonla sınandı.
+
+describe('görev atama uçları — üyelik kapısından geçiyor', () => {
+  const src = fs
+    .readFileSync(path.resolve(__dirname, '..', 'src', 'routes', 'tasks.js'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  function isleyici(baslangic) {
+    const i = src.indexOf(baslangic);
+    assert.ok(i !== -1, `işleyici bulunamadı: ${JSON.stringify(baslangic)}`);
+    const kalan = src.slice(i + baslangic.length);
+    const son = kalan.search(/\n(projectTasksRouter|tasksRouter|subtasksRouter|commentsRouter)\./);
+    return son === -1 ? kalan : kalan.slice(0, son);
+  }
+
+  for (const [ad, baslangic] of [
+    ['POST /projects/:projectId/tasks', "projectTasksRouter.post(\n  '/',"],
+    ['PATCH /tasks/:taskId', "tasksRouter.patch(\n  '/:taskId',"],
+  ]) {
+    test(`${ad}: atananlar işlemden önce denetleniyor, reddedilen erken dönüyor`, () => {
+      const h = isleyici(baslangic);
+      const coz = h.indexOf('atamalariCoz(');
+      const red = h.search(/if\s*\(\s*atama\.reddedilen\.length\s*\)\s*return\s+atamaReddi\(/);
+      const islem = h.indexOf('$transaction');
+      assert.ok(coz !== -1, 'uç atananları denetlemeden yazıyor — regresyon');
+      assert.ok(red !== -1, 'reddedilen atanan için erken dönüş yok — sessiz geçiş');
+      assert.ok(islem !== -1 && coz < islem && red < islem,
+        'denetim işlemden sonra geliyor — kart yarım yazılabilir');
+    });
+  }
+
+  test('tasks.js slug ile kullanıcı çözmüyor — kapıyı atlayan ikinci yol yok', () => {
+    assert.ok(
+      !/user\.findUnique\(\s*\{\s*where:\s*\{\s*slug/.test(src),
+      'slug → kullanıcı çözümü kapının dışında; atama bu yoldan üyelik denetimsiz yazılabilir',
+    );
   });
 });

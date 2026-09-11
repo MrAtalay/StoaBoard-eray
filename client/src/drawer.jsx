@@ -237,7 +237,10 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
         start: task.start || null,
         due: task.due || null,
         labels: task.labels || [],
-        assignees: task.assignees || [],
+        // Kopya yalnızca alanın bugünkü üyelerine atanır. Alandan çıkarılan
+        // kişinin adı eski kartta kalır (ürün kararı) ama yeni karta taşınamaz:
+        // sunucu yeni eklenen, üye olmayan atananı 400 ile reddediyor.
+        assignees: (task.assignees || []).filter((slug) => DATA.MEMBERS.some((m) => m.id === slug)),
         assignee_dates: task.assignee_dates || null,
       });
       if (onCreateTask) onCreateTask(newTask);
