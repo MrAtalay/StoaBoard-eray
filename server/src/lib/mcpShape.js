@@ -276,6 +276,49 @@ export function notAlandaMi(not, workspaceId) {
   return String(notAlani) === String(workspaceId);
 }
 
+/**
+ * Yazma aracının hedeflediği alan aktif alan mı?
+ *
+ * Yazma araçları `workspace_id`yi zorunlu alıyor ve aktif alanla
+ * karşılaştırıyor. Aktif alan tarayıcıdan bir tıkla değişiyor; model ise
+ * birkaç dakika önceki alanı hatırlıyor olabilir. Uyuşmazlıkta yazma
+ * yapılmıyor: kartın yanlış panoya açılması görünür kılınmıyor, **imkânsız**
+ * kılınıyor (TODO, "Yazma araçlarına zorunlu workspace_id + 409").
+ *
+ * İki taraftan biri bilinmiyorsa HAYIR — kapalı başarısızlık.
+ */
+export function alanUyusuyor(istenenId, aktifAlan) {
+  if (istenenId === null || istenenId === undefined) return false;
+  const aktif = aktifAlan?.id;
+  if (aktif === null || aktif === undefined) return false;
+  return String(istenenId) === String(aktif);
+}
+
+// ─── Atama listesi ─────────────────────────────────────────────────────────
+
+/**
+ * `update_task` için yeni atama listesi: mevcut − çıkarılanlar + eklenenler.
+ *
+ * API atama listesini baştan yazıyor (`PATCH /tasks/:id`, `assignees`). Araç
+ * tam liste alsaydı, "Umut'u da ekle" diyen bir model tek kişilik liste
+ * gönderip öbür atananları sessizce silebilirdi. Bu yüzden ekle/çıkar ayrı
+ * alanlar; tam liste burada, kartın mevcut atananlarının üstünde kuruluyor.
+ *
+ * Sıra korunur, tekrar olmaz. Aynı kişi hem ekle hem çıkar listesindeyse
+ * istek çelişkili: tahmin yürütülmüyor, `celiski` dolu dönüyor ve araç
+ * reddediyor.
+ */
+export function atamaListesi(mevcut, { ekle = [], cikar = [] } = {}) {
+  const cikarKume = new Set(cikar.map(String));
+  const celiski = [...new Set(ekle.map(String))].filter((s) => cikarKume.has(s));
+  const liste = [];
+  for (const s of [...(mevcut || []).map(String), ...ekle.map(String)]) {
+    if (cikarKume.has(s) || liste.includes(s)) continue;
+    liste.push(s);
+  }
+  return { liste, celiski };
+}
+
 // ─── Not ───────────────────────────────────────────────────────────────────
 
 /**
@@ -388,6 +431,9 @@ export const ARAC_BASLIKLARI = {
   get_task: { tr: 'Görev detayı', en: 'Task detail' },
   list_notes: { tr: 'Notlar', en: 'Notes' },
   get_note: { tr: 'Not detayı', en: 'Note detail' },
+  create_task: { tr: 'Görev oluştur', en: 'Create task' },
+  update_task: { tr: 'Görevi düzenle', en: 'Edit task' },
+  move_task: { tr: 'Görevi taşı', en: 'Move task' },
 };
 
 /**

@@ -16,6 +16,46 @@ commit'te sürüm artırılır ve buraya yazılır.
 
 ---
 
+## 0.4.0 — 11 Eylül 2026
+
+İlk yazma araçları: on üç araç, üçü yazıyor. `whoami` artık
+`server.writable: true` diyor ve `manage_tasks` MCP'de karşılığı olan izin
+sayılıyor (`permissions_without_tools`ten çıktı).
+
+### Eklenen araçlar
+
+- **`create_task`** — aktif alandaki bir projede kart açar.
+- **`update_task`** — başlık, açıklama, öncelik, tarihler, atananlar.
+  Atananlar tam liste değil, `add_assignees` / `remove_assignees` ile: API
+  listeyi baştan yazıyor ve tam liste alan bir araç öbür atananları sessizce
+  silebilirdi.
+- **`move_task`** — kartı aynı projede başka kolona taşır.
+
+### Üç araçta ortak kurallar
+
+- **`workspace_id` zorunlu** ve aktif alanın kimliği olmalı; değilse 409
+  `err_mcp_workspace_mismatch`, yanıtta aktif alan. Hiçbir şey yazılmıyor.
+- Proje ve görev **aktif alanda değilse** okuma araçlarıyla birebir aynı 404.
+- **Kolon slug'ı önceden doğrulanıyor** (`err_mcp_column_not_found`,
+  `valid_columns`). API bilinmeyen kolonu sessizce yok sayıyordu: oluşturmada
+  ilk kolona açıyor, taşımada hiçbir şey yapmadan 200 dönüyordu.
+- API'nin kendi kapıları olduğu gibi geçiyor: `manage_tasks` (403), atananın
+  alan üyeliği (400 `err_assignee_not_member`), kolon geçiş kuralı (409
+  `err_transition_not_allowed`, `allowed_next`).
+- Her başarılı yazma denetim kaydına düşüyor: `mcp.task_created`,
+  `mcp.task_updated`, `mcp.task_moved`. Ayrıntıda yalnızca kimlikler, alan
+  adları ve atanan slug'ları var; başlık, açıklama gibi içerik yazılmıyor.
+
+### Bilinçli olarak dışarıda
+
+- **Yorum ekleme.** Kart yorumundaki `@bahsetme` bildirimi alıcıyı bütün
+  platformda arıyor (TODO); o kapanmadan araç açılmıyor.
+- Silme, etiket, alt görev, alan değiştirme.
+
+> **Araç listesi değişti — yeni sohbet aç.**
+
+---
+
 ## 0.3.1 — 11 Eylül 2026
 
 Gerçek istemcinin 0.3.0'ı StoaBoard alanında uçtan uca denemesinden çıkan

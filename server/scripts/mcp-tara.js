@@ -34,7 +34,8 @@
 //
 //   0  hepsi geçti     1  en az biri kaldı     2  kalan yok ama atlanan var
 //
-// **Salt okuma, ama iz bırakıyor.** Araçların hiçbiri veri değiştirmiyor.
+// **Veri yazmıyor, ama iz bırakıyor.** Okuma araçları veri değiştirmiyor; yazma
+// araçları (0.4.0) yalnızca reddedildikleri yollardan çağrılıyor.
 // Yine de her araç çağrısı `mintSession` ile kısa ömürlü bir oturum satırı
 // yazıyor, kapı kontrolündeki bilerek başarısız istekler de denetim kaydına
 // düşüyor. Yerel `.env` production'ı gösteriyor; bu izler oraya gidiyor.
@@ -79,6 +80,12 @@ const BEKLENEN_SURUM = (/const MCP_VERSION = '([^']+)'/.exec(
 
 /** Olmayan kayıt kimliği: int4 sınırının hemen altı, ardışık kimliklerle ulaşılmaz. */
 const OLMAYAN = 2147480000;
+
+/**
+ * Veri değiştiren araçlar. Tarama bunları yalnızca REDDEDİLDİKLERİ yollardan
+ * çağırıyor — ayrıntı "Yazma araçları" bölümünde.
+ */
+const YAZMA_ARACLARI = new Set(['create_task', 'update_task', 'move_task']);
 
 function anahtariSec() {
   if (process.env.MCP_TOKEN) {
@@ -287,6 +294,7 @@ const durum = {
   hepsi: new Map(), // proje id → include_done
   notSayisi: 0,
   ref: null, // olmayan kayıtların 404 gövdeleri — alan dışı bunlarla kıyaslanıyor
+  alanDisi: null, // P0 bölümünün seçtiği başka alan kayıtları — yazma reddi de kullanıyor
 };
 
 const tumAcik = () => [...durum.acik.values()].flat();
@@ -384,7 +392,17 @@ async function tara() {
       araclar.length === beklenen.length && ayniKume(araclar.map((a) => a.name), beklenen),
       `beklenen: ${beklenen.join(', ')}`,
     );
-    kontrol('hepsi salt okuma (readOnlyHint)', araclar.length > 0 && araclar.every((a) => a.annotations?.readOnlyHint === true));
+    const yazanlar = araclar.filter((a) => a.annotations?.readOnlyHint === false).map((a) => a.name);
+    kontrol(
+      `yazma araçları: ${yazanlar.join(', ') || 'yok'}`,
+      ayniKume(yazanlar, [...YAZMA_ARACLARI]),
+      `beklenen: ${[...YAZMA_ARACLARI].join(', ')}`,
+    );
+    kontrol(
+      'geri kalanı salt okuma (readOnlyHint)',
+      araclar.length > 0
+        && araclar.filter((a) => !YAZMA_ARACLARI.has(a.name)).every((a) => a.annotations?.readOnlyHint === true),
+    );
     kontrol('başlıklar Türkçe (varsayılan)', basliklarDogru(araclar, 'tr'));
 
     const en = (await rpc('tools/list', {}, { sorgu: { lang: 'en' } })).json?.result?.tools || [];
@@ -403,7 +421,8 @@ async function tara() {
       'user.slug': ANAHTAR.slug ? v.user?.slug === ANAHTAR.slug : Boolean(v.user?.slug),
       'workspace.id metin': typeof v.workspace?.id === 'string',
       'server.version': v.server?.version === BEKLENEN_SURUM,
-      'writable false': v.server?.writable === false,
+      'writable true': v.server?.writable === true,
+      'manage_tasks araçlı sayılıyor': !(v.permissions_without_tools || []).includes('manage_tasks'),
       'title_language tr': v.server?.title_language === 'tr',
       'permissions_without_tools ⊆ permissions':
         (v.permissions_without_tools || []).every((p) => durum.izinler.includes(p)),
@@ -772,6 +791,8 @@ async function tara() {
       select: { id: true },
     }));
 
+    durum.alanDisi = { proje, gorev };
+
     if (proje) {
       const cevaplar = [
         await arac('list_columns', { project_id: proje.id }),
@@ -828,6 +849,74 @@ async function tara() {
       kontrol(`üye olunmayan alanın görevi #${yabanciGorev.id} → aynı 404`, c.hata && c.metin === durum.ref.gorev);
     } else {
       atla('üye olunmayan alanın görevi', 'veritabanında öyle bir kart yok');
+    }
+  });
+
+  await bolum('Yazma araçları — reddetme yolları (veri yazmadan)', async () => {
+    // Tarama canlıya karşı da koşuyor; bu bölüm yazma araçlarını yalnızca
+    // REDDEDİLDİKLERİ yollardan çağırıyor. Başarı yolu (kart gerçekten açılır)
+    // bilinçli olarak burada yok — onu kullanıcı kendi panosunda sınıyor.
+    //
+    // Güvenlik ağı: sınanan kapı bozuksa bile yazma gerçekleşmesin diye
+    // riskli denemelere olmayan bir atanan ekleniyor. O zaman API atamada 400
+    // ile duruyor ve kontrol yanlış hata kodundan kırılıyor. Kart sayısı da
+    // önce ve sonra ölçülüyor.
+    const ilkProje = durum.projeler[0];
+    const ilkKart = tumKartlar()[0];
+    if (!ilkProje || !ilkKart) {
+      atla('yazma reddi', 'aktif alanda proje ya da kart yok');
+      return;
+    }
+    const db = await veritabaniHazir();
+    const projeIdleri = durum.projeler.map((p) => Number(p.id));
+    const kartSayisi = async () => (db.ok
+      ? prisma.task.count({ where: { projectId: { in: projeIdleri } } })
+      : null);
+    const once = await kartSayisi();
+
+    const w = durum.alan.id;
+    const baslik = 'mcp-tara — oluşmamalı, oluştuysa silinebilir';
+    const HAYALET = 'hayalet-mcp-tara-xyz';
+    const kod = (c) => { try { return JSON.parse(c.metin).error; } catch { return null; } };
+    const dene = async (ad, arg, beklenen) => {
+      const c = await arac(ad, arg);
+      kontrol(`${ad} → ${beklenen}`, c.hata && kod(c) === beklenen, c.metin.slice(0, 140));
+    };
+
+    await dene('create_task', { workspace_id: OLMAYAN, project_id: OLMAYAN, title: baslik }, 'err_mcp_workspace_mismatch');
+    await dene('create_task', {
+      workspace_id: w, project_id: ilkProje.id, title: baslik, col: 'olmayan-kolon-xyz', assignees: [HAYALET],
+    }, 'err_mcp_column_not_found');
+    await dene('create_task', { workspace_id: w, project_id: ilkProje.id, title: baslik, assignees: [HAYALET] }, 'err_assignee_not_member');
+    await dene('update_task', { workspace_id: w, task_id: ilkKart.id }, 'err_mcp_nothing_to_update');
+    await dene('update_task', {
+      workspace_id: w, task_id: ilkKart.id, add_assignees: [HAYALET], remove_assignees: [HAYALET],
+    }, 'err_mcp_assignee_conflict');
+    await dene('move_task', { workspace_id: w, task_id: ilkKart.id, col: 'olmayan-kolon-xyz' }, 'err_mcp_column_not_found');
+
+    const yok = await arac('move_task', { workspace_id: w, task_id: OLMAYAN, col: ilkKart.col });
+    kontrol('olmayan göreve yazma → get_task ile birebir aynı 404', yok.hata && yok.metin === durum.ref?.gorev, yok.metin.slice(0, 140));
+
+    const { proje, gorev } = durum.alanDisi || {};
+    if (proje) {
+      const c = await arac('create_task', { workspace_id: w, project_id: proje.id, title: baslik, assignees: [HAYALET] });
+      kontrol(`başka alandaki projeye kart (#${proje.id}) → olmayanla aynı 404`, c.hata && c.metin === durum.ref?.proje, c.metin.slice(0, 140));
+    } else {
+      atla('başka alandaki projeye yazma', 'kullanıcının öbür alanlarında proje yok');
+    }
+    if (gorev) {
+      const c = await arac('update_task', { workspace_id: w, task_id: gorev.id, add_assignees: [HAYALET] });
+      kontrol(`başka alandaki göreve yazma (#${gorev.id}) → olmayanla aynı 404`, c.hata && c.metin === durum.ref?.gorev, c.metin.slice(0, 140));
+    } else {
+      atla('başka alandaki göreve yazma', 'kullanıcının öbür alanlarında kart yok');
+    }
+
+    const sonra = await kartSayisi();
+    if (once === null) {
+      atla('kart sayısı değişmedi', 'veritabanına ulaşılamadı');
+    } else {
+      kontrol(`kart sayısı değişmedi (${once} → ${sonra})`, once === sonra,
+        `tarama bir kart AÇTI — başlığı "${baslik}" olanı sil`);
     }
   });
 

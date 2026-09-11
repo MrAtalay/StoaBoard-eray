@@ -45,6 +45,8 @@ import {
   kullanilmayanIzinler,
   araclarinDili,
   baslik,
+  alanUyusuyor,
+  atamaListesi,
   ARAC_BASLIKLARI,
   DESC_SINIRI,
 } from '../src/lib/mcpShape.js';
@@ -648,5 +650,101 @@ describe('alan kapısı — her araç aynı yerden geçiyor', () => {
       'mcp.js içinde girintili JSON kaldı');
     assert.ok(/JSON\.stringify\(kimlikleriMetinle\(/.test(mcpSrc),
       'sonuc() kimlikleri metne çekmiyor');
+  });
+});
+
+// ─── Yazma araçları (0.4.0) ────────────────────────────────────────────────
+//
+// Üç yazma aracı geldi: create_task, update_task, move_task. Korunan kurallar
+// mcp.js'teki "Yazma yardımcıları" notunda ve MCP-SURUMLER.md'de.
+
+describe('alanUyusuyor — yazma yalnızca aktif alana', () => {
+  test('aynı alan, metin/sayı farkı gözetmeden', () => {
+    assert.equal(alanUyusuyor('1', { id: 1 }), true);
+    assert.equal(alanUyusuyor(1, { id: '1' }), true);
+  });
+
+  test('başka alan reddediliyor', () => {
+    assert.equal(alanUyusuyor(4, { id: 1 }), false);
+  });
+
+  test('taraflardan biri bilinmiyorsa HAYIR — kapalı başarısızlık', () => {
+    assert.equal(alanUyusuyor(undefined, { id: 1 }), false);
+    assert.equal(alanUyusuyor(1, null), false);
+    assert.equal(alanUyusuyor(1, {}), false);
+  });
+});
+
+describe('atamaListesi — ekle/çıkar, tam liste değil', () => {
+  test('ekleme öbür atananları korur — önlenen kusur bu', () => {
+    // Araç tam liste alsaydı "Umut'u da ekle" diyen model ['umut'] gönderip
+    // eray'ı sessizce silebilirdi.
+    assert.deepEqual(atamaListesi(['eray'], { ekle: ['umut'] }).liste, ['eray', 'umut']);
+  });
+
+  test('çıkarma yalnızca adı geçeni çıkarır', () => {
+    assert.deepEqual(atamaListesi(['eray', 'umut'], { cikar: ['eray'] }).liste, ['umut']);
+  });
+
+  test('tekrar olmaz, sıra korunur', () => {
+    assert.deepEqual(atamaListesi(['eray'], { ekle: ['eray', 'umut', 'umut'] }).liste, ['eray', 'umut']);
+  });
+
+  test('hem eklenip hem çıkarılan kişi çelişki olarak bildiriliyor', () => {
+    assert.deepEqual(atamaListesi(['eray'], { ekle: ['umut'], cikar: ['umut'] }).celiski, ['umut']);
+  });
+
+  test('olmayan kişiyi çıkarmak zararsız', () => {
+    assert.deepEqual(atamaListesi(['eray'], { cikar: ['hayalet'] }), { liste: ['eray'], celiski: [] });
+  });
+});
+
+describe('yazma araçları — kapılar her araçta, yazmadan önce', () => {
+  // Kural "her yazma aracına ayrı ayrı koy" diye konmadı; tarama onu
+  // doğrulayana taşıyor. Yeni bir yazma aracı kapısız eklenirse kırılır.
+  const mcpSrc = yorumsuz('routes/mcp.js');
+  const bloklar = mcpSrc.split('server.registerTool(').slice(1);
+  const ad = (b) => /^\s*'([a-z_]+)'/.exec(b)?.[1];
+  const YAZMA = /method:\s*'(POST|PATCH|PUT|DELETE)'/;
+  const yazanlar = bloklar.filter((b) => YAZMA.test(b));
+
+  test('en az üç yazma aracı — tarama gerçekten bir şey buluyor', () => {
+    assert.ok(yazanlar.length >= 3, `yalnızca ${yazanlar.length} yazma aracı bulundu`);
+  });
+
+  test('her yazma aracı workspace_id zorunlu alıyor ve alan kapısından geçiyor', () => {
+    const kacak = yazanlar
+      .filter((b) => !/workspace_id:\s*kimlik\(/.test(b) || !b.includes('yazmaKapisi('))
+      .map(ad);
+    assert.deepEqual(kacak, [], 'Bu araçlar aktif alanı doğrulamadan yazabilir');
+  });
+
+  test('alan kapısı yazmadan ÖNCE geliyor', () => {
+    const gec = yazanlar.filter((b) => b.indexOf('yazmaKapisi(') > b.search(YAZMA)).map(ad);
+    assert.deepEqual(gec, [], 'Kapı yazmadan sonra — uyuşmazlıkta kart zaten yazılmış olur');
+  });
+
+  test('görev alan yazma araçları görevin projesini aktif alanda arıyor', () => {
+    const kacak = yazanlar
+      .filter((b) => /task_id:\s*kimlik\(/.test(b) && !b.includes('aktifGorev('))
+      .map(ad);
+    assert.deepEqual(kacak, [], 'Bu araçlar başka alandaki göreve yazabilir');
+  });
+
+  test('her yazma aracı denetim kaydı bırakıyor', () => {
+    const izsiz = yazanlar.filter((b) => !b.includes('recordAudit(')).map(ad);
+    assert.deepEqual(izsiz, [], 'Claude\'un yaptığı panodan yapılandan ayırt edilemez');
+  });
+
+  test('yazan araç salt okuma diye işaretlenmiyor', () => {
+    const yanlis = yazanlar.filter((b) => b.includes('annotations: salt')).map(ad);
+    assert.deepEqual(yanlis, [], 'Yazan araç istemciye salt okuma diye bildiriliyor');
+  });
+
+  test('okuma araçları yazmıyor ve salt okuma işaretli', () => {
+    const okuyanlar = bloklar.filter((b) => !YAZMA.test(b));
+    const isaretsiz = okuyanlar.filter((b) => !b.includes('annotations: salt')).map(ad);
+    assert.ok(okuyanlar.length >= 10, `yalnızca ${okuyanlar.length} okuma aracı bulundu`);
+    assert.deepEqual(isaretsiz, [], 'Okuma aracı salt okuma işareti taşımıyor');
   });
 });

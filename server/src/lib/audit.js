@@ -22,6 +22,12 @@ export const AUDIT = {
   // MCP ucuna geçersiz anahtarla yapılan deneme. Kullanıcı yok, workspace yok:
   // kayıt yalnızca IP ve tarayıcı bilgisiyle "birisi kapıyı denedi" diyor.
   MCP_AUTH_FAILED: 'mcp.auth_failed',
+  // Claude'un MCP üzerinden yaptığı yazmalar — panodan yapılanla ayrışsın diye
+  // ayrı eylem adları. Ayrıntıda yalnızca kimlikler, alan adları ve atanan
+  // slug'ları var; başlık, açıklama gibi içerik yazılmıyor (dosyanın başı).
+  MCP_TASK_CREATED: 'mcp.task_created',
+  MCP_TASK_UPDATED: 'mcp.task_updated',
+  MCP_TASK_MOVED: 'mcp.task_moved',
 };
 
 function clientIp(req) {

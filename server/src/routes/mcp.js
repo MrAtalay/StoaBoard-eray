@@ -62,6 +62,7 @@ import { asyncHandler } from '../lib/asyncHandler.js';
 import { requireMcpToken } from '../lib/mcpAuth.js';
 import { currentMember, memberPermissions } from '../lib/workspace.js';
 import { callSelf } from '../lib/selfApi.js';
+import { recordAudit, AUDIT } from '../lib/audit.js';
 import {
   metinKimlik,
   kimlikleriMetinle,
@@ -77,6 +78,8 @@ import {
   kullanilmayanIzinler,
   araclarinDili,
   baslik,
+  alanUyusuyor,
+  atamaListesi,
 } from '../lib/mcpShape.js';
 
 export const mcpRouter = Router();
@@ -88,23 +91,23 @@ export const mcpRouter = Router();
 // cevaplanamıyor. Yüzeyi değiştiren her commit'te bump et; `initialize`
 // yanıtındaki serverInfo.version dağıtım kanıtı olarak okunabilsin.
 // Sürüm geçmişi ve kırıcı değişiklikler: MCP-SURUMLER.md.
-const MCP_VERSION = '0.3.1';
+const MCP_VERSION = '0.4.0';
 
 /**
  * Araçların fiilen kullandığı izinler.
  *
- * Bugün boş ve bu doğru: on aracın onu da salt okuma, hiçbiri
- * `manage_tasks` benzeri bir izin kapısından geçmiyor — okuma için üyelik
- * yetiyor. `whoami` bu kümeyi kullanıp "şu izinlerin MCP'de karşılığı yok"
- * diyor, çünkü izin listesini çıplak vermek modelde yapamayacağı işler için
- * beklenti yaratıyor (10 Eylül: istemci `manage_channels` görüp sohbeti
- * yönetebileceğini sandı).
+ * Okuma araçları için üyelik yetiyor; 0.4.0'daki üç yazma aracı (görev
+ * oluştur, düzenle, taşı) API'nin `manage_tasks` kapısından geçiyor. `whoami`
+ * bu kümeyi kullanıp "şu izinlerin MCP'de karşılığı yok" diyor, çünkü izin
+ * listesini çıplak vermek modelde yapamayacağı işler için beklenti yaratıyor
+ * (10 Eylül: istemci `manage_channels` görüp sohbeti yönetebileceğini sandı).
  *
- * Yazma araçları geldiğinde buraya `manage_tasks` ve `manage_projects`
- * eklenecek; liste kendiliğinden küçülecek. Elle tutulan bir muafiyet listesi
- * bayatlardı.
+ * Kapı API'de, burada değil: araç izni kendisi denetlemiyor, çağırdığı uç
+ * denetliyor ve 403'ü olduğu gibi modele iletiyor. Bu küme yalnızca `whoami`
+ * cevabının dürüst olması için var. Proje yönetimi araçları gelirse buraya
+ * `manage_projects` eklenecek.
  */
-const ARACLARIN_KULLANDIGI_IZINLER = new Set();
+const ARACLARIN_KULLANDIGI_IZINLER = new Set(['manage_tasks']);
 
 // ─── Yardımcılar ───────────────────────────────────────────────────────────
 
@@ -144,6 +147,12 @@ function sonuc(veri) {
  * `int()` kapısında elenir.
  */
 const kimlik = (aciklama) => z.coerce.number().int().positive().describe(aciklama);
+
+/**
+ * Gün biçimi. API tarihi `parseDate` ile okuyor; biçim burada kilitleniyor ki
+ * model yanlış biçimi sessiz bir boş tarih olarak değil, hata olarak görsün.
+ */
+const TARIH = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD biçiminde olmalı');
 
 /**
  * Başarısız araç yanıtı.
@@ -312,6 +321,86 @@ function bugunISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// ─── Yazma yardımcıları ────────────────────────────────────────────────────
+//
+// 0.4.0'da yüzeye üç yazma aracı geldi. Hepsi üç kapıdan geçiyor, sırayla:
+//
+// 1. **Alan kapısı** (`yazmaKapisi`): `workspace_id` zorunlu ve aktif alanla
+//    karşılaştırılıyor; uyuşmazlıkta 409, yazma yok.
+// 2. **Kayıt kapısı** (`aktifProje` / `aktifGorev`): proje ya da görev aktif
+//    alanda değilse hiç yokmuş gibi 404 — okuma araçlarıyla aynı kapı.
+// 3. **API'nin kendi kapıları**: `manage_tasks`, atananın alan üyeliği
+//    (`lib/assignees.js`), kolon geçiş kuralı (`allowed_next`, 409). MCP
+//    bunları yeniden yazmıyor, cevabı olduğu gibi modele iletiyor.
+//
+// Başarılı her yazma denetim kaydına düşüyor (`mcp.task_*`), ki panodan
+// yapılanla Claude'un yaptığı ayrışsın. `mcp.test.js` her yazma aracında bu
+// kapıların ve kaydın bulunduğunu, alan kapısının yazmadan önce geldiğini
+// tarıyor.
+
+/**
+ * Yazma aracının alan kapısı. Uyuşmazlıkta yanıt aktif alanı söylüyor —
+ * modelin kullanıcıya "tarayıcıda şu alana geç" diyebilmesi için; bilgi zaten
+ * kullanıcının kendisinin.
+ */
+async function yazmaKapisi(user, workspaceId) {
+  const { member, workspace } = await aktifAlan(user);
+  if (!member?.workspaceId || !workspace) {
+    return {
+      ok: false,
+      yanit: { status: 404, data: { error: 'err_mcp_no_workspace', message: 'Aktif çalışma alanı yok' } },
+    };
+  }
+  if (!alanUyusuyor(workspaceId, workspace)) {
+    return {
+      ok: false,
+      yanit: {
+        status: 409,
+        data: {
+          error: 'err_mcp_workspace_mismatch',
+          message: 'İstenen alan aktif alan değil; hiçbir şey yazılmadı. Kullanıcıdan '
+            + 'tarayıcıda alanı değiştirmesini iste ya da aktif alanda çalış.',
+          active_workspace: { id: metinKimlik(workspace.id), name: workspace.name },
+        },
+      },
+    };
+  }
+  return { ok: true, workspace };
+}
+
+/**
+ * Görev kimliğini AKTİF alana göre çözer — görev alan yazma araçlarının
+ * kapısı. `get_task`teki mantığın aynısı: API "üyesi olduğun alandaki görev"
+ * diye soruyor, MCP "aktif alandaki görev" diye. Başka alandaki görev, hiç
+ * var olmayanla aynı 404'ü alıyor.
+ */
+async function aktifGorev(user, taskId) {
+  const yanit = await callSelf(user, `/api/tasks/${taskId}`);
+  if (!yanit.ok) return { ok: false, yanit: erisimYoksaBulunamadi(yanit, 'gorev') };
+  const projeler = await callSelf(user, '/api/projects');
+  if (!projeler.ok) return { ok: false, yanit: projeler };
+  const proje = projeyiBul(projeler.data, yanit.data?.project_id);
+  if (!proje) return { ok: false, yanit: bulunamadi('gorev') };
+  return { ok: true, gorev: yanit.data, proje };
+}
+
+/**
+ * Olmayan kolon. API bilinmeyen slug'ı sessizce yok sayıyor — oluşturmada
+ * kartı ilk kolona açıyor, taşımada hiçbir şey yapmadan 200 dönüyor; model
+ * kartı taşıdığını sanırdı. MCP slug'ı önceden doğruluyor ve geçerlileri
+ * listeliyor.
+ */
+function kolonYok(kolonlar, istenen) {
+  return {
+    status: 400,
+    data: {
+      error: 'err_mcp_column_not_found',
+      message: `"${istenen}" diye bir kolon yok — geçerli slug'lar valid_columns'ta`,
+      valid_columns: kolonlar.map((c) => c.id),
+    },
+  };
+}
+
 // ─── MCP sunucusu ──────────────────────────────────────────────────────────
 
 /**
@@ -323,14 +412,22 @@ function bugunISO() {
  *
  * `dil` yalnızca araç BAŞLIKLARINI etkiliyor; açıklamalar Türkçe ve modele
  * yazılmış (dosya başındaki nota bak).
+ *
+ * `req` yalnızca denetim kaydı için: yazma araçları IP ve istemci bilgisini
+ * oradan okuyor (`recordAudit`).
  */
-function buildMcpServer(user, dil) {
+function buildMcpServer(user, dil, req) {
   const server = new McpServer(
     { name: 'stoaboard', version: MCP_VERSION },
     { capabilities: { tools: {} } },
   );
 
   const salt = { readOnlyHint: true };
+  // Yazma araçlarının ipuçları; yıkıcılık ve tekrarlanabilirlik araç başına
+  // ayarlanıyor. `openWorldHint: false` — araçlar yalnızca bu panoya dokunuyor.
+  const yazma = {
+    readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false,
+  };
   const B = (arac) => baslik(arac, dil);
 
   // ── whoami ───────────────────────────────────────────────────────────────
@@ -361,7 +458,7 @@ function buildMcpServer(user, dil) {
         permissions_without_tools: kullanilmayanIzinler(
           izinler, ARACLARIN_KULLANDIGI_IZINLER,
         ),
-        server: { version: MCP_VERSION, writable: false, title_language: dil },
+        server: { version: MCP_VERSION, writable: true, title_language: dil },
       });
     },
   );
@@ -780,6 +877,228 @@ function buildMcpServer(user, dil) {
     },
   );
 
+  // ── create_task ──────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'create_task',
+    {
+      title: B('create_task'),
+      description:
+        'Aktif çalışma alanındaki bir projede yeni görev (kart) açar ve kartı '
+        + 'döner. Kullanıcı açıkça istemediyse kart açma. '
+        + 'workspace_id zorunludur ve AKTİF alanın kimliği olmalıdır (whoami '
+        + 'yanıtındaki workspace.id); değilse 409 döner ve hiçbir şey yazılmaz '
+        + '— kullanıcıdan tarayıcıda alanı değiştirmesini iste. project_id '
+        + 'list_projects\'ten alınır. col kolon slug\'ıdır (list_columns id); '
+        + 'verilmezse "todo" kolonuna, pano onu tanımlamıyorsa ilk kolona '
+        + 'açılır; olmayan bir slug hata döner. assignees kullanıcı slug\'larıdır '
+        + '(list_members); yalnızca alan üyeleri atanabilir ve atanan kişiye '
+        + 'bildirim gider. due ve start YYYY-MM-DD biçimindedir. Kart '
+        + 'kullanıcının adına açılır ve denetim kaydına MCP üzerinden '
+        + 'yapıldığı yazılır.',
+      inputSchema: {
+        workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
+        project_id: kimlik('list_projects içindeki id'),
+        title: z.string().trim().min(1).max(500).describe('kart başlığı'),
+        desc: z.string().max(10000).optional().describe('açıklama, düz metin'),
+        col: z.string().optional().describe('kolon slug\'ı — list_columns id, örn. "todo"'),
+        priority: z.enum(['high', 'mid', 'low']).optional().describe('öncelik; varsayılan mid'),
+        due: TARIH.optional().describe('bitiş tarihi, YYYY-MM-DD'),
+        start: TARIH.optional().describe('başlangıç tarihi, YYYY-MM-DD'),
+        assignees: z.array(z.string()).max(20).optional()
+          .describe('atanacak kullanıcı slug\'ları — list_members'),
+      },
+      annotations: yazma,
+    },
+    async ({ workspace_id, project_id, title, desc, col, priority, due, start, assignees }) => {
+      const kapi = await yazmaKapisi(user, workspace_id);
+      if (!kapi.ok) return hata(kapi.yanit);
+
+      const proje = await aktifProje(user, project_id);
+      if (!proje.ok) return hata(proje.yanit);
+
+      const kolonlar = await bitisKolonlariniGetir(user, project_id);
+      if (!kolonlar.ok) return hata(kolonlar.yanit);
+      if (col !== undefined && !kolonlar.kolonlar.some((c) => c.id === col)) {
+        return hata(kolonYok(kolonlar.kolonlar, col));
+      }
+
+      const yanit = await callSelf(user, `/api/projects/${project_id}/tasks`, {
+        method: 'POST',
+        body: { title, desc, col, priority, due, start, assignees },
+      });
+      if (!yanit.ok) return hata(yanit);
+
+      recordAudit(req, {
+        workspaceId: kapi.workspace.id,
+        user,
+        action: AUDIT.MCP_TASK_CREATED,
+        detail: { task_id: metinKimlik(yanit.data?.id), project_id: metinKimlik(project_id) },
+      });
+      return baglamli(user, {
+        created: true,
+        task: {
+          ...gorevDetayi(yanit.data, { bitisKolonlari: kolonlar.kume }),
+          project_name: proje.proje.name,
+        },
+      }, kapi.workspace);
+    },
+  );
+
+  // ── update_task ──────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'update_task',
+    {
+      title: B('update_task'),
+      description:
+        'Var olan bir görevin alanlarını değiştirir: başlık, açıklama, öncelik, '
+        + 'tarihler, atananlar. Yalnızca verilen alanlar değişir; kartı başka '
+        + 'kolona almak için move_task kullan. Kullanıcı açıkça istemediyse '
+        + 'değiştirme. workspace_id zorunludur ve AKTİF alanın kimliği '
+        + 'olmalıdır; değilse 409 döner, hiçbir şey yazılmaz. Atananlar tam '
+        + 'liste olarak DEĞİL, add_assignees / remove_assignees ile verilir — '
+        + 'öbür atananlar korunur. Yalnızca alan üyeleri eklenebilir; yeni '
+        + 'eklenen kişiye bildirim gider. desc verilirse eski açıklamanın '
+        + 'yerine geçer. due ya da start için null tarihi siler. Görev aktif '
+        + 'alanda değilse "bulunamadı" döner.',
+      inputSchema: {
+        workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
+        task_id: kimlik('list_tasks içindeki id'),
+        title: z.string().trim().min(1).max(500).optional().describe('yeni başlık'),
+        desc: z.string().max(10000).optional().describe('yeni açıklama, düz metin — eskisinin yerine geçer'),
+        priority: z.enum(['high', 'mid', 'low']).optional().describe('yeni öncelik'),
+        due: TARIH.nullable().optional().describe('YYYY-MM-DD; null tarihi siler'),
+        start: TARIH.nullable().optional().describe('YYYY-MM-DD; null tarihi siler'),
+        add_assignees: z.array(z.string()).max(20).optional()
+          .describe('eklenecek kullanıcı slug\'ları — list_members'),
+        remove_assignees: z.array(z.string()).max(20).optional()
+          .describe('çıkarılacak kullanıcı slug\'ları'),
+      },
+      annotations: { ...yazma, destructiveHint: true, idempotentHint: true },
+    },
+    async ({ workspace_id, task_id, title, desc, priority, due, start, add_assignees, remove_assignees }) => {
+      const kapi = await yazmaKapisi(user, workspace_id);
+      if (!kapi.ok) return hata(kapi.yanit);
+
+      const g = await aktifGorev(user, task_id);
+      if (!g.ok) return hata(g.yanit);
+
+      const govde = {};
+      if (title !== undefined) govde.title = title;
+      if (desc !== undefined) govde.desc = desc;
+      if (priority !== undefined) govde.priority = priority;
+      if (due !== undefined) govde.due = due;
+      if (start !== undefined) govde.start = start;
+
+      const ekle = add_assignees || [];
+      const cikar = remove_assignees || [];
+      if (ekle.length || cikar.length) {
+        const { liste, celiski } = atamaListesi(g.gorev.assignees, { ekle, cikar });
+        if (celiski.length) {
+          return hata({
+            status: 400,
+            data: {
+              error: 'err_mcp_assignee_conflict',
+              message: 'Aynı kişi hem eklenip hem çıkarılamaz',
+              conflicting: celiski,
+            },
+          });
+        }
+        govde.assignees = liste;
+      }
+
+      const alanlar = Object.keys(govde);
+      if (!alanlar.length) {
+        return hata({
+          status: 400,
+          data: { error: 'err_mcp_nothing_to_update', message: 'Değiştirilecek alan verilmedi' },
+        });
+      }
+
+      const yanit = await callSelf(user, `/api/tasks/${task_id}`, { method: 'PATCH', body: govde });
+      if (!yanit.ok) return hata(yanit);
+
+      recordAudit(req, {
+        workspaceId: kapi.workspace.id,
+        user,
+        action: AUDIT.MCP_TASK_UPDATED,
+        detail: {
+          task_id: metinKimlik(task_id),
+          fields: alanlar,
+          ...(ekle.length ? { assignees_added: ekle } : {}),
+          ...(cikar.length ? { assignees_removed: cikar } : {}),
+        },
+      });
+      const kolonlar = await bitisKolonlariniGetir(user, g.proje.id);
+      return baglamli(user, {
+        updated: alanlar,
+        task: {
+          ...gorevDetayi(yanit.data, { bitisKolonlari: kolonlar.ok ? kolonlar.kume : undefined }),
+          project_name: g.proje.name,
+        },
+      }, kapi.workspace);
+    },
+  );
+
+  // ── move_task ────────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'move_task',
+    {
+      title: B('move_task'),
+      description:
+        'Bir görevi aynı projede başka bir kolona taşır ("yapılıyor"a al, '
+        + '"tamamlandı"ya çek gibi). col hedef kolonun slug\'ıdır (list_columns '
+        + 'id). Kullanıcı açıkça istemediyse taşıma. workspace_id zorunludur ve '
+        + 'AKTİF alanın kimliği olmalıdır; değilse 409 döner. Pano bir kolondan '
+        + 'yalnızca belirli kolonlara geçişe izin veriyorsa (allowed_next) ve '
+        + 'hedef listede yoksa 409 döner — sebebi kullanıcıya aktar, başka yol '
+        + 'deneme. "Tamamlandı" işaretli kolona taşınan kartın ilerlemesi 100 '
+        + 'olur. Kart zaten o kolondaysa hiçbir şey yazılmaz ve moved=false döner.',
+      inputSchema: {
+        workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
+        task_id: kimlik('list_tasks içindeki id'),
+        col: z.string().min(1).describe('hedef kolon slug\'ı — list_columns id'),
+      },
+      annotations: { ...yazma, idempotentHint: true },
+    },
+    async ({ workspace_id, task_id, col }) => {
+      const kapi = await yazmaKapisi(user, workspace_id);
+      if (!kapi.ok) return hata(kapi.yanit);
+
+      const g = await aktifGorev(user, task_id);
+      if (!g.ok) return hata(g.yanit);
+
+      const kolonlar = await bitisKolonlariniGetir(user, g.proje.id);
+      if (!kolonlar.ok) return hata(kolonlar.yanit);
+      if (!kolonlar.kolonlar.some((c) => c.id === col)) return hata(kolonYok(kolonlar.kolonlar, col));
+
+      const once = g.gorev.col;
+      if (once === col) {
+        return baglamli(user, {
+          moved: false,
+          task: { ...gorevDetayi(g.gorev, { bitisKolonlari: kolonlar.kume }), project_name: g.proje.name },
+        }, kapi.workspace);
+      }
+
+      const yanit = await callSelf(user, `/api/tasks/${task_id}`, { method: 'PATCH', body: { col } });
+      if (!yanit.ok) return hata(yanit);
+
+      recordAudit(req, {
+        workspaceId: kapi.workspace.id,
+        user,
+        action: AUDIT.MCP_TASK_MOVED,
+        detail: { task_id: metinKimlik(task_id), from: once, to: col },
+      });
+      return baglamli(user, {
+        moved: true,
+        from: once,
+        task: { ...gorevDetayi(yanit.data, { bitisKolonlari: kolonlar.kume }), project_name: g.proje.name },
+      }, kapi.workspace);
+    },
+  );
+
   return server;
 }
 
@@ -797,7 +1116,7 @@ mcpRouter.post(
       acceptLanguage: req.get?.('accept-language'),
     });
 
-    const server = buildMcpServer(req.mcpUser, dil);
+    const server = buildMcpServer(req.mcpUser, dil, req);
     const transport = new StreamableHTTPServerTransport({
       // undefined = durum tutmayan kip. Oturum kimliği üretilmiyor, doğrulama
       // yapılmıyor; her istek kendi başına tam.
