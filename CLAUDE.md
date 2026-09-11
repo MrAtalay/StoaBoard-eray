@@ -61,7 +61,12 @@ Gece, ev makinesinde: 0.3.1 uçtan uca doğrulandı, `main`e birleştirildi
 depoda (`npm run mcp:tara`); canlıya karşı `MCP_URL=https://www.stoaboard.com/mcp`
 ile koşulur (DEVIR 0-F).
 
-Test sayısı **304**, hepsi geçiyor. Ayrıntılı durum için **her zaman
+Aynı gece **MCP 0.4.0**: ilk yazma araçları (`create_task`, `update_task`,
+`move_task`) — zorunlu `workspace_id` + 409, her yazma denetim kaydına
+(DEVIR 0-H). Açık güvenlik işi: kart yorumundaki `@bahsetme` alıcıyı bütün
+platformda arıyor (TODO).
+
+Test sayısı **319**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
 tarihli ve daha güvenilir.
 
@@ -120,7 +125,7 @@ tarayıcı içi SQL Editor'ü HTTPS üzerinden çalıştığı için o ağlarda 
 
 ## Çalışma biçimi
 
-**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 304 test,
+**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 319 test,
 veritabanı gerektirmez, birkaç saniye sürer. Çıktıda `[db] warmup failed` /
 "Can't reach database server" görürsen bu bir test hatası **değil**: uygulama
 modülü yüklenirken bağlantıyı deniyor, kurumsal ağda 5432 kapalı. Ölçüt en
@@ -149,7 +154,7 @@ derlemeyi çalıştırıp kırmızıysa push'u iptal ediyor. Kancalar `.git/hook
 içinde takip edilmediği için depoda `.githooks/` klasöründe duruyorlar; komut
 git'e oraya bakmasını söylüyor. Bilerek atlamak için `git push --no-verify`.
 
-**Kanca ofis ağında da çalışır.** 304 testin hiçbiri veritabanı istemiyor;
+**Kanca ofis ağında da çalışır.** 319 testin hiçbiri veritabanı istemiyor;
 çalışmayan tek şey uygulamanın kendisi. Kanca sahte bir `DATABASE_URL` ile
 koşuyor ki test koşusu ağa bağımlı hale gelip asılı kalmasın.
 

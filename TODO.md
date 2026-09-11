@@ -446,6 +446,19 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       atananları bugünkü üyelere süzüyor. Uçtan uca, veri yazmadan
       doğrulandı: kart #6'da `efe-kapan-1` korundu, yanına eklenen hayalet
       slug reddedildi.
+- [ ] **Kart yorumundaki `@bahsetme` alıcıyı bütün platformda arıyor — güvenlik.**
+      *(Bulundu 11 Eylül 2026, düzeltilmedi — DEVIR 0-H.)* `POST
+      /tasks/:id/comments` (`tasks.js`, `MENTION_RE` sonrası) bahsedilen
+      kişiyi `prisma.user.findFirst({ where: { name: { startsWith: fname,
+      mode: 'insensitive' } } })` ile arıyor; alan üyeliğine bakılmıyor.
+      "@Ali" yazan bir üye, başka bir şirketteki adı Ali ile başlayan
+      herhangi birine yorumun ilk 80 karakterini bildirim olarak
+      gönderebilir. Canlıda, normal arayüzden. Atama açığıyla (0-G) aynı
+      sınıf; sohbetteki bahsetme 2 Eylül'de `mentionAllowed` ile
+      kapatılmıştı, kart yorumu kapsam dışında kalmış. Düzeltme: aramayı
+      kartın alanının üyeleriyle sınırla. Birden fazla eşleşme ayrı bir soru
+      (bugün ilk bulunan alıyor). **MCP `add_comment` bu kapanmadan
+      açılmamalı.** Regresyon testi `guvenlik.test.js`e.
 - [ ] **Yetim atanan slug'ları — MCP'de işaretlenmeli.** 11 Eylül denemesinde
       5 ve 6 numaralı kartlarda `efe-kapan-1` göründü; alan üyesi
       `efe-kapan`. `-1` eki `uniqueSlug`tan geliyor (`lib/user.js`): aynı adla
@@ -635,12 +648,12 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       **1. dilim 11 Eylül'de kapandı** (aşağıda tek tek işaretli); kalan
       dilimler 2-5 ve her biri bir karar ya da yazma yüzeyi bekliyor.
 
-      **Yazma araçlarına zorunlu `workspace_id` + uyuşmazlıkta 409.** Bu
+      **[bitti, 0.4.0] Yazma araçlarına zorunlu `workspace_id` + uyuşmazlıkta 409.** Bu
       listenin en iyi fikri ve "alanları listeleyen araç ekleyelim"den daha
       güçlü: o, sorunu *görünür* kılıyordu; bu **imkânsız** kılıyor. Aktif alan
       `users.currentWorkspaceId`'de ve tarayıcıdan bir tıkla değişiyor; yazma
-      aracı sessizce o anki alana yazmak yerine reddetmeli. **Yalnızca yazma
-      araçları geldiğinde anlamlı** — bugün uygulanacak bir şey yok.
+      aracı sessizce o anki alana yazmak yerine reddetmeli. **Uygulandı
+      (11 Eylül):** `yazmaKapisi`, her yazma aracında; testle ve mutasyonla kilitli.
 
       **[bitti] Bağlam her yanıta girmeli.** *(11 Eylül.)* On aracın onunda
       da `workspace` alanı var. Modelin en çok baktığı yanıtlar (`list_tasks`,
@@ -727,7 +740,9 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       belirsizlikte istemcinin **ne yapması gerektiğini** de söylemeli
       ("beklediğin alan değilse kullanıcıya sor, devam etme"). Bu açıklamalar
       sunucunun en güçlü tarafı.
-- [ ] **3. adım — yazma araçları.** En sona, çünkü **atama bildirim üretiyor.**
+- [~] **3. adım — yazma araçları.** *(0.4.0, 11 Eylül 2026: `create_task`,
+      `update_task`, `move_task` — DEVIR 0-H. Yorum, silme, etiket, alt görev ve
+      alan değiştirme bekliyor.)* En sona, çünkü **atama bildirim üretiyor.**
       Sohbet kapsam dışı bırakıldı, ama "sadece pano" dendiğinde bile dışa
       dokunan nokta bu: kart açmak sessiz, atamak arkadaşının ekranında beliriyor.
 - [ ] **4. adım — `my_open_tasks` ucu.** İki hafta gerçek kullanımdan sonra,

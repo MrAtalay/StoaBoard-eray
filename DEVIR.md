@@ -7,9 +7,88 @@ güven, düzyazıya değil.
 
 **Son güncelleme:** 11 Eylül 2026 gecesi, **ev makinesinde** (5432 açık).
 
-> **0.3.1 canlıda ve doğrulandı** (11 Eylül gecesi, 53 geçti / 0 kaldı).
-> **Atama üyelik açığı kapatıldı** (0-G) ve bu kayıtla canlıya gidiyor.
-> Sıradaki iş MCP yazma araçları (0.4.0): zorunlu `workspace_id` + 409.
+> **MCP 0.4.0 — ilk yazma araçları** (`create_task`, `update_task`,
+> `move_task`), bu kayıtla canlıya gidiyor (0-H). Yerelde 64 geçti / 0 kaldı,
+> dokuz mutasyonun dokuzu yakalandı. **Başarı yolu henüz canlıda denenmedi:**
+> dağıtımdan sonra yeni bir Cowork sohbetinde kart aç, taşı, düzenle. Açık
+> güvenlik işi: kart yorumundaki `@bahsetme` alıcıyı bütün platformda arıyor.
+
+---
+
+## 0-H. 11 Eylül, gece — MCP 0.4.0: ilk yazma araçları
+
+**Ortam:** ev makinesi. 319 test (304'tü), ön yüz derleniyor. Ürün kararı
+kullanıcının: yazma araçları anahtar sayfasından önce açıldı (üç kişilik
+ekip, anahtarlar Railway'de) — 0-D'nin "karar verilmeden 4. dilime
+girilmemeli" notu böylece kapandı.
+
+### Yüzey
+
+Üç araç, toplam on üç: `create_task`, `update_task`, `move_task`. Hepsi üç
+kapıdan geçiyor, sırayla:
+
+1. **Alan kapısı** (`yazmaKapisi`): `workspace_id` zorunlu ve aktif alanla
+   karşılaştırılıyor; uyuşmazlıkta 409 `err_mcp_workspace_mismatch`, yanıtta
+   aktif alan. TODO'nun "sorunu görünür değil imkânsız kılar" dediği fikir.
+2. **Kayıt kapısı**: proje `aktifProje`, görev `aktifGorev` — başka alandaki
+   kayıt hiç yokmuş gibi 404.
+3. **API'nin kendi kapıları** olduğu gibi geçiyor: `manage_tasks` (403),
+   atananın alan üyeliği (0-G), kolon geçiş kuralı (409, `allowed_next`).
+
+Her başarılı yazma denetim kaydına düşüyor: `mcp.task_created` / `_updated` /
+`_moved`; ayrıntıda yalnızca kimlikler, alan adları ve atanan slug'ları.
+Raporlar ekranı bunları "Kart açıldı — MCP" gibi etiketliyor.
+
+### Tasarım kararları — ve gerekçeleri
+
+- **Atananlar tam liste değil, `add_assignees` / `remove_assignees`.** API
+  listeyi baştan yazıyor; "Umut'u da ekle" diyen model tek kişilik liste
+  gönderip öbür atananları sessizce silebilirdi. Aynı kişi iki listede birden
+  gelirse tahmin yürütülmüyor, 400 `err_mcp_assignee_conflict`.
+- **Kolon slug'ı önceden doğrulanıyor.** API bilinmeyen kolonu sessizce yok
+  sayıyordu: oluşturmada kartı ilk kolona açıyor, taşımada hiçbir şey yapmadan
+  200 dönüyordu — model kartı taşıdığını sanırdı. Artık 400
+  `err_mcp_column_not_found` + `valid_columns`.
+- **`move_task` kart zaten oradaysa yazmıyor** (`moved: false`).
+- **Denetim kaydına içerik yazılmıyor** — başlık, açıklama değil; kimlikler.
+  `audit.js`'in başındaki kural.
+
+### Bilinçli olarak dışarıda: yorum ekleme — ve bulunan açık
+
+Yorum ucunu okurken **aynı sınıftan ikinci bir sızıntı** çıktı: kart
+yorumundaki `@isim` bahsetmesi alıcıyı `user.findFirst({ where: { name:
+{ startsWith } } })` ile **bütün platformda** arıyor. "@Ali" yazmak, başka bir
+şirketteki adı Ali ile başlayan birine yorumun ilk 80 karakterini bildirim
+olarak gönderebilir. **Canlıda, normal arayüzden.** 2 Eylül'de sohbetteki
+bahsetme bu yüzden düzeltilmişti (`mentionAllowed`); kart yorumu kapsam
+dışında kalmış. `add_comment` bu kapanmadan açılmıyor — TODO'da, en öncelikli
+açık iş.
+
+### Doğrulama
+
+- **15 yeni test.** Saf: `alanUyusuyor`, `atamaListesi`. Yapısal: her yazma
+  aracında alan kapısı var ve yazmadan önce geliyor, görev kapısı var,
+  denetim kaydı var, yazan araç salt okuma diye işaretlenmiyor.
+- **Dokuz mutasyonun dokuzu yakalandı**: kapıyı kaldır, yazmadan sonraya
+  taşı, yoruma al; denetim kaydını, görev ve proje kapısını kaldır; salt
+  okuma diye işaretle; iki saf fonksiyonu boz.
+- **Tarama:** yazma araçlarını yalnızca reddedildikleri yollardan çağıran bir
+  bölüm eklendi — dokuz deneme; her riskli denemeye güvenlik ağı olarak
+  olmayan bir atanan konuyor, kart sayısı önce ve sonra ölçülüyor. Yerel
+  0.4.0'a karşı **64 geçti, 0 kaldı, 2 atlandı** (atlananlar aynı iki veri
+  boşluğu).
+- **Başarı yolu — gerçekten kart açmak — henüz denenmedi.** Tarama bilerek
+  yazmıyor ve yerel sunucu da production'a bağlı. İlk gerçek yazma
+  dağıtımdan sonra Cowork'te, kullanıcının kendi panosunda.
+
+### Dağıtımdan sonra
+
+1. `MCP_URL=https://www.stoaboard.com/mcp npm run mcp:tara` →
+   `initialize → stoaboard 0.4.0`; 64/0/2 beklenir.
+2. **Yeni** Cowork sohbeti (araç listesi değişti): kendi panonda bir kart aç,
+   bir kolona taşı, başlığını değiştir, birini ekle. Raporlar ekranındaki
+   denetim kaydında üç "— MCP" satırı görünmeli.
+3. Sonra: yorum bahsetme sızıntısı, ardından `add_comment`.
 
 ---
 
