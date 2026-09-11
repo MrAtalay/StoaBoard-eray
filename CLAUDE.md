@@ -21,7 +21,7 @@ Hangi işe girersen gir, ilgili belgeyi açmadan başlama:
 
 ---
 
-## Şu anki durum (3 Eylül 2026)
+## Şu anki durum (11 Eylül 2026)
 
 `raporlama` dalı **`main`e birleştirildi** (58b1a6d). Şema production'a
 uygulandı (Neon SQL Editor, üç tablo + üç sütun, doğrulandı) ve `db push`
@@ -43,8 +43,16 @@ dil turu: Raporlar ve süre kaydı ekranları, sonra on route dosyasındaki
 sunucu hata mesajları çeviriye bağlandı (`32644b9`, `2449240`, `df113c3`).
 Öksüz `list.jsx` silindi.
 
-Test sayısı **153**, hepsi geçiyor. Sözlükler TR/EN **1154'er anahtar**
-(106'sı `err_` kodu), de/es/ru 43'er.
+**11 Eylül:** MCP okuma yüzeyi kapandı — sürüm **0.3.0**, on araç
+(`list_workspaces`, `list_members`, `search_tasks` eklendi). Yanıt biçimi
+`server/src/lib/mcpShape.js`e taşındı ve saf: kimlik normalizasyonu, kırpma,
+süzme, uyarı metni. Araç **başlıkları** artık iki dilli (`description` kural
+dışı, gerekçesi dosyanın başında). Yol boyunca çıkan kusur: açık görev sayısı
+çöp kutusundaki kartları da sayıyordu (`projects.js`, `api.js`).
+
+Test sayısı **269**, hepsi geçiyor. Ayrıntılı durum için **her zaman
+[DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
+tarihli ve daha güvenilir.
 
 ---
 
@@ -95,7 +103,7 @@ tarayıcı içi SQL Editor'ü HTTPS üzerinden çalıştığı için o ağlarda 
 
 ## Çalışma biçimi
 
-**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 153 test,
+**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 269 test,
 veritabanı gerektirmez, birkaç saniye sürer. Çıktıda `[db] warmup failed` /
 "Can't reach database server" görürsen bu bir test hatası **değil**: uygulama
 modülü yüklenirken bağlantıyı deniyor, kurumsal ağda 5432 kapalı. Ölçüt en
@@ -117,7 +125,7 @@ derlemeyi çalıştırıp kırmızıysa push'u iptal ediyor. Kancalar `.git/hook
 içinde takip edilmediği için depoda `.githooks/` klasöründe duruyorlar; komut
 git'e oraya bakmasını söylüyor. Bilerek atlamak için `git push --no-verify`.
 
-**Kanca ofis ağında da çalışır.** 153 testin hiçbiri veritabanı istemiyor;
+**Kanca ofis ağında da çalışır.** 269 testin hiçbiri veritabanı istemiyor;
 çalışmayan tek şey uygulamanın kendisi. Kanca sahte bir `DATABASE_URL` ile
 koşuyor ki test koşusu ağa bağımlı hale gelip asılı kalmasın.
 
@@ -213,6 +221,14 @@ giriş ekranındaki mimari çizimin SVG etiketleri (teknik resim), ve dil adlar�
 `auth.jsx` kendi `AUTH_I18N` sözlüğünü taşıyor, çünkü giriş ekranı uygulama
 sözlüğü yüklenmeden çalışmak zorunda. O bloğun tr/en denkliği ayrı bir testle
 kilitli — aynı kural, ayrı mekanizma.
+
+**Kaynağı tarayan test, yorumları önce silmeli.** 11 Eylül'de bir tarama
+testi tam da koruduğu mutasyonu kaçırdı: sorgudan `deletedAt: null`
+çıkarıldığı hâlde geçti, çünkü pencere hemen üstteki **açıklama yorumundaki**
+aynı metni kod sandı. Tuzağın ironisi kayda değer — kuralı anlatan yorum,
+kuralın ihlalini örtüyor. `mcp.test.js` artık `yorumsuz()` ile okuyor;
+`dil.test.js` ve `yetki.test.js` de kaynak tarıyor ve **orada bu kontrol
+henüz yapılmadı.**
 
 **Sessiz başarısızlıktan kaçın.** Bu depoda üç kusurun kök sebebi buydu:
 `if (!window.io) return`, `window.showToast?.()`, `if (satır && !yetki)`.

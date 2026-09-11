@@ -5,9 +5,107 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 10 Eylül 2026 akşamı, **ofis makinesinde** (5432 kapalı).
-MCP Claude içinde canlı bağlandı, görsel kusurlar ölçülüp teste bağlandı.
-Günün tamamı 0-C ve 0-B bölümlerinde; 0-C daha yeni.
+**Son güncelleme:** 11 Eylül 2026, **ofis makinesinde** (5432 kapalı).
+MCP okuma yüzeyi tamamlandı: on araç, sürüm 0.3.0. En yenisi 0-D bölümü.
+
+---
+
+## 0-D. 11 Eylül — MCP okuma yüzeyi kapandı (0.3.0), ev makinesi gerekmedi
+
+**Ortam:** ofis makinesi, 5432 kapalı. Kod, test ve derleme burada koştu.
+
+### Önce ortam notu: ev makinesi bu iş için gerekmiyordu
+
+DEVIR 0-C "2.5. adım **ev makinesinde** yapılmalı" diyordu. Gerekçesi
+doğruydu (gerçek yanıtla beslenmeyen araç yalan söyler) ama sonucu yanlış:
+şart *doğrulama*, *makine* değil. **Claude bağlayıcısı stoaboard.com'a senin
+ağından değil Anthropic tarafından gidiyor** — 5432'nin kapalı olması o yolu
+hiç ilgilendirmiyor. Ofisteki tek fark hız: yerel sunucu olmadığı için her
+tur bir Railway dağıtımı bekliyor.
+
+**Yeni kısıt, kayda geçsin:** bu makinedeki kabuktan `stoaboard.com`a TLS el
+sıkışması düşüyor (`curl` exit 35, `-k` ile de; `example.com` 200 dönüyor,
+DNS çözülüyor). Kurumsal vekil o alan adını kesiyor. Tarayıcı vekilin
+sertifikasıyla geçtiği için açılıyor, `curl` geçemiyor. **Canlıyı komut
+satırından yoklayamazsın**; doğrulama tarayıcıdan ya da bağlayıcıdan geçmek
+zorunda.
+
+### Yapılan: 2.5. adım + 1. dilim, tek turda
+
+Yüzey yedi araçtan **ona** çıktı. Yeni olanlar `list_workspaces`,
+`list_members` (isteğe bağlı açık iş sayımıyla) ve `search_tasks`.
+
+Aynı turda 1. dilimin tamamı: bağlam her yanıta girdi, kimlik tipleri metne
+sabitlendi, `col_is_done` geldi, `include_done` geldi, açıklamalar listede
+kırpılıyor, `updated_ago` yüzeyden kalktı, `warning` belgelendi.
+
+**Bir davranış değişikliği var, devralan bunu bilmeli:** `list_tasks`
+süzgeçsiz çağrıldığında artık yalnızca **açık** kartları döndürüyor. Eskiden
+her şeyi döndürüyordu ama kendi açıklaması "bütün açık görevler gelir"
+diyordu — araç belgesiyle çelişiyordu. Tanım uydurulmadı, sunucunun kendi
+tanımı alındı: açık = bitmiş işaretli kolonda olmayan kart, yani
+`projectWithOpenCount`in `list_projects` için hesapladığı şeyin aynısı.
+
+### Yol boyunca çıkan gerçek kusur
+
+**Açık görev sayısı çöp kutusundaki kartları da sayıyordu.** İki yerde
+(`projects.js`, `api.js`) bitiş kolonu eleniyor ama `deletedAt: null`
+konmuyordu; oysa görev listesi silinmiş kartı hiç vermiyor. Kenar çubuğu 9
+derken pano 6 kart gösterebiliyordu ve çöp 30 gün tuttuğu için fark
+haftalarca yaşıyordu. **Üçüncü kez aynı sınıf:** kusur kodun içinde değil,
+iki sözleşmenin arasında. İlk ikisi 9 ve 10 Eylül'deydi.
+
+Bu kez fark edilme sebebi yeni: sayıyı **bir model okudu**. MCP aynı rakamı
+yüzeye taşıdığı için tutarsızlık göze battı.
+
+### Test — ve kırılabildiği kanıtlandı
+
+**269 test** (211'di), hepsi geçiyor. Yeni dosya `mcp.test.js`; biçimlendirme
+`lib/mcpShape.js`e taşındığı için hepsi saf, veritabanı istemiyor.
+
+**Mutasyon denemesi bir testi yalanladı ve bu turun en iyi dersi bu.** Açık
+görev sayımını koruyan tarama testi, `deletedAt: null` sorgudan
+çıkarıldığında **geçti**. Sebep: pencere, kuralı ANLATAN yorumdaki aynı
+metni kod sandı. Yani testi yazarken bıraktığım açıklama, testin koruduğu
+kuralın ihlalini örtüyordu. Tarama artık yorumları siliyor; mutasyon
+tekrarlandı, bu kez iki test birden kırıldı.
+
+**Kaynağı tarayan her test bu tuzağı taşıyor.** `dil.test.js` ve
+`yetki.test.js` de kaynak tarıyor — oralarda aynı kontrol yapılmadı, yapılmalı.
+
+### Karar verilenler
+
+**Başlık kullanıcı metnidir, açıklama değildir.** Araç başlıkları iki dilli
+oldu (`ARAC_BASLIKLARI`), açıklamalar Türkçe kaldı; onları model okuyor ve
+cevabı zaten kullanıcının dilinde veriyor.
+
+**Dilin nereden okunacağı gerçek bir sınır.** MCP `initialize` dil alanı
+taşımıyor. Elde `?lang=en` (adrese yazılır, kullanıcının açık beyanı) ve
+`Accept-Language` (istemci gönderirse) var; yedek `tr`. Çözülen dil `whoami`
+yanıtında görünüyor. **Bağlayıcının `Accept-Language` gönderip göndermediği
+doğrulanmadı** — gerçek istemciyle bakılacak ilk şey bu.
+
+**`allowed_next` kaldırılmadı.** Boş olması kusur değil, kimsenin kural
+koymamış olması demek; kaldırılsaydı kural konduğu gün model onu hiç
+görmezdi. Açıklamaya "boşsa kısıt yok, alanı yok sayma" yazıldı.
+
+### Sıradaki iş
+
+1. **Gerçek istemciyle doğrulama.** 0.3.0 dağıtıldıktan sonra on araç da
+   çağrılmalı. `initialize` yanıtındaki `serverInfo.version` dağıtımın
+   indiğinin tek kanıtı. Bakılacaklar: başlık dili, `list_members` yük
+   sayımının hızı, `search_tasks` Türkçe harf katlama, `include_done`
+   varsayılanının şaşırtıp şaşırtmadığı.
+2. **Yazma araçları isteniyor ve bir kapısı var.** Bağlanan istemci
+   "whoami bana `manage_tasks` diyor ama kullanacak araç yok" diye haklı
+   olarak yakındı. TODO'nun kaydı net: kendi kendine anahtar üretme + OAuth
+   **3. adımdan önce gelmeli**, çünkü jetonun kimi temsil ettiği ve nasıl
+   iptal edildiği kart açan bir araçta çok daha kritik. Bugün anahtar
+   Railway ortam değişkeninde: iptal etmek yeniden dağıtım demek.
+   **Bu bir ürün kararı, teknik engel değil** — üç kişilik ekipte yazma
+   araçlarını anahtar sayfasından önce açmak savunulabilir. Karar verilmeden
+   4. dilime girilmemeli.
+3. **`updatedAt` şema kararı** (2. dilim) — TODO'da üç seçenek yazılı.
 
 ---
 

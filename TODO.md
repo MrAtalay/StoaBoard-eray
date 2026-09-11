@@ -393,6 +393,22 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       aynen aldığı için bugün yanlış bir şey göstermiyor; ama koyu bir özel
       renk seçilirse koyu zeminde okunmaz. Hazır seçenekler için yapılan
       düzeltme buraya uygulanmadı.
+- [x] **Açık görev sayısı çöp kutusundaki kartları da sayıyordu.**
+      *(Bulundu ve kapatıldı 11 Eylül 2026.)* `projectWithOpenCount`
+      (`routes/projects.js`) ve bootstrap'taki toplu sayım (`routes/api.js`)
+      bitiş kolonunu eliyordu ama `deletedAt: null` süzgecini koymuyordu.
+      Oysa `GET /projects/:id/tasks` silinmiş kartı hiç döndürmüyor: kenar
+      çubuğu 9 derken pano 6 kart gösterebiliyordu ve çöp kutusu 30 gün
+      tuttuğu için fark haftalarca yaşıyordu.
+
+      Yine **iki sözleşmenin arası**: iki sorgu da kendi başına doğru
+      görünüyor. MCP `list_projects` aynı sayıyı modele aktardığı için yalan
+      büyüyordu — sayıyı ilk defa bir model okuyunca fark edildi.
+
+      `mcp.test.js` iki sayımı da tarayıp `deletedAt` süzgecini şart koşuyor.
+      **Testin ilk hâli mutasyonu kaçırdı** ve sebebi kayda değer: pencere,
+      kuralı ANLATAN yorumdaki "deletedAt: null" metnini kod sandı. Kaynağı
+      tarayan her test bu tuzağı taşıyor; tarama artık yorumları siliyor.
 - [ ] **Serileştirici sözleşmesi teste bağlanmalı.** Aynı kusur iki gün üst
       üste, iki ayrı yerde çıktı: `columnToDict` slug'ı `id` adıyla veriyor,
       tüketici `.slug` diye arıyor (9 Eylül MCP araçları, 10 Eylül
@@ -444,52 +460,72 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       daha kritik.
 
       Auth yazmak aceleye gelmez; bu madde "bir oturumda bitir" işi değil.
-- [ ] **MCP araç başlıkları kullanıcıya görünüyor — dil kuralı buraya da
-      geçerli.** `mcp.js`'in başındaki not "buradaki açıklamaları kullanıcı
-      görmüyor, model okuyor" diyor ve araçlar bu gerekçeyle yalnızca Türkçe
-      yazıldı. **Varsayım yanlış:** Claude'un bağlayıcı ekranı araç
-      başlıklarını listeliyor (10 Eylül, ekran görüntüsüyle doğrulandı) —
-      "Not detayı", "Görev detayı", "Kolonlar". İngilizce arayüz kullanan biri
-      bu listeyi Türkçe görüyor.
-      `title` alanları kullanıcı metni sayılmalı. `description` tartışmalı:
-      onu gerçekten model okuyor ve modelin cevabı zaten kullanıcının dilinde
-      çıkıyor — orada mevcut gerekçe hâlâ geçerli olabilir. Ayrım yapılmalı,
-      ikisi aynı kefeye konmamalı. Dosyanın başındaki not da düzeltilmeli;
-      bugün yanlış bir şey öğretiyor.
-- [ ] **MCP 2.5. adım — iki salt-okuma aracı eksik, ikisi de yazma araçlarından
-      önce gelebilir.** 10 Eylül'deki uçtan uca denemede modelin kendisi
-      söyledi: hangi soruları cevaplayamadığını en iyi o biliyor.
+- [x] **MCP araç başlıkları kullanıcıya görünüyor — dil kuralı buraya da
+      geçerli.** *(Yapıldı 11 Eylül 2026.)* Ayrım yapıldı ve ikisi aynı kefeye
+      konmadı: **`title` kullanıcı metnidir, `description` değildir.**
+      Başlıklar `lib/mcpShape.js` içindeki `ARAC_BASLIKLARI` tablosunda, iki
+      dilde. Açıklamalar Türkçe kaldı ve gerekçe bu kez ölçülü — onları model
+      okuyor, modelin cevabı zaten kullanıcının dilinde çıkıyor; yüzlerce
+      satırlık yönlendirme metnini iki dilde sürdürmenin karşılığı yok.
+      `mcp.js`'in başındaki yanlış not düzeltildi.
 
-      **(a) `list_members` — ekip görünürlüğü.** Bugün model üyeleri yalnızca
-      kartların üzerindeki slug'lardan tanıyor. "Ekipte kim var", "kimin
-      üzerinde kaç iş var", "Umut neye bakıyor" soruları ancak bütün kartları
-      tarayıp dolaylı çıkarımla cevaplanabiliyor — hem yanlış hem pahalı.
-      Dashboard'daki "Takım yükü" paneli bu veriyi zaten hesaplıyor.
+      **Dil nereden okunuyor — burada gerçek bir sınır var.** MCP
+      `initialize` isteği dil alanı taşımıyor; protokolde yok. Elde iki HTTP
+      sinyali kaldı: bağlayıcıya yapıştırılan adresteki `?lang=en` (kullanıcı
+      açıkça söyler, en güvenilir yol) ve `Accept-Language` (istemci
+      gönderirse). Yedek `tr`. Çözülen dil `whoami` yanıtında
+      `server.title_language` olarak görünüyor — sinyal gelmediğinde "neden
+      hâlâ Türkçe" sorusunun cevabı başka hiçbir yerde olmazdı.
+      **Claude bağlayıcısının `Accept-Language` gönderip göndermediği
+      doğrulanmadı;** gerçek istemciyle bakılmalı. Göndermiyorsa yol
+      `?lang=en` ve bu belgelenmeli.
 
-      **(b) `search_tasks` — metin araması.** "Şu kelimenin geçtiği kartı bul"
-      için bugün her projeyi tek tek listelemek gerekiyor. Pano büyüdükçe
-      kullanılamaz hâle gelir.
+      Kural testle kilitli (`mcp.test.js`): kayıtlı her aracın başlığı tabloda
+      ve iki dilde olmalı, tabloda öksüz kayıt kalmamalı, ve `mcp.js` içinde
+      düz metin `title:` bulunmamalı. Mutasyonla doğrulandı — `title: 'Kimlik'`
+      yazıldığında test kırılıyor.
+- [x] **MCP 2.5. adım — üç salt-okuma aracı.** *(Yapıldı 11 Eylül 2026;
+      sürüm 0.3.0.)* `list_members`, `search_tasks` ve `list_workspaces`
+      eklendi; yüzey yedi araçtan ona çıktı. Üçü de salt okuma, bildirim
+      üretmiyor. İhtiyacı 10 Eylül'deki uçtan uca denemede modelin kendisi
+      söylemişti: hangi soruları cevaplayamadığını en iyi o biliyor.
 
-      İkisi de salt okuma, yani **bildirim üretmiyorlar** — 3. adımın
-      beklemesinin sebebi olan riski taşımıyorlar. `list_workspaces` ile
-      birlikte planlanmalı; üçü bir dilim.
+      **`list_members`** ekibi slug, ad, rol ve izinle veriyor;
+      `with_task_counts` (varsayılan açık) her üyenin açık iş sayısını da
+      hesaplıyor. Sayım için bütün projeler taranıyor — tek bir "çalışma
+      alanını ver" ucu yok ve `/bootstrap` bu iki aracın istediğinden çok
+      fazlasını (kanallar, sohbet, bildirimler) taşıyor. Maliyet proje başına
+      iki yerel istek; parametre kapatılabilsin diye var.
 
-      Denemede çıkan diğer eksikler daha düşük öncelikli: etiket listesi,
-      proje detayı, ek dosya içeriği.
+      **`search_tasks`** başlık ve açıklamada arıyor. Harf katlama Türkçe'ye
+      özel: I, İ, ı, i hepsi "i" sayılıyor. `toLowerCase()` "İZİN" aramasını
+      kaçırıyor, `toLocaleLowerCase('tr')` ise "IT" aramasını kırıyordu; pano
+      iki dilli olduğu için nokta ayrımı aramada bilinçli olarak silindi.
+      Kesme sessiz değil: `truncated` alanı yanıtta.
 
-      **Sohbet bilinçli olarak kapsam dışı** ve öyle kalmalı — ama bir
-      tutarsızlık var: kullanıcı `manage_channels` ve `delete_messages`
-      izinlerini taşıyor, MCP'de karşılığı olan araç yok. Model bunu fark
-      etti. Kusur değil, ama `whoami` izin listesini olduğu gibi verdiği için
-      modelde "yapabilirim" beklentisi yaratıyor. `whoami` yanıtında MCP'nin
-      hangi izinleri **kullanmadığını** belirtmek ucuz bir düzeltme olur.
-- [ ] **Not önizlemesi uzun gövdede kırpılıyor mu — doğrulanmadı.**
-      `list_notes` gövdeyi vermiyor, sözleşme doğru. Ama denemedeki tek notun
-      gövdesi o kadar kısaydı ki `preview` alanı pratikte içeriğin tamamını
-      verdi. Uzun gövdeli bir notla tekrar bakılmalı: preview gerçekten
-      kırpıyor mu, yoksa kısa notlarda tesadüfen mi doğru görünüyor?
-      Model bunu "kusur değil, doğrulanmamış" diye işaretledi — doğru ayrım.
-- [ ] **MCP çalışma alanını göremiyor, değiştiremiyor.** Bütün araçlar
+      **`list_workspaces`** aşağıdaki "alanı göremiyor" maddesinin okuma
+      yarısını kapatıyor.
+
+      Denemede çıkan kalan eksikler düşük öncelikli: etiket listesi, proje
+      detayı, ek dosya içeriği.
+
+      **Sohbetin kapsam dışılığı da söylenir hâle geldi.** Kullanıcı
+      `manage_channels` ve `delete_messages` izinlerini taşıyor, MCP'de
+      karşılığı olan araç yok; model bunu fark edip "sohbeti yönetebilirim"
+      beklentisine girmişti. `whoami` artık `permissions_without_tools`
+      döndürüyor ve liste **araç yüzeyinden türetiliyor** — yazma araçları
+      gelince kendiliğinden küçülecek. Elle tutulan bir muafiyet listesi
+      bayatlardı.
+- [x] **Not önizlemesi uzun gövdede kırpılıyor mu.** *(Kaynaktan doğrulandı
+      11 Eylül 2026.)* Kırpıyor: `noteToDict` (`lib/notes.js`) önizlemeyi
+      `markdownToPlain(body).slice(0, 240)` ile üretiyor. Denemede tamamı
+      görünmesinin sebebi notun 240 karakterden kısa olmasıydı — model
+      "kusur değil, doğrulanmamış" diye işaretlemişti, ayrım doğruydu.
+      Sınır artık `list_notes` açıklamasında yazılı, yani istemci bunu
+      denemeden biliyor.
+- [~] **MCP çalışma alanını göremiyor, değiştiremiyor.** *(Okuma yarısı
+      yapıldı 11 Eylül 2026: `list_workspaces`. Değiştirme hâlâ yok ve
+      3. adıma ait.)* Bütün araçlar
       **aktif** çalışma alanına bakıyor ve o alan yalnızca tarayıcıdan
       değişiyor. Sonuç: kullanıcının tarayıcısı başka bir alandayken Claude
       diğer panoya hiç ulaşamıyor — üstelik o panonun var olduğunu bile
@@ -498,11 +534,10 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       erişilemedi. `whoami` ve liste yanıtlarının alan adını taşıması yanlış
       alanı *fark ettiriyor* ama *düzeltmiyor*. En küçük çözüm salt-okuma bir
       `list_workspaces`; alan değiştirmek yazma sayılır ve 3. adıma aittir.
-- [ ] **MCP sunucu iyileştirmeleri — gerçek istemci denemesinden çıkan liste.**
+- [~] **MCP sunucu iyileştirmeleri — gerçek istemci denemesinden çıkan liste.**
       10 Eylül'de Claude uçtan uca kullandı ve eksikleri kendisi raporladı.
-      Aşağıdakiler bu depoda kayıtlı olmayan ya da keskinleşen maddeler;
-      `list_members`, `search_tasks`, not önizlemesi ve izin/araç uyumsuzluğu
-      zaten yukarıda duruyor.
+      **1. dilim 11 Eylül'de kapandı** (aşağıda tek tek işaretli); kalan
+      dilimler 2-5 ve her biri bir karar ya da yazma yüzeyi bekliyor.
 
       **Yazma araçlarına zorunlu `workspace_id` + uyuşmazlıkta 409.** Bu
       listenin en iyi fikri ve "alanları listeleyen araç ekleyelim"den daha
@@ -511,58 +546,85 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       aracı sessizce o anki alana yazmak yerine reddetmeli. **Yalnızca yazma
       araçları geldiğinde anlamlı** — bugün uygulanacak bir şey yok.
 
-      **Bağlam her yanıta girmeli.** `whoami` ve `list_projects` çalışma alanını
-      taşıyor, `list_tasks` / `get_task` / `list_notes` taşımıyor. Ucuz ve
-      mevcut tasarım niyetiyle aynı yönde (`mcp.js`, `aktifAlan` yorumuna bak).
+      **[bitti] Bağlam her yanıta girmeli.** *(11 Eylül.)* On aracın onunda
+      da `workspace` alanı var. Modelin en çok baktığı yanıtlar (`list_tasks`,
+      `get_task`, `list_notes`) tam da sessiz olanlardı.
 
-      **Kimlik tipleri tek tip olmalı.** `list_projects`/`list_tasks` metin,
-      `list_notes` sayı dönüyor. **Düzeltme MCP katmanında yapılmalı:**
-      `String(id)` ön yüzün yaslandığı bilinçli bir sözleşme ve
-      `serializers.js`te değiştirilirse arayüz kırılır (kodda yorumu var).
-      Yanıt üretilirken normalize et, ortak serileştiriciye dokunma.
+      **[bitti] Kimlik tipleri tek tip olmalı.** *(11 Eylül.)* Yüzeyin tamamı
+      metne çekildi (`metinKimlik`). Düzeltme MCP katmanında yapıldı, ortak
+      serileştiriciye dokunulmadı: `String(id)` ön yüzün yaslandığı bilinçli
+      bir sözleşme. Araç girdileri `z.coerce` ile ikisini de kabul ettiği için
+      tur kapanıyor — ne dönüyorsa geri verilebiliyor.
 
-      **Görevde `created_at` / `updated_at`.** `createdAt` şemada **var**, sadece
-      `taskToDict` yayımlamıyor — kolay. `updatedAt` **yok**, sütun eklemek
-      gerekiyor. **Tuzak:** sütun eklendiğinde mevcut kartların geçmişi
+      **[bekliyor] Görevde `created_at` / `updated_at`.** *(2. dilim —
+      bilinçli olarak 11 Eylül'e alınmadı.)* `createdAt` şemada **var**, sadece
+      `taskToDict` yayımlamıyor; tek satır. Ama `updatedAt` **yok** ve sütun
+      eklemek üretime yazmak demek — bu depoda şema değişikliği ayrı, elle
+      yapılan bir iş. **Tuzak:** sütun eklendiğinde mevcut kartların geçmişi
       olmayacak, yani "hangi kart aylardır kımıldamadı" haftalarca yanlış cevap
-      verecek. Bu, `completed_at` ile bugün yaşadığımızın aynısı; orada sahte
-      tarih yazmamayı seçtik. Aynı karar burada da **bilinçli** verilmeli,
-      varsayıma bırakılmamalı.
+      verecek. `completed_at` ile 10 Eylül'de yaşadığımızın aynısı; orada sahte
+      tarih yazmamayı seçtik.
 
-      **Görevde `col_is_done`.** Kartın bitmiş kolonda olup olmadığı için
-      ayrıca `list_columns` çağırmak gerekmesin.
+      **Karar bekliyor, varsayıma bırakılmamalı:** sütun `now()` ile mi
+      doldurulacak (basit, yanlış), boş mu bırakılacak (dürüst, her sorgu
+      null'ı ayıklamalı), yoksa `task_transitions`ten mi türetilecek (en
+      dürüstü, en pahalısı). İkisi aynı commit'e de girmemeli: `created_at`
+      şemasız gelir, `updated_at` şema dilimine ait.
 
-      **"Açık görev" tanımı belgelenmeli** ve `include_done` parametresi
-      eklenmeli. Süzgeçsiz `list_tasks`'in ne döndürdüğü şu an yazılı değil.
+      **[bitti] Görevde `col_is_done`.** *(11 Eylül.)* Hem listede hem
+      detayda. Bilgi zaten elde: açık/kapalı süzgeci için kolonlar nasılsa
+      çekiliyor. Kolon bilgisi yoksa alan **hiç konmuyor** — `false` yazmak
+      "bitmemiş" diye okunurdu, oysa bilinmiyor; testle kilitli.
 
-      **Token verimliliği — hesaba katılmamıştı.** `list_tasks` her kart için
-      tam `desc`, bütün atananlar ve bütün etiketleri dönüyor. Bugünkü 15
-      kartta sorun değil, 200 kartlık panoda istemcinin belleğini yer. Listede
-      `desc` kırpılmalı (tamamı `get_task`te zaten var) ya da `fields`
-      parametresi gelmeli. Sayfalama (`limit` + `cursor`) da aynı başlıkta;
-      veri küçükken bile **yanıt biçimi** şimdiden ona göre kurulursa sonra
-      kırıcı değişiklik gerekmez.
+      **[bitti] "Açık görev" tanımı ve `include_done`.** *(11 Eylül.)*
+      Burada **davranış değişti, dikkat:** `list_tasks` süzgeçsiz çağrıldığında
+      artık yalnızca açık kartları döndürüyor. Eskiden her şeyi döndürüyordu
+      ama kendi açıklaması "projedeki bütün açık görevler gelir" diyordu —
+      yani araç, belgesiyle çelişiyor ve modeli yanlış bilgilendiriyordu.
+      Tanım uydurulmadı, sunucunun kendi tanımı alındı: açık = bitmiş olarak
+      işaretli kolonda olmayan kart; `projectWithOpenCount` `list_projects`in
+      `open` sayısını tam olarak böyle hesaplıyor. Bitmişler için
+      `include_done=true`.
 
-      **`updated_ago` gerçek bir kusur:** `updated_at` ile birebir aynı ISO
-      damgayı dönüyor. Ad göreli süre vaat ediyor, değer mutlak. Ya gerçek
-      göreli değer üret ya alanı kaldır.
+      **[bitti] Token verimliliği — `desc` kırpma.** *(11 Eylül.)* Liste
+      yanıtlarında açıklama 200 karaktere kırpılıyor ve kırpıldığında
+      `desc_truncated: true` konuyor; tamamı `get_task`te. Sessizce kısaltmak,
+      modelin eksik metni tam sanması demek olurdu.
 
-      **`allowed_next` her kolonda boş.** Kısıt sunucuda uygulanıyor ama hiçbir
-      panoda tanımlı değil. Sürekli boş kalan alan istemciyi onu yok saymaya
-      itiyor — ya bir panoda gerçekten kullanılsın ya da boşken hiç
-      döndürülmesin.
+      **[bekliyor] Sayfalama (`limit` + `cursor`) 5. dilimde.**
+      `search_tasks` şimdilik `limit` + `truncated` ile geliyor; `cursor`
+      sözleşmesi o dilime ait ve yanıt biçimi ona uyacak şekilde kuruldu, yani
+      sonra kırıcı değişiklik gerekmeyecek.
 
-      **`list_tasks`in `warning` alanı belgelenmeli, kaldırılmamalı.** Yalnızca
-      `overdue: true` iken **ve** panoda hiç `is_done` kolonu yokken çıkıyor.
-      10 Eylül sabahı bütün panolarda o işaret konduğu için artık tetiklenemez;
-      istemci bu yüzden hiç görmedi ve "ölü alan" sandı. Koşul araç
-      açıklamasına yazılmalı.
+      **[bitti] `updated_ago` gerçek bir kusur.** *(11 Eylül: MCP yüzeyinden
+      kaldırıldı.)* `noteToDict`te duruyor ve `updated_at` ile birebir aynı ISO
+      damgayı taşıyor. Ortak serileştiricide **düzeltilmedi**: ön yüz o alanı
+      okuyup kendisi göreliye çeviriyor (`drawer.jsx`, `fmtTimeAgo`); adı orada
+      da yanıltıcı ama çalışıyor. MCP yanıtından düşürmek yanlış vaadi tek
+      hamlede kaldırıyor ve arayüzü kırmıyor — zaman gerektiğinde `updated_at`
+      zaten var.
 
-      **Uygulama sırası:** (1) salt-okuma iyileştirmeleri — bağlam, kimlik tipi,
-      `col_is_done`, `include_done`, token kırpma, `updated_ago`, `warning`
-      belgesi; (2) `updatedAt` şema değişikliği, ayrı, çünkü üretime yazıyor;
-      (3) zorunlu `workspace_id` kapısı; (4) yazma araçları; (5) sayfalama ve
-      `list_labels`.
+      **[kısmen] `allowed_next` her kolonda boş.** Kısıt sunucuda uygulanıyor
+      ama hiçbir panoda tanımlı değil. Alan **kaldırılmadı** ve gerekçesi şu:
+      boşluk kusur değil, henüz kimsenin kural koymamış olması demek —
+      kaldırılsaydı kural konduğu gün model onu hiç görmezdi. Bunun yerine
+      `list_columns` açıklamasına "bütün panolarda boşsa hiçbir kısıt
+      tanımlanmamış demektir, alanı yok sayma" yazıldı. Asıl iş ürün
+      tarafında: bir panoda gerçekten kullanılsın.
+
+      **[bitti] `list_tasks`in `warning` alanı.** *(11 Eylül: belgelendi
+      **ve** koşulu genişletildi.)* İstemcinin "ölü alan" teşhisi doğru
+      gözlemdi, yanlış sonuçtu: alan yalnızca `overdue=true` iken çıkıyordu ve
+      10 Eylül sabahı bütün panolara `is_done` konduğu için bir daha hiç
+      tetiklenemezdi. Ölçüt artık doğru soruyu soruyor: **"bitmiş" bilgisine
+      ihtiyaç duyduk mu, pano onu veriyor mu?** Açık görev süzmek de gecikme
+      hesaplamak da o bilgiye dayanıyor. Koşul araç açıklamasında, davranış
+      `mcp.test.js`te dört testle kilitli.
+
+      **Uygulama sırası:** ~~(1) salt-okuma iyileştirmeleri~~ **bitti
+      (11 Eylül)**; (2) `updatedAt` şema değişikliği, ayrı, çünkü üretime
+      yazıyor; (3) zorunlu `workspace_id` kapısı; (4) yazma araçları;
+      (5) sayfalama ve `list_labels`.
 
       **Kabul ölçütü — istemcinin kendi koyduğu ve haklı:** yeni araç
       açıklamaları mevcutların kalitesinde olmalı; sadece ne yaptığını değil,
