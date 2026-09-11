@@ -18,6 +18,7 @@ Hangi işe girersen gir, ilgili belgeyi açmadan başlama:
 | [BILDIRIMLER.md](BILDIRIMLER.md) | Bildirimlere dokunurken |
 | [TOPLANTI-KARSILIGI.md](TOPLANTI-KARSILIGI.md) | Ürün yönü / kapsam sorusu geldiğinde |
 | [RAPORLAMA-TESTI.md](RAPORLAMA-TESTI.md) | `raporlama` dalını ayağa kaldırıp test ederken |
+| [MCP-SURUMLER.md](MCP-SURUMLER.md) | MCP yüzeyine dokunurken — sürüm geçmişi, kırıcı değişiklikler |
 
 ---
 
@@ -50,7 +51,12 @@ süzme, uyarı metni. Araç **başlıkları** artık iki dilli (`description` ku
 dışı, gerekçesi dosyanın başında). Yol boyunca çıkan kusur: açık görev sayısı
 çöp kutusundaki kartları da sayıyordu (`projects.js`, `api.js`).
 
-Test sayısı **269**, hepsi geçiyor. Ayrıntılı durum için **her zaman
+Aynı akşam **0.3.1**: gerçek istemcinin bulguları. En önemlisi, MCP başka
+alandaki kaydı aktif alanınmış gibi döndürüyordu; artık tek kapıdan
+(`aktifProje`) geçiyor. Yol boyunca açık bir güvenlik kusuru bulundu ve
+**düzeltilmedi**: görev ataması alan üyeliğini kontrol etmiyor (TODO).
+
+Test sayısı **293**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
 tarihli ve daha güvenilir.
 
@@ -103,7 +109,7 @@ tarayıcı içi SQL Editor'ü HTTPS üzerinden çalıştığı için o ağlarda 
 
 ## Çalışma biçimi
 
-**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 269 test,
+**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 293 test,
 veritabanı gerektirmez, birkaç saniye sürer. Çıktıda `[db] warmup failed` /
 "Can't reach database server" görürsen bu bir test hatası **değil**: uygulama
 modülü yüklenirken bağlantıyı deniyor, kurumsal ağda 5432 kapalı. Ölçüt en
@@ -125,7 +131,7 @@ derlemeyi çalıştırıp kırmızıysa push'u iptal ediyor. Kancalar `.git/hook
 içinde takip edilmediği için depoda `.githooks/` klasöründe duruyorlar; komut
 git'e oraya bakmasını söylüyor. Bilerek atlamak için `git push --no-verify`.
 
-**Kanca ofis ağında da çalışır.** 269 testin hiçbiri veritabanı istemiyor;
+**Kanca ofis ağında da çalışır.** 293 testin hiçbiri veritabanı istemiyor;
 çalışmayan tek şey uygulamanın kendisi. Kanca sahte bir `DATABASE_URL` ile
 koşuyor ki test koşusu ağa bağımlı hale gelip asılı kalmasın.
 
@@ -229,6 +235,12 @@ aynı metni kod sandı. Tuzağın ironisi kayda değer — kuralı anlatan yorum
 kuralın ihlalini örtüyor. `mcp.test.js` artık `yorumsuz()` ile okuyor;
 `dil.test.js` ve `yetki.test.js` de kaynak tarıyor ve **orada bu kontrol
 henüz yapılmadı.**
+
+Aynı gün tuzak iki biçimde daha düştü: **blok yorumu** olmayan bir ihlal
+uydurdu (JSDoc'taki eski kod alıntısı), ve **iç içe parantezi geçemeyen bir
+desen** (`[^)]*`) gerçekçi gerilemeyi kaçırdı. Üç tarama testinin üçü de ilk
+hâlinde bir yönden yanlıştı ve üçünü de mutasyon buldu. **Kaynak tarayan test
+yazdıysan, koruduğu satırı kasten bozup kırıldığını görmeden bitmiş sayma.**
 
 **Sessiz başarısızlıktan kaçın.** Bu depoda üç kusurun kök sebebi buydu:
 `if (!window.io) return`, `window.showToast?.()`, `if (satır && !yetki)`.

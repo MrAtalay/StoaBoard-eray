@@ -5,8 +5,162 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 11 Eylül 2026, **ofis makinesinde** (5432 kapalı).
-MCP okuma yüzeyi tamamlandı: on araç, sürüm 0.3.0. En yenisi 0-D bölümü.
+**Son güncelleme:** 11 Eylül 2026 akşamı, **ofis makinesinde** (5432 kapalı).
+
+> **0.3.1 `mcp-031` dalında. `main`e birleşmedi, CANLIDA DEĞİL.** Canlıda
+> 0.3.0 duruyor. Devam ev makinesinde — 0-E'nin sonundaki "Eve devir"
+> adımlarıyla başla.
+
+---
+
+## 0-E. 11 Eylül, akşam — 0.3.1: gerçek istemci bulguları
+
+**Ortam:** ofis, 5432 kapalı. Doğrulamayı Claude istemcisi (Cowork) yaptı.
+
+### Önce iki deneme tuzağı
+
+**Araç listesi bayat kalıyor.** 0.3.0 dağıtıldıktan sonra açık kalan sohbet
+yedi araç görmeye devam etti, yeni sohbet on gördü. İstemci `tools/list`i
+bağlantı başında bir kez çekiyor; sunucu durum tutmadığı ve `listChanged`
+bildirmediği için haber veremiyor. Çağrılar canlı, yalnızca liste bayat.
+**Kural: araç yüzeyi değişen her dağıtımdan sonra yeni sohbet.** Ayrıntı
+`MCP-SURUMLER.md`nin başında.
+
+**İlk deneme yine boş alanda koştu** — Mytherra, 1 proje, 0 açık iş. 9 Eylül
+0-A'nın birebir tekrarı. İkinci deneme tarayıcıda StoaBoard'a geçildikten
+sonra yapıldı. `whoami`'deki alan adına bakmadan hiçbir tarama sonucuna
+güvenme.
+
+### Düzeltilenler
+
+- **P0 — başka alandaki kayıt.** Kök neden ve düzeltme TODO'da. Özü: API
+  "üye misin", MCP "aktif alanda mı" diye sormalı. Tek kapı `aktifProje`,
+  alan dışı ile yok olan aynı 404.
+- **Owner izinleri boş dönüyordu** (`list_members`). `memberToDict` izni rol
+  satırından, `whoami` `memberPermissions`ten okuyordu. Artık ikisi aynı
+  fonksiyon. **Aynı olgu, iki okuyucu — bu sınıfın dördüncü örneği** (9 Eylül
+  kolon slug'ı, 10 Eylül `weeklyDone`, 11 Eylül açık görev sayımı, bu).
+- **Kimlik tipi — 0.3.0'daki iddiam eksikti.** 0-D "kimlikler metne
+  sabitlendi" diyordu; `workspace.id` sayı kalmıştı çünkü Prisma'dan
+  geliyordu. Artık kural `sonuc()` içinde, adla: `id` ya da `*_id` olan her
+  sayı metne. Değişen alanların listesi `MCP-SURUMLER.md`de.
+- **JSON sıkışık** — kullanıcı "Cowork çok usage harcıyor" dedi. Ölçüldü:
+  15 kartlık yanıtta karakterlerin %29'u girintiydi.
+- `desc` kelime sınırında, `project_name` her kartta, 404'lerde
+  yönlendirme, açıklamalar (alan adı uyuşmazlığında dur, `preview`in
+  kapsamı, isteğe bağlı alanların yokluğunun anlamı).
+
+**Karar: kolon `title` İngilizce kalıyor.** `title_language` yalnızca araç
+etiketlerini belirliyor; veriyi dile göre değiştirmek var olan bir alanın
+anlamını değiştirmek olurdu ve dil sinyali (Accept-Language) hâlâ
+doğrulanmadı. Açıklama hangi alanın hangi dil olduğunu söylüyor.
+
+### Aktif alan küresel — nasıl çalışıyor, riskleri
+
+Aktif alan `users.currentWorkspaceId`, kullanıcı başına tek. Tarayıcıdaki
+geçiş onu yazıyor, her MCP çağrısı yeniden okuyor; yani tasarım gereği
+küresel. Denemede gözlenen "owner → member" değişimi kullanıcının tarayıcıda
+StoaBoard'a geçmesiydi (rol alan başına). Riskler:
+
+1. **Sessiz bağlam kayması:** önceki alandan alınan kimlikler yeni alanda
+   kullanılabiliyordu — P0 bunun belirtisiydi, 0.3.1 kapıyı kapattı.
+2. **Tek çağrı içinde yarış:** bir araç aktif alanı birden fazla kez okuyor
+   (proje listesi, bağlam damgası). Arada geçiş olursa yanıt bir alanın
+   verisini öbürünün adıyla damgalayabilir. Pencere milisaniye, ama sıfır
+   değil. Kesin çözüm alanı isteğin başında bir kez çözüp her çağrıya
+   açıkça geçirmek — API bugün buna izin vermiyor.
+3. **Yazma araçları:** kart hangi alan aktifse oraya açılır. 3. dilimin
+   zorunlu `workspace_id` + 409 kapısı tam bunun için.
+4. **Aynı kullanıcının iki istemcisi** (tarayıcı + Claude, ya da iki sohbet)
+   aynı sütunu paylaşıyor.
+5. **`currentMember` okurken yazabiliyor** — TODO'da.
+
+### Raporlanan, dokunulmayan
+
+- **Görev ataması alan üyeliğini kontrol etmiyor** — gerçek bir güvenlik
+  açığı, kapsam gereği düzeltilmedi. Ayrıntı TODO'da; en öncelikli açık iş.
+- **`efe-kapan-1`** — ikinci bir hesap; iki olası kaynağı TODO'da.
+- **Bitmiş kolondaki 9 kartın 8'inde `completed_at` yok.** Tek yazan
+  `tasks.js` ~344: kart PATCH ile `isDone` kolonuna TAŞINDIĞINDA (1 Eylül,
+  `d495d93`'ten beri). Atlayan yollar: 1 Eylül öncesi taşımalar; `isDone`
+  işareti 10 Eylül'e kadar olmayan şablon panoları; bir kolonu sonradan
+  `is_done` yapmak (içindeki kartlara geri dönük yazmıyor); kolon silinince
+  kartları taşıyan `updateMany` (ne damga ne ilerleme yazıyor); kartı
+  doğrudan bitiş kolonunda açmak (`POST`, ilerleme 0, damga yok). 10 Eylül'de
+  (0-B) bilinçli karar verildi: sahte tarih yazılmıyor.
+- **`progress` türetilmiş değil, saklanan bir alan ve dört yazanı var:**
+  oluşturma (0), bitiş kolonuna giriş (100 — alt görevleri ezer), alt görev
+  değişikliği (alt görevlerden yeniden hesap, alt görev varsa), bitişten çıkış
+  (100 ise yeniden hesap; alt görev yoksa dokunulmaz), bir de elle PATCH.
+  Hangisinin kazandığı olayların sırasına bağlı. Kart 4 (`0/2`, 100): bitiş
+  kolonuna girmiş, 100 alt görevleri ezmiş — bitişteyse tasarım bu; dışarı
+  çıktıysa 31 Ağustos'tan (`020d203`) önce çıkmış. Kart 7 (bitişte, 0):
+  bitişe 100 yazmayan bir yoldan girmiş — işaretsiz şablon panosu, doğrudan
+  bitişte açılma ya da kolon silme taşıması.
+
+### Test tuzağı iki kez daha düştü
+
+0-D'deki ders ("tarama testi yorumu kod sanıyor") bu turda iki yeni biçimde
+tekrarladı ve ikisini de mutasyon buldu:
+
+1. **Blok yorumu olmayan bir ihlal uydurdu.** `yorumsuz()` yalnızca `//`
+   siliyordu; `sonuc()`un JSDoc'undaki eski kodun alıntısı "girintili JSON
+   kaldı" testini kırdı. Kod temizdi.
+2. **Desen gerçekçi gerilemeyi kaçırdı.** `[^)]*` iç içe parantezi
+   geçemiyordu; `JSON.stringify(kimlikleriMetinle(veri), null, 2)` yazılınca
+   test geçti.
+
+Üç mutasyon (kapıyı kaldır, girintiyi geri koy, not alan kontrolünü sil)
+şimdi üçü de yakalanıyor. **Ders keskinleşti: kaynak tarayan test yazdıysan
+mutasyonla sınamadan bitmiş sayma** — üç tarama testinden üçü de ilk hâlinde
+bir yönden yanlıştı.
+
+### Sayılar
+
+**293 test** (269'du), hepsi geçiyor. Sürüm 0.3.1. Yeni belge
+`MCP-SURUMLER.md` — sürüm geçmişi ve kırıcı değişiklikler.
+
+### Neden eve geçildi
+
+Ofiste doğrulama döngüsü kullanıcının üzerinden geçiyordu: yaz → push →
+Railway → kullanıcı Cowork'e prompt verir → rapor geri taşınır. Her halka
+dakikalar sürüyor ve istemci tarafında ciddi kota yiyordu. Evde 5432 açık:
+yerel sunucu Neon'a bağlanıyor ve `/mcp` doğrudan çağrılabiliyor (9 Eylül
+0-A'da 21/21 böyle yapıldı). Cowork yalnızca son onay olur.
+
+**Sabahki "ev makinesi gerekmez" cevabı doğruluk için doğruydu, hız için
+eksikti.** Gerekli değil; ama bu tür işte açık farkla daha hızlı.
+
+### Eve devir — ilk yapılacaklar
+
+1. `git fetch && git checkout mcp-031`. İki commit taşıyor: 0.3.1 kodu ve
+   bu belge.
+2. `server/.env`'de `STOA_MCP_TOKENS` var mı bak (0-A'da vardı). **Yerel
+   `.env` production veritabanını gösteriyor** — MCP salt okuma olduğu için
+   tarama güvenli, ama başka bir komut çalıştırmadan önce nereyi gösterdiğine
+   bak.
+3. Yerel sunucuyu aç, `/mcp`'yi doğrudan çağır. Kontrol listesi:
+   - `initialize` → `serverInfo.version` **0.3.1**
+   - aktif alan StoaBoard iken `list_columns {project_id: 21}` → **404**,
+     `list_tasks {project_id: 99999}` ile **birebir aynı** gövde
+   - `get_task` / `get_note` başka alandaki kimlikle → 404
+   - `whoami` `workspace.id` **metin**
+   - `list_members` owner'da tam izin listesi
+   - `list_tasks` kartlarında `project_name`, `desc` kelime sınırında "…"
+   - yanıtlar sıkışık JSON
+4. **Tarama betiğini bu kez repoya koy.** 0-A'daki 21/21 betiği oturumluktu
+   ve kayboldu; her tur yeniden yazılıyor. Veritabanı gerektirdiği için
+   `npm test`in içine değil, ayrı bir komuta bağlanmalı (ör.
+   `npm run mcp:tara`). Bir kez yazılırsa bundan sonraki her MCP değişikliği
+   dakikalar içinde doğrulanır — asıl hız kazancı bu.
+5. Yeşilse `main`e birleştir, push et (canlıya gider), **yeni sohbette**
+   Cowork'e son onay: aynı liste.
+
+### Sonra
+
+1. **Atama üyelik açığı** (TODO) — küçük, güvenlik, testiyle birlikte.
+   Öneri: 0.3.1 canlıya çıktıktan hemen sonra ilk iş.
+2. `available_tools` önerisi, yazma araçları / anahtar sayfası kararı.
 
 ---
 
