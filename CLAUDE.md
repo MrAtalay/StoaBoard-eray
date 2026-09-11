@@ -56,9 +56,10 @@ alandaki kaydı aktif alanınmış gibi döndürüyordu; artık tek kapıdan
 (`aktifProje`) geçiyor. Yol boyunca açık bir güvenlik kusuru bulundu ve
 **düzeltilmedi**: görev ataması alan üyeliğini kontrol etmiyor (TODO).
 
-Gece, ev makinesinde: 0.3.1 uçtan uca doğrulandı ve `main`e birleştirildi
-(`23c34f0`). MCP taraması artık depoda (`npm run mcp:tara`). Canlı taraması
-bekliyor — yerel anahtar canlıda geçersiz (DEVIR 0-F).
+Gece, ev makinesinde: 0.3.1 uçtan uca doğrulandı, `main`e birleştirildi
+(`23c34f0`) ve canlıda da tarandı (53 geçti, 0 kaldı). MCP taraması artık
+depoda (`npm run mcp:tara`); canlıya karşı `MCP_URL=https://www.stoaboard.com/mcp`
+ile koşulur (DEVIR 0-F).
 
 Test sayısı **293**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
@@ -103,6 +104,12 @@ execution policy'ye takılıyor. Git Bash'te düz `npm` çalışır.
 **`server/.env` repoda yok** ve olmamalı. Üretim bağlantısı yalnızca Railway
 ortam değişkenlerinde; hiçbir geliştirici makinesinde durmuyor. Yerel test için
 Neon'da ayrı bir dal kullanılıyor.
+
+**İki `.env` varsa `server/.env` kazanır.** `config.js` önce `server/.env`'i,
+sonra kök `.env`'i yüklüyor ve dotenv var olan değişkeni ezmiyor: aynı ad
+ikisinde de varsa kökteki sessizce yok sayılır. 11 Eylül'de canlı MCP anahtarı
+köke yazıldı, tarama `server/.env`'deki eskisini gönderdi ve sebep bir saat
+dağıtımda arandı. Değişkeni `server/.env`'e yaz.
 
 **Veritabanına bağlanamıyorsan** (`P1001`, `ECONNRESET`, zaman aşımı) muhtemelen
 ağ 5432'yi engelliyor — kurumsal ağlarda yaygın. "Can't reach database server" =

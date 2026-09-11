@@ -465,6 +465,17 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       kapanır (Dershane'de bir not, StoaBoard'da çöpe atılmış bir kart).
       Veri yazmak olduğu için karar kullanıcının; o güne kadar ikisi
       `mcp.test.js`te kaynak düzeyinde kilitli.
+- [ ] **`mcp:tara` hangi anahtarı gönderdiğini söylemiyor, sunucu da hangilerini
+      yüklediğini.** *(11 Eylül 2026 — DEVIR 0-F.)* Canlıya karşı 401
+      alındığında sebep bir saat dağıtımda arandı; asıl sebep canlı anahtarın
+      kök `.env`'de, taramanın ise `server/.env`'deki eskisini göndermesiydi.
+      Öneri: betik başlıkta anahtar özetinin (SHA-256) ilk 8 hanesini bassın,
+      sunucu da açılışta yüklediği anahtarları slug + özet önekiyle loglasın
+      (`[mcp] 1 anahtar: eray-atalay (1a2b3c4d)`). Yan yana konunca
+      "gönderilen anahtar sunucuda var mı" tek bakışta cevaplanır; özetin
+      önekinden anahtar geri üretilemez. Değişken hiç yoksa sunucu bugün
+      hiçbir şey yazmadan her isteği reddediyor — kapalı başarısızlık doğru,
+      ama sessiz; açılışta gürültü çıkarmalı.
 - [ ] **`currentMember` okurken yazıyor.** Aktif alan sütunu boşsa ya da
       üyelik silinmişse ilk üyeliği seçip `users.currentWorkspaceId`ye
       YAZIYOR. Yani salt okuma işaretli `whoami` bir yazma yapabiliyor ve

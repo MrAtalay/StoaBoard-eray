@@ -7,10 +7,10 @@ güven, düzyazıya değil.
 
 **Son güncelleme:** 11 Eylül 2026 gecesi, **ev makinesinde** (5432 açık).
 
-> **0.3.1 `main`e birleştirildi (`23c34f0`) ve bu kayıtla birlikte canlıya
-> gidiyor. Canlı taraması HENÜZ YAPILMADI:** yerel anahtar canlıda geçersiz
-> ve kök alan adı komut satırından HTTPS vermiyor. 0-F'deki komutla, `www`
-> üzerinden ve canlı anahtarla yapılmalı.
+> **0.3.1 canlıda ve doğrulandı** (11 Eylül gecesi): canlı anahtarla, `www`
+> üzerinden `npm run mcp:tara` → `initialize → stoaboard 0.3.1`, 53 geçti,
+> 0 kaldı, 2 atlandı. Kalan: yeni sohbette Cowork son onayı. Sıradaki iş
+> atama üyelik açığı (0-F'nin sonu).
 
 ---
 
@@ -82,26 +82,43 @@ belirti:** `curl https://stoaboard.com` → exit 35 ("Connection was reset"),
 her yerden mi kırık yoksa yalnızca buradan mı, bu makineden ayırt edilemedi
 — TODO'da.
 
-### Canlı taraması — yapılmadı
+### Canlı taraması — yapıldı, yeşil
 
-Yerel anahtar canlıda **geçersiz**: `www.stoaboard.com/mcp`'ye `initialize`
-→ 401 `err_mcp_token_invalid`, hem `Authorization` hem `X-Auth-Token`
-başlığıyla — yani başlık yolda düşmüyor, anahtar canlının listesinde yok.
-Railway'deki `STOA_MCP_TOKENS` yerel `.env`dekiyle aynı değil. Sürümü
-dışarıdan görmenin tek yolu `initialize` olduğu için 0.3.1'in canlıya indiği
-henüz doğrulanmadı.
-
-Push'tan ve Railway dağıtımından sonra, canlı anahtarla (Git Bash):
+Push'tan ve Railway dağıtımından sonra, canlı anahtarla `www` üzerinden:
+**53 geçti, 0 kaldı, 2 atlandı** — yerel koşuyla birebir. `initialize →
+stoaboard 0.3.1`: dağıtım indi. `list_members` sayımlı çağrı canlıda 1,0 sn
+(yerelde 2,5 sn).
 
 ```bash
 cd server
-MCP_URL=https://www.stoaboard.com/mcp MCP_TOKEN=<canlı anahtar> npm run mcp:tara
+MCP_URL=https://www.stoaboard.com/mcp npm run mcp:tara
+# server/.env'deki anahtar canlıda yoksa başına MCP_TOKEN=<canlı anahtar> ekle
 ```
 
-Beklenen: `initialize → stoaboard 0.3.1`, gerisi yerel koşuyla aynı. Alan
-dışı ve çapraz sayım bölümleri yerel `.env`in veritabanına bakıyor; o da
-production Neon, kimlikler tutarlı. Ardından **yeni sohbette** Cowork'e son
-onay.
+Bu makinede `server/.env` artık canlı anahtarı taşıyor (aynı gece Railway'dekiyle
+eşitlendi), yani canlıya karşı `MCP_URL` yetiyor. Başka bir makinede ya da
+anahtar döndürüldüğünde `server/.env`'deki anahtar canlıda olmayabilir — o zaman
+`MCP_TOKEN` ile ver.
+
+### İki `.env` tuzağı — bir saatlik yanlış iz
+
+Canlıya karşı ilk koşular 401 aldı ve sebep bir saat boyunca yanlış yerde
+arandı: dağıtım inmedi mi, değişken paylaşılan mı, uygulanmamış mı — Railway'de
+redeploy bile yapıldı. Dağıtım günlüğü sağlıklıydı, `[mcp] anahtar atlandı`
+yoktu.
+
+**Asıl sebep yereldi.** Canlı anahtar deponun **kökündeki** `.env`'e
+yazılmıştı; tarama ise `server/.env`'deki eski yerel anahtarı gönderiyordu.
+`config.js` önce `server/.env`'i yüklüyor, kök `.env` yalnızca yedek ve dotenv
+var olan değişkeni ezmiyor — aynı ad ikisinde de varsa kökteki **sessizce**
+yok sayılıyor. Bu makinede ikisi de var ve aynı 14 değişken adını taşıyor;
+eşitlemeden sonra yalnızca `CORS_ORIGINS` farklı. Kök `.env`'i silmek tuzağı
+kökten kapatır — karar kullanıcının. Tuzak CLAUDE.md'ye yazıldı.
+
+**Ders:** 401 alınca önce *gönderilen* anahtarın nereden geldiğine bak, sonra
+sunucuya. Betik bugün bunu söylemiyor — yalnızca slug basıyor. Anahtar özetinin
+ilk hanelerini hem betiğin hem sunucunun açılışta basması, bu soruyu tek bakışta
+cevaplardı (TODO).
 
 ### Yol üstünde
 
@@ -116,7 +133,7 @@ onay.
 
 ### Sıradaki iş
 
-1. **Canlı taraması** (yukarıdaki komut) ve Cowork son onayı.
+1. **Cowork son onayı** — yeni sohbette, aynı liste. Canlı taraması yapıldı.
 2. **Atama üyelik açığı** (TODO) — 0-E'nin önerisi: 0.3.1 canlıya çıktıktan
    sonraki ilk iş. Küçük, güvenlik, testiyle.
 3. Taramanın iki kör noktası veriyle kapanır (TODO) — ama bu production'a
