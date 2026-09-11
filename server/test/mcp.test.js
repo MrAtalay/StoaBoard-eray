@@ -29,6 +29,10 @@ import { fileURLToPath } from 'node:url';
 
 import {
   metinKimlik,
+  kimlikleriMetinle,
+  kelimedeKes,
+  projeyiBul,
+  notAlandaMi,
   katla,
   gorevOzeti,
   gorevDetayi,
@@ -44,6 +48,7 @@ import {
   ARAC_BASLIKLARI,
   DESC_SINIRI,
 } from '../src/lib/mcpShape.js';
+import { ALL_PERMISSIONS, memberPermissions } from '../src/lib/permissions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '..', 'src');
@@ -130,8 +135,21 @@ describe('gorevOzeti', () => {
   test('uzun açıklama kırpılıyor ve kırpıldığı söyleniyor', () => {
     const uzun = 'a'.repeat(DESC_SINIRI + 50);
     const d = gorevOzeti(gorev({ desc: uzun }), { bitisKolonlari: BITIS });
-    assert.equal(d.desc.length, DESC_SINIRI);
+    assert.ok(d.desc.length <= DESC_SINIRI + 1, 'sınır + üç nokta aşılmamalı');
+    assert.ok(d.desc.endsWith('…'));
     assert.equal(d.desc_truncated, true);
+  });
+
+  test('kelimenin ortasından kesmiyor', () => {
+    // 11 Eylül canlı denemesi: 0.3.0 düz slice ile "...için efek" diye
+    // yarım kelimede bitiyordu.
+    const desc = 'kelime '.repeat(28) + 'efektler ve sonrası';
+    const d = gorevOzeti(gorev({ desc }), { bitisKolonlari: BITIS });
+    assert.equal(d.desc_truncated, true);
+    const govde = d.desc.slice(0, -1);
+    assert.ok(desc.startsWith(govde), 'kırpılan metin aslın başı olmalı');
+    assert.ok(/\s/.test(desc[govde.length]) || desc.length === govde.length,
+      `"${govde.slice(-12)}" kelime sınırında bitmiyor`);
   });
 
   test('kısa açıklama olduğu gibi kalıyor, işaret konmuyor', () => {
@@ -376,9 +394,16 @@ describe('baslik', () => {
  * geçti, çünkü kuralı ANLATAN yorum hemen üstündeydi ve pencere o metni kod
  * sandı. Kaynağı tarayan her test bu tuzağı taşıyor ve tuzağın ironisi
  * kayda değer: kuralı açıklayan yorum, kuralın ihlalini örtüyor.
+ *
+ * Tuzak 0.3.1'de İKİNCİ KEZ düştü, bu kez ters yönde ve başka bir yorum
+ * biçiminde. İlk sürüm yalnızca `//` satırlarını siliyordu; `sonuc()`un
+ * JSDoc bloğundaki eski kodun alıntısı "girintili JSON kaldı" testini
+ * kırdı. Kod temizdi, test yorumu kod sandı — birincide ihlali örtmüştü,
+ * ikincide olmayan bir ihlal uydurdu. Blok yorumlar da artık siliniyor.
  */
 const yorumsuz = (yol) =>
   fs.readFileSync(path.join(SRC, ...yol.split('/')), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 
 describe('araç başlıkları — kullanıcı metni, iki dilde', () => {
@@ -451,4 +476,177 @@ describe('açık görev tanımı — üç yerde de aynı olmalı', () => {
       );
     });
   }
+});
+
+// ─── 0.3.1 — canlı denemenin bulguları ─────────────────────────────────────
+//
+// 11 Eylül'de gerçek istemci 0.3.0'ı StoaBoard alanında uçtan uca denedi.
+// Aşağıdaki her blok onun bulduğu bir kusuru kilitliyor.
+
+describe('kimlikleriMetinle — kural tek noktada', () => {
+  // Korunan kusur: `list_workspaces` "1" dönerken `whoami` ve her yanıttaki
+  // `workspace.id` 1 (sayı) dönüyordu. 0.3.0 kimlikleri alan alan çevirmişti
+  // ve Prisma'dan gelen alan kaçtı.
+
+  test('iç içe workspace.id metne çevriliyor', () => {
+    const d = kimlikleriMetinle({ workspace: { id: 1, name: 'StoaBoard' } });
+    assert.equal(d.workspace.id, '1');
+  });
+
+  test('_id ile biten her alan çevriliyor', () => {
+    const d = kimlikleriMetinle({ workspace_id: 13, db_id: 107, project_id: 21 });
+    assert.deepEqual(d, { workspace_id: '13', db_id: '107', project_id: '21' });
+  });
+
+  test('dizi içindeki nesneler de geziliyor', () => {
+    const d = kimlikleriMetinle({ comments_list: [{ id: 5, text: 'a' }] });
+    assert.equal(d.comments_list[0].id, '5');
+  });
+
+  test('kimlik olmayan sayılara dokunulmuyor', () => {
+    // count, progress, open birer sayı ve öyle kalmalı — kural ada bağlı,
+    // "her sayıyı metne çevir" değil.
+    const d = kimlikleriMetinle({ count: 3, progress: 40, open: 6, comments: 2 });
+    assert.deepEqual(d, { count: 3, progress: 40, open: 6, comments: 2 });
+  });
+
+  test('null ve metin kimlik olduğu gibi kalıyor', () => {
+    const d = kimlikleriMetinle({ id: 'backlog', project_id: null });
+    assert.deepEqual(d, { id: 'backlog', project_id: null });
+  });
+});
+
+describe('kelimedeKes', () => {
+  test('kısa metne dokunmuyor', () => {
+    assert.equal(kelimedeKes('kısa metin', 50), 'kısa metin');
+  });
+
+  test('son boşlukta kesip üç nokta koyuyor', () => {
+    assert.equal(kelimedeKes('bir iki üçüncü dört', 10), 'bir iki…');
+  });
+
+  test('kesme noktası boşluğa denk geliyorsa son kelime korunuyor', () => {
+    // "bir iki" tam 7 karakter ve 8. karakter boşluk: "iki" sağlam bir
+    // kelime, boşuna düşürülmemeli.
+    assert.equal(kelimedeKes('bir iki üç', 7), 'bir iki…');
+  });
+
+  test('boşluksuz uzun sözcükte kota yenmiyor', () => {
+    // Kelime sınırı sınırın çok gerisindeyse aranmıyor; 200'lük kotayı 3
+    // karaktere indirmek kırpmadan beter olurdu.
+    const d = kelimedeKes('ab ' + 'x'.repeat(100), 50);
+    assert.equal(d.length, 51);
+    assert.ok(d.endsWith('…'));
+  });
+});
+
+describe('uyeOzeti — owner izinleri whoami ile aynı', () => {
+  // Korunan kusur: owner `permissions: []` dönüyordu, model "sahibin izni yok"
+  // diye okudu. `memberToDict` izni rol satırından alıyor ve owner'ın rol
+  // satırı yok; `whoami` ise `memberPermissions` ile owner'ı tam yetkili
+  // sayıyor. İki okuyucu, tek olgu.
+
+  test('owner bütün izinleri taşıyor', () => {
+    const d = uyeOzeti({ id: 'eray', name: 'Eray', ws_role: 'owner', role_name: null });
+    assert.deepEqual(d.permissions, ALL_PERMISSIONS);
+  });
+
+  test('owner için sonuç whoami\'nin kullandığı fonksiyonla birebir', () => {
+    const d = uyeOzeti({ id: 'eray', name: 'Eray', ws_role: 'owner' });
+    assert.deepEqual(d.permissions, memberPermissions({ role: 'owner' }));
+  });
+
+  test('rol satırı olan üye rolünün izinlerini taşıyor', () => {
+    const d = uyeOzeti({
+      id: 'umut', name: 'Umut', ws_role: 'member',
+      role_permissions: ['manage_tasks', 'view_reports'],
+    });
+    assert.deepEqual(d.permissions, ['manage_tasks', 'view_reports']);
+  });
+
+  test('rolü olmayan üye boş liste — uydurma izin yok', () => {
+    const d = uyeOzeti({ id: 'yeni', name: 'Yeni', ws_role: 'member' });
+    assert.deepEqual(d.permissions, []);
+  });
+});
+
+describe('aktif alan kapsamı', () => {
+  // Korunan kusur (P0): aktif alan StoaBoard iken `list_columns
+  // {project_id: 21}` Mytherra'nın kolonlarını döndürdü ve üstüne
+  // `workspace: StoaBoard` damgası bastı. API "üyesi misin" diye soruyor,
+  // MCP "aktif alanda mı" diye sormalı.
+  const projeler = [{ id: '1', name: 'Ana Proje' }, { id: '4', name: 'Staj' }];
+
+  test('aktif alandaki proje bulunuyor — metin/sayı farkı gözetmeden', () => {
+    assert.equal(projeyiBul(projeler, 4)?.name, 'Staj');
+    assert.equal(projeyiBul(projeler, '4')?.name, 'Staj');
+  });
+
+  test('başka alandaki proje BULUNMUYOR', () => {
+    assert.equal(projeyiBul(projeler, 21), null);
+  });
+
+  test('kimlik yoksa ya da liste bozuksa kapalı başarısızlık', () => {
+    assert.equal(projeyiBul(projeler, null), null);
+    assert.equal(projeyiBul(projeler, undefined), null);
+    assert.equal(projeyiBul(null, 4), null);
+    assert.equal(projeyiBul({ id: '4' }, 4), null);
+  });
+
+  test('not yalnızca kendi alanında görünüyor', () => {
+    assert.equal(notAlandaMi({ workspace_id: 1 }, 1), true);
+    assert.equal(notAlandaMi({ workspace_id: 1 }, '1'), true);
+    assert.equal(notAlandaMi({ workspace_id: 13 }, 1), false);
+  });
+
+  test('alan bilinmiyorsa HAYIR — satır yoksa kontrol atlanmıyor', () => {
+    // `if (not && ...)` kalıbı bu depoda üç kusurun kök sebebiydi.
+    assert.equal(notAlandaMi({ workspace_id: 1 }, null), false);
+    assert.equal(notAlandaMi({ workspace_id: null }, 1), false);
+    assert.equal(notAlandaMi(null, 1), false);
+  });
+});
+
+describe('alan kapısı — her araç aynı yerden geçiyor', () => {
+  // Kural "her araca ayrı ayrı kopyalama" diye konmuştu; tarama onu
+  // doğrulayana taşıyor. `project_id` alan bir araç eklenip `aktifProje`
+  // unutulursa bu test kırılır.
+  const mcpSrc = yorumsuz('routes/mcp.js');
+  const bloklar = mcpSrc.split('server.registerTool(').slice(1);
+  const ad = (b) => /^\s*'([a-z_]+)'/.exec(b)?.[1];
+
+  test('project_id alan her araç aktifProje kapısından geçiyor', () => {
+    const kacak = bloklar
+      .filter((b) => /project_id:\s*kimlik\(/.test(b))
+      .filter((b) => !b.includes('aktifProje('))
+      .map(ad);
+    assert.deepEqual(kacak, [], 'Bu araçlar proje kimliğini aktif alana göre çözmüyor');
+  });
+
+  test('en az üç araç proje kimliği alıyor — tarama gerçekten bir şey buluyor', () => {
+    const n = bloklar.filter((b) => /project_id:\s*kimlik\(/.test(b)).length;
+    assert.ok(n >= 3, `yalnızca ${n} araç bulundu; desen bozulmuş olabilir`);
+  });
+
+  test('get_task görevin projesini aktif alanda arıyor', () => {
+    const b = bloklar.find((x) => ad(x) === 'get_task');
+    assert.ok(b && b.includes('projeyiBul('));
+  });
+
+  test('get_note notun alanını aktif alanla karşılaştırıyor', () => {
+    const b = bloklar.find((x) => ad(x) === 'get_note');
+    assert.ok(b && b.includes('notAlandaMi('));
+  });
+
+  test('yanıtlar tek kapıdan çıkıyor: sıkışık ve kimlikleri metin', () => {
+    // Girintili JSON 15 kartlık yanıtta karakterlerin %29'uydu.
+    // Desen iç içe parantezi geçebilmeli. İlk hâli "[^)]*" idi ve tam da
+    // gerçekçi gerilemeyi KAÇIRDI: "JSON.stringify(kimlikleriMetinle(veri),
+    // null, 2)" yazıldığında ilk kapanan parantez iç çağrınınkiydi, desen
+    // oraya takıldı ve test geçti. Mutasyonla bulundu (11 Eylül).
+    assert.ok(!/,\s*null\s*,\s*2\s*\)/.test(mcpSrc),
+      'mcp.js içinde girintili JSON kaldı');
+    assert.ok(/JSON\.stringify\(kimlikleriMetinle\(/.test(mcpSrc),
+      'sonuc() kimlikleri metne çekmiyor');
+  });
 });

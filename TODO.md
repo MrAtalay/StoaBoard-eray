@@ -409,6 +409,63 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       **Testin ilk hâli mutasyonu kaçırdı** ve sebebi kayda değer: pencere,
       kuralı ANLATAN yorumdaki "deletedAt: null" metnini kod sandı. Kaynağı
       tarayan her test bu tuzağı taşıyor; tarama artık yorumları siliyor.
+- [x] **MCP başka alandaki kaydı aktif alanınmış gibi döndürüyordu.**
+      *(Bulundu ve kapatıldı 11 Eylül 2026, MCP 0.3.1.)* Aktif alan StoaBoard
+      iken `list_columns {project_id: 21}` Mytherra'nın kolonlarını döndürdü
+      ve üstüne `workspace: StoaBoard` damgası bastı. Kök neden: API "kullanıcı
+      projenin alanının ÜYESİ mi" diye soruyor (`loadProjectWithAccess`),
+      "proje AKTİF alanda mı" diye değil. Yetkisiz sızıntı değil — kullanıcı
+      Mytherra'nın sahibi — ama bağlam yanlıştı ve yazma araçlarında kart
+      yanlış panoya açılırdı. `get_task` ve `get_note` aynı durumdaydı.
+      Düzeltme MCP katmanında, tek kapıda (`aktifProje`): aktif alanda
+      olmayan kayıt, hiç var olmayanla birebir aynı 404. `mcp.test.js`
+      `project_id` alan her aracın bu kapıdan geçtiğini tarıyor.
+      **API'deki 403/404 kahini duruyor** (üye olmadığın alanın projesi 403,
+      olmayan 404 — GUVENLIK.md soru 8); MCP onu devralmıyor ama API geneline
+      yayılmış hâli ayrı bir iş.
+- [ ] **Görev ataması alan üyeliğini kontrol etmiyor — güvenlik.**
+      *(Bulundu 11 Eylül 2026, düzeltilmedi.)* `POST /projects/:id/tasks`
+      (`tasks.js` ~190) ve `PATCH /tasks/:id` (~383) atanacak kişiyi
+      `tx.user.findUnique({ where: { slug } })` ile arıyor: platformdaki
+      HERHANGİ bir kullanıcı atanabiliyor ve ona görev başlığını taşıyan
+      bildirim gidiyor. `manage_tasks` izni olan bir üye, başka bir şirketin
+      kullanıcısına bildirim atabilir ve görev başlığını sızdırabilir.
+      Kapatmak küçük: slug'ı çözdükten sonra `memberForWorkspace(u.id,
+      project.workspaceId)` yoksa atla ya da 400 dön — hangisi olacağı
+      karar (sessiz atlamak bu deponun bilinen kusur kalıbı; 400 tercih
+      edilmeli). Regresyon testi `guvenlik.test.js`e. `efe-kapan-1` gibi
+      yetim slug'ların muhtemel iki kaynağından biri bu (öteki aşağıda).
+- [ ] **Yetim atanan slug'ları — MCP'de işaretlenmeli.** 11 Eylül denemesinde
+      5 ve 6 numaralı kartlarda `efe-kapan-1` göründü; alan üyesi
+      `efe-kapan`. `-1` eki `uniqueSlug`tan geliyor (`lib/user.js`): aynı adla
+      ikinci bir hesap açılmış (kayıt ya da farklı e-postayla Google girişi,
+      `auth.js` 88 / 258). Slug yanıtta göründüğüne göre kullanıcı satırı
+      YAŞIYOR — silinmiş hesap değil, yalnızca bu alanın üyesi değil. İki
+      yoldan biri: (a) üyeydi ve çıkarıldı — çıkarma atamaları silmiyor ve bu
+      bilinçli (`f789c37`: "çıkarılan kişinin adı kartlarda kalır"); (b) hiç
+      üye olmadı ve yukarıdaki açıktan atandı. Hangisi olduğu SQL ile
+      görülür. **Öneri:** atamayı düşürme (ürün kararı onu koruyor), ama MCP
+      kartında üye olmayan atananları ayrı bir alanda ver
+      (`assignees_not_members`) — model bugün `efe-kapan-1`i `list_members`te
+      bulamayıp "bu kim" diye kalıyor.
+- [ ] **`currentMember` okurken yazıyor.** Aktif alan sütunu boşsa ya da
+      üyelik silinmişse ilk üyeliği seçip `users.currentWorkspaceId`ye
+      YAZIYOR. Yani salt okuma işaretli `whoami` bir yazma yapabiliyor ve
+      tarayıcıdaki aktif alanı değiştirebiliyor. Bugün pratikte zararsız
+      (yalnızca bozuk durumda tetikleniyor) ama "salt okuma" iddiasıyla
+      çelişiyor; yazma araçları gelmeden bakılmalı.
+- [ ] **`whoami`'ye `available_tools`.** *(Öneri, karar bekliyor.)* Araç
+      listesi bağlantı başında bir kez okunuyor ve sunucu "değişti" diyemiyor
+      (bkz. `MCP-SURUMLER.md`). Araç ÇAĞRILARI ise canlı. `whoami` sunucunun o
+      anki araç adlarını dönerse, bayat bir sohbet kendi listesinde olmayan
+      aracı görüp kullanıcıya "yeni sohbet aç" diyebilir. Bayatlığı imkânsız
+      kılmıyor, görünür kılıyor.
+- [ ] **`dil.test.js` ve `yetki.test.js` tarayıcıları yorumları silmiyor.**
+      `mcp.test.js`teki `yorumsuz()` üç kez ders verdi (11 Eylül): satır
+      yorumu bir ihlali ÖRTTÜ, blok yorumu olmayan bir ihlal UYDURDU, iç içe
+      parantezi geçemeyen bir desen gerçekçi gerilemeyi KAÇIRDI. Kaynak tarayan
+      öteki iki testte bu kontroller yok; `yorumsuz()` ortak bir yardımcıya
+      taşınıp orada da kullanılmalı, sonra her biri mutasyonla sınanmalı.
 - [ ] **Serileştirici sözleşmesi teste bağlanmalı.** Aynı kusur iki gün üst
       üste, iki ayrı yerde çıktı: `columnToDict` slug'ı `id` adıyla veriyor,
       tüketici `.slug` diye arıyor (9 Eylül MCP araçları, 10 Eylül
