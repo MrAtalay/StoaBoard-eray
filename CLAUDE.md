@@ -56,6 +56,10 @@ alandaki kaydı aktif alanınmış gibi döndürüyordu; artık tek kapıdan
 (`aktifProje`) geçiyor. Yol boyunca açık bir güvenlik kusuru bulundu ve
 **düzeltilmedi**: görev ataması alan üyeliğini kontrol etmiyor (TODO).
 
+Gece, ev makinesinde: 0.3.1 uçtan uca doğrulandı ve `main`e birleştirildi
+(`23c34f0`). MCP taraması artık depoda (`npm run mcp:tara`). Canlı taraması
+bekliyor — yerel anahtar canlıda geçersiz (DEVIR 0-F).
+
 Test sayısı **293**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
 tarihli ve daha güvenilir.
@@ -118,7 +122,14 @@ alttaki `pass` / `fail` satırlarıdır.
 ```bash
 cd server && npm test        # PowerShell'de: npm.cmd test
 cd client && npm run build   # ön yüz derlemesi
+cd server && npm run mcp:tara # MCP taraması — çalışan sunucu + veritabanı ister
 ```
+
+**MCP'ye dokunduysan taramayı da koş.** `npm test` MCP'yi yalnızca saf
+katmanda (`mcpShape.js`) görüyor; araçların gerçek yanıtlarını ve araçlar
+arası tutarlılığı `npm run mcp:tara` ölçüyor. Açık bir sunucu ve veritabanı
+ister — 5432 kapalı ağda koşmaz. Çıkış kodu 2 "atlanan var" demek: atlanan
+kontrol geçmiş sayılmaz, sebebi çıktının sonunda.
 
 **Makine kurulumu, bir kez:**
 

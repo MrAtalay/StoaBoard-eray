@@ -240,9 +240,9 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       kolon slug'ı yanıtta `slug` değil `id` adıyla duruyor (`columnToDict`
       → `id: c.slug`); açıklama düzeltildi.
       **Bilinen sınır:** araçların saf birim testi yok; yetki ve veri kapsamı
-      mevcut API uçlarından geçerek doğrulanıyor. Tarama betiği oturumlukçu,
-      repoda değil — kalıcı koşum istenirse veritabanı gerektirdiği için
-      birim testlerinden ayrı bir komuta bağlanmalı.
+      mevcut API uçlarından geçerek doğrulanıyor. Tarama betiği artık
+      depoda: `npm run mcp:tara` *(11 Eylül 2026 — DEVIR 0-F)*; veritabanı
+      gerektirdiği için birim testlerinden ayrı bir komut.
       Ürün riski düşük ve **değerin çoğu burada**: "Claude, kart aç" cümlesi panoda
       zaten iki tık; kazandıran cümle "bugün bende ne var, ne gecikti".
       Yalnızca yazma aracı koyan entegrasyonlar iki haftada terk ediliyor.
@@ -448,6 +448,23 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       kartında üye olmayan atananları ayrı bir alanda ver
       (`assignees_not_members`) — model bugün `efe-kapan-1`i `list_members`te
       bulamayıp "bu kim" diye kalıyor.
+- [ ] **`stoaboard.com` (kök alan adı) komut satırından HTTPS vermiyor.**
+      *(Bulundu 11 Eylül 2026, ev makinesi — DEVIR 0-F.)* A kaydı
+      `85.159.66.93` (nginx; düz HTTP'de `302 Location: /`), HTTPS el
+      sıkışması sıfırlanıyor. `www.stoaboard.com` Railway'e CNAME ve sağlıklı.
+      0-D bu belirtiyi ofis vekiline bağlamıştı; evde de aynısı çıktı.
+      Bakılacaklar: tarayıcıda kök adres açılıyor mu (açılıyorsa hangi
+      yoldan), Claude bağlayıcısına hangi adres yazılı, A kaydı bilerek mi
+      orada (alan adı firmasının yönlendirme sunucusu olabilir). Biri
+      `stoaboard.com` yazıp açamıyorsa bu bir ürün kusuru.
+- [ ] **MCP taramasının iki kör noktası veriyle kapanır.** `npm run
+      mcp:tara` iki kontrolü veri yokluğundan atlıyor: (a) öbür alanlarda
+      not yok, not kapısı alan dışı sınanamıyor; (b) aktif alanın çöpünde
+      bitmemiş kart yok, açık sayımın çöp kutusu kusuru (11 Eylül) görünmüyor
+      — mutasyonla doğrulandı. İkisi de production'a bir kayıt koymakla
+      kapanır (Dershane'de bir not, StoaBoard'da çöpe atılmış bir kart).
+      Veri yazmak olduğu için karar kullanıcının; o güne kadar ikisi
+      `mcp.test.js`te kaynak düzeyinde kilitli.
 - [ ] **`currentMember` okurken yazıyor.** Aktif alan sütunu boşsa ya da
       üyelik silinmişse ilk üyeliği seçip `users.currentWorkspaceId`ye
       YAZIYOR. Yani salt okuma işaretli `whoami` bir yazma yapabiliyor ve

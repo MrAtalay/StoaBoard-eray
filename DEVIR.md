@@ -5,11 +5,122 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 11 Eylül 2026 akşamı, **ofis makinesinde** (5432 kapalı).
+**Son güncelleme:** 11 Eylül 2026 gecesi, **ev makinesinde** (5432 açık).
 
-> **0.3.1 `mcp-031` dalında. `main`e birleşmedi, CANLIDA DEĞİL.** Canlıda
-> 0.3.0 duruyor. Devam ev makinesinde — 0-E'nin sonundaki "Eve devir"
-> adımlarıyla başla.
+> **0.3.1 `main`e birleştirildi (`23c34f0`) ve bu kayıtla birlikte canlıya
+> gidiyor. Canlı taraması HENÜZ YAPILMADI:** yerel anahtar canlıda geçersiz
+> ve kök alan adı komut satırından HTTPS vermiyor. 0-F'deki komutla, `www`
+> üzerinden ve canlı anahtarla yapılmalı.
+
+---
+
+## 0-F. 11 Eylül, gece — 0.3.1 doğrulandı ve birleşti, tarama betiği depoda
+
+**Ortam:** ev makinesi, 5432 açık. Yerel sunucu production Neon'a bağlı,
+`/mcp` doğrudan çağrıldı.
+
+### Yapılan: "Eve devir"in ilk dört adımı ve birleştirme
+
+`mcp-031` alındı, `STOA_MCP_TOKENS` yerinde, 293 test yeşil. 0-E'nin kontrol
+listesinin tamamı tuttu: `serverInfo.version` 0.3.1, alan dışı kayıt
+olmayanla birebir aynı 404, `workspace.id` metin, owner'da tam izin listesi,
+kartlarda `project_name`, `desc` kelime sınırında "…", sıkışık JSON. Alan
+dışı kapı `list_columns {project_id: 21}` yerine Dershane'nin proje #6 /
+görev #113'ü ile sınandı — aynı senaryo (sahibi olunan öbür alan); betik
+kaydı veritabanından kendisi seçiyor.
+
+**Tarama betiği artık depoda:** `npm run mcp:tara`
+(`server/scripts/mcp-tara.js`). Çalışan sunucu ve veritabanı istediği için
+`npm test`in dışında. `MCP_URL` ile canlıya karşı da koşar; beklenen sürümü
+kaynaktaki `MCP_VERSION`dan okur. İlk koşu: **53 geçti, 0 kaldı, 2 atlandı.**
+
+Kontrollerin ağırlığı "aynı olgu, iki okuyucu" sınıfında — 9-11 Eylül'deki
+dört kusurun dördü bu sınıftandı. `list_projects`in `open`ı `list_tasks`in
+uzunluğuyla, `list_members`in yükü kartların kendisiyle, listedeki kırpılmış
+açıklama `get_task`in tam metniyle, `include_done` toplamı veritabanıyla
+kıyaslanıyor.
+
+**Atlanan geçmiş sayılmaz.** Veri yokluğundan koşamayan kontrol "atlandı"
+yazılıyor ve çıkış kodu 2 oluyor (0 hepsi geçti, 1 kalan var). Bugünkü iki
+atlama veri boşluğu: öbür alanlarda hiç not yok (not kapısı alan dışı
+sınanamıyor) ve aktif alanın çöpünde kart yok (aşağıda).
+
+### Mutasyon: betik kırmızıya dönebiliyor mu
+
+0.3.1'in kapattığı kusurlar tek tek kaynağa geri kondu, ayrı portta sunucu
+açıldı, tarama koştu, kaynak geri yazıldı:
+
+| Mutasyon | Kalan kontrol |
+|---|---|
+| `aktifProje` kapısı kaldırıldı | 3 |
+| `get_task` alan kapısı kaldırıldı | 1 |
+| `sonuc()` girintili, kimlik çevirisi yok | 8 |
+| üye izni rol satırından (0.3.0 owner kusuru) | 1 |
+
+**Yakalanamayan:** açık sayımdan `deletedAt: null`ı çıkarmak. Çöpte bitmemiş
+kart yokken sayı iki durumda da aynı çıkıyor — bu veriyle görünmez. Betik
+bunu "atlandı" diye söylüyor; kaynak düzeyinde `mcp.test.js` kilitli.
+
+Mutasyon betiğin **kendi** kusurunu da buldu: `whoami` kimliği sayıya
+gerileyince aktif alan "başka alan" sanıldı ve kendi notuyla denendi.
+Karşılaştırma iki taraftan metne çekildi. Ders yine aynı: tarama yazdıysan
+kırılabildiğini görmeden bitmiş sayma.
+
+### Ortam notu: kök alan adı HTTPS vermiyor — sebep yalnızca ofis vekili değil
+
+0-D "kurumsal vekil stoaboard.com'u kesiyor" diyordu. **Evde de aynı
+belirti:** `curl https://stoaboard.com` → exit 35 ("Connection was reset"),
+`example.com` 200. Ölçülenler:
+
+- `stoaboard.com` A kaydı `85.159.66.93` — 1.1.1.1 ve 8.8.8.8 de aynısını
+  veriyor, yani İSS'nin DNS'i değil. O sunucu nginx: düz HTTP'de
+  `302 Location: /` dönüyor, HTTPS el sıkışmasını sıfırlıyor.
+- `www.stoaboard.com` Railway'e CNAME (`53vg2j8t.up.railway.app`), HTTPS'te
+  200.
+
+**Komut satırından canlıya `www` üzerinden gidilir.** Kök adresin HTTPS'i
+her yerden mi kırık yoksa yalnızca buradan mı, bu makineden ayırt edilemedi
+— TODO'da.
+
+### Canlı taraması — yapılmadı
+
+Yerel anahtar canlıda **geçersiz**: `www.stoaboard.com/mcp`'ye `initialize`
+→ 401 `err_mcp_token_invalid`, hem `Authorization` hem `X-Auth-Token`
+başlığıyla — yani başlık yolda düşmüyor, anahtar canlının listesinde yok.
+Railway'deki `STOA_MCP_TOKENS` yerel `.env`dekiyle aynı değil. Sürümü
+dışarıdan görmenin tek yolu `initialize` olduğu için 0.3.1'in canlıya indiği
+henüz doğrulanmadı.
+
+Push'tan ve Railway dağıtımından sonra, canlı anahtarla (Git Bash):
+
+```bash
+cd server
+MCP_URL=https://www.stoaboard.com/mcp MCP_TOKEN=<canlı anahtar> npm run mcp:tara
+```
+
+Beklenen: `initialize → stoaboard 0.3.1`, gerisi yerel koşuyla aynı. Alan
+dışı ve çapraz sayım bölümleri yerel `.env`in veritabanına bakıyor; o da
+production Neon, kimlikler tutarlı. Ardından **yeni sohbette** Cowork'e son
+onay.
+
+### Yol üstünde
+
+- **`efe-kapan-1`** StoaBoard kartlarında atanan olarak duruyor ve alan üyesi
+  değil — betik bunu bilgi satırı olarak basıyor. TODO'daki iki maddeye bağlı
+  (atama üyelik açığı, yetim slug'lar).
+- **`list_members` yük sayımı:** 3 projede sayımlı 2,5 sn, sayımsız 0,7 sn.
+  Proje başına iki yerel istek, sırayla; pano büyüdükçe doğrusal uzar.
+- **"Salt okuma" iz bırakıyor:** her araç çağrısı `mintSession` ile kısa
+  ömürlü bir oturum satırı yazıyor, kapı denemeleri denetim kaydına düşüyor.
+  Veriye dokunmuyor; betiğin başında yazılı.
+
+### Sıradaki iş
+
+1. **Canlı taraması** (yukarıdaki komut) ve Cowork son onayı.
+2. **Atama üyelik açığı** (TODO) — 0-E'nin önerisi: 0.3.1 canlıya çıktıktan
+   sonraki ilk iş. Küçük, güvenlik, testiyle.
+3. Taramanın iki kör noktası veriyle kapanır (TODO) — ama bu production'a
+   kayıt koymak demek, karar kullanıcının.
 
 ---
 
