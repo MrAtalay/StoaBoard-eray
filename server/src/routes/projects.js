@@ -89,6 +89,14 @@ async function projectWithOpenCount(p) {
   const openCount = await prisma.task.count({
     where: {
       projectId: p.id,
+      // Çöp kutusundaki kart açık iş değil. Süzgeç eksikti ve sayı sessizce
+      // şişiyordu: `GET /projects/:id/tasks` `deletedAt: null` ile çalıştığı
+      // için pano 6 kart gösterirken kenar çubuğu 9 diyebiliyordu — silinen
+      // kart 30 gün çöpte durduğu için fark haftalarca yaşıyor.
+      // Aynı sayım `api.js`teki bootstrap sorgusunda da var; ikisi birlikte
+      // düzeltildi ve `mcp.test.js` ikisinin de aynı tanımı kullandığını
+      // kilitliyor.
+      deletedAt: null,
       ...(doneIds.length ? { NOT: { columnId: { in: doneIds } } } : {}),
     },
   });

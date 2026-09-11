@@ -208,6 +208,9 @@ apiRouter.get(
         by: ['projectId'],
         where: {
           projectId: { in: projectIds },
+          // Çöp kutusundaki kart açık iş değil — `projects.js` içindeki
+          // `projectWithOpenCount` ile aynı tanım. İki sayımda da eksikti.
+          deletedAt: null,
           ...(doneColIds.length ? { NOT: { columnId: { in: doneColIds } } } : {}),
         },
         _count: { _all: true },
