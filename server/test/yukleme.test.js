@@ -24,6 +24,15 @@ const MODULLER = [
   '../src/lib/channels.js',
   '../src/lib/serializers.js',
   '../src/lib/projects.js',
+  '../src/lib/lang.js',
+  // MCP zinciri. `app.js` bunları zaten çekiyor, yani kırık bir import
+  // yakalanıyordu — ama hangi modülün kırıldığını söylemeden. Adı geçen bir
+  // test, yığın izi okumaktan hızlı.
+  '../src/lib/mcpToken.js',
+  '../src/lib/mcpAuth.js',
+  '../src/lib/mcpShape.js',
+  '../src/lib/selfApi.js',
+  '../src/routes/mcp.js',
   '../src/routes/reports.js',
   '../src/routes/tasks.js',
   '../src/routes/projects.js',
