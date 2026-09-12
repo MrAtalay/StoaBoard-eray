@@ -446,8 +446,8 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       atananları bugünkü üyelere süzüyor. Uçtan uca, veri yazmadan
       doğrulandı: kart #6'da `efe-kapan-1` korundu, yanına eklenen hayalet
       slug reddedildi.
-- [ ] **Kart yorumundaki `@bahsetme` alıcıyı bütün platformda arıyor — güvenlik.**
-      *(Bulundu 11 Eylül 2026, düzeltilmedi — DEVIR 0-H.)* `POST
+- [x] **Kart yorumundaki `@bahsetme` alıcıyı bütün platformda arıyor — güvenlik.**
+      *(Bulundu 11 Eylül, kapatıldı 12 Eylül 2026.)* `POST
       /tasks/:id/comments` (`tasks.js`, `MENTION_RE` sonrası) bahsedilen
       kişiyi `prisma.user.findFirst({ where: { name: { startsWith: fname,
       mode: 'insensitive' } } })` ile arıyor; alan üyeliğine bakılmıyor.
@@ -459,6 +459,14 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       kartın alanının üyeleriyle sınırla. Birden fazla eşleşme ayrı bir soru
       (bugün ilk bulunan alıyor). **MCP `add_comment` bu kapanmadan
       açılmamalı.** Regresyon testi `guvenlik.test.js`e.
+      **Kapatıldı (DEVIR 0-J):** bahsedilen kişi artık kartın alanının
+      üyeleri arasında aranıyor; arama anlamı (ad öneki, harf katlamalı) aynı,
+      havuz daraldı. Karar saf `lib/mentions.js`te. Belirsiz önek kimseye
+      bildirim göndermiyor ve sunucu günlüğüne yazılıyor — sessiz atlama yok.
+      Yorum her durumda kaydediliyor. 12 yeni test, altı mutasyonun altısı
+      yakalanıyor; altıncısı ilk turda kaçtı ve eksik olan testi ortaya
+      çıkardı. Bildirim metni bilerek düz metin kaldı: `renderNotification`ın
+      `mention` dalı yok, JSON verilseydi gövdesi boş bildirim çıkardı.
 - [ ] **Yetim atanan slug'ları — MCP'de işaretlenmeli.** 11 Eylül denemesinde
       5 ve 6 numaralı kartlarda `efe-kapan-1` göründü; alan üyesi
       `efe-kapan`. `-1` eki `uniqueSlug`tan geliyor (`lib/user.js`): aynı adla

@@ -69,8 +69,11 @@ platformda arıyor (TODO).
 12 Eylül sabahı 0.4.0 **canlıda doğrulandı** (tarama 64/0/2) ve ilk gerçek
 yazma Cowork'ten yapıldı (kart #114, denetim kaydında üç `mcp.task_*` satırı).
 Aynı turda `/.well-known/*` 404 döndürülmeye başlandı (DEVIR 0-I).
+Kart yorumundaki `@bahsetme` sızıntısı da kapandı (DEVIR 0-J): bahsedilen kişi
+artık yalnızca kartın alanının üyeleri arasında aranıyor, belirsiz önek
+kimseye bildirim göndermiyor.
 
-Test sayısı **321**, hepsi geçiyor. Ayrıntılı durum için **her zaman
+Test sayısı **333**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
 tarihli ve daha güvenilir.
 
@@ -136,7 +139,7 @@ tarayıcı içi SQL Editor'ü HTTPS üzerinden çalıştığı için o ağlarda 
 
 ## Çalışma biçimi
 
-**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 321 test,
+**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 333 test,
 veritabanı gerektirmez, birkaç saniye sürer. Çıktıda `[db] warmup failed` /
 "Can't reach database server" görürsen bu bir test hatası **değil**: uygulama
 modülü yüklenirken bağlantıyı deniyor, kurumsal ağda 5432 kapalı. Ölçüt en
@@ -165,7 +168,7 @@ derlemeyi çalıştırıp kırmızıysa push'u iptal ediyor. Kancalar `.git/hook
 içinde takip edilmediği için depoda `.githooks/` klasöründe duruyorlar; komut
 git'e oraya bakmasını söylüyor. Bilerek atlamak için `git push --no-verify`.
 
-**Kanca ofis ağında da çalışır.** 321 testin hiçbiri veritabanı istemiyor;
+**Kanca ofis ağında da çalışır.** 333 testin hiçbiri veritabanı istemiyor;
 çalışmayan tek şey uygulamanın kendisi. Kanca sahte bir `DATABASE_URL` ile
 koşuyor ki test koşusu ağa bağımlı hale gelip asılı kalmasın.
 

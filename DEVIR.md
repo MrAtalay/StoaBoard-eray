@@ -14,6 +14,63 @@ güven, düzyazıya değil.
 
 ---
 
+## 0-J. 12 Eylül, sabah — kart yorumundaki `@bahsetme` kapsamı daraldı
+
+**Kusur:** `POST /tasks/:id/comments` bahsedilen kişiyi
+`user.findFirst({ name: { startsWith, insensitive } })` ile **bütün
+platformda** arıyor ve ilk eşleşene bildirim gönderiyordu. "@Ali" yazan bir
+üye, başka bir şirketteki adı Ali ile başlayan birine yorumun ilk 80
+karakterini sızdırabiliyordu. Atama açığıyla (0-G) aynı sınıf: kapsamı
+daraltmayan arama. Sohbetteki bahsetme 2 Eylül'de `mentionAllowed` ile
+kapatılmıştı, kart yorumu o turun dışında kalmış.
+
+**Kural:** bahsedilen kişi **kartın alanının üyeleri** arasında aranıyor.
+Arama anlamı korundu (ad öneki, büyük/küçük harf ayrımsız, Türkçe i/ı
+katlamalı); yalnızca havuz daraldı. Karar saf ve veritabanısız:
+`lib/mentions.js`.
+
+**Belirsizlik sessizce çözülmüyor.** "@Efe" iki üyeye uyuyorsa kimseye
+bildirim gitmiyor — yanlış kişiye göndermek hiç göndermemekten kötü. Ama
+sessiz de kalmıyor: çözülemeyen ve belirsiz kalan adlar sunucu günlüğüne
+`console.warn` ile yazılıyor (yorum metni değil, yalnızca ad). Yorumun kendisi
+her durumda kaydediliyor; bahsetme çözülemedi diye kullanıcının yazdığını
+reddetmek orantısız olurdu.
+
+**Yanıt sözleşmesine dokunulmadı.** Bahsetme bilgisini yanıta eklemek ilk
+tasarımdı, sonra vazgeçildi: `drawer.jsx` yanıtı doğrudan `comments_list`in
+içine koyuyor, yani fazladan alanlar kart yorumu nesnesine sızardı.
+
+**Bildirim metni bilerek JSON'a çevrilmedi.** `renderNotification`ın
+switch'inde `mention` diye bir dal **yok**; `type: 'mention'` yalnızca JSON
+olmayan düz metin dalından üretiliyor. `buildNotificationText('mention', …)`
+yazsaydık `default`a düşer ve **gövdesi boş** bildirim çıkardı. Elle kurulan
+metin kaldı, sebebi koda yazıldı.
+
+### Doğrulama — ve kaçan mutasyon
+
+12 yeni test, toplam **333**. Altı mutasyon denendi: platform geneli aramayı
+geri getir, kapıyı yoruma al, üye havuzunu bütün kullanıcılardan çek,
+belirsizlikte ilk adayı seç, harf katlamasını kaldır, kimlik elemesini sil.
+
+**Altıncısı ilk turda KAÇTI** ve dersi kayda değer: "aynı kişi iki kez
+bahsedilse bir kez bildirim alır" testi `['Eray', 'eray']` kullanıyordu ve
+bunu zaten **ad** elemesi yakalıyordu; kimlik elemesi hiç çalışmıyordu. Yani
+test, koruduğunu sandığı satırı korumuyordu. Farklı öneklerin aynı kişiye
+çıktığı durum (`['Eray', 'Era']`) eklendi; şimdi altısı da yakalanıyor.
+**Mutasyon yine testin kendisini yalanladı** — 11 Eylül'deki üç tarama
+testiyle aynı hikâye.
+
+**Denenmeyen:** canlı yol. Yeni kodda bir Prisma sorgusu var ve testler onu
+göremiyor; bugün iki kez yalnızca çalışma anında görünen alan adı hatasına
+takıldık (`createdAt`, `fromCol`). Gerçek bir yorum yazmadan bu doğrulanmıyor.
+
+### Sıradaki
+
+1. Canlı yol denemesi: deneme kartı #114'e bir yorum, sonra silinmesi.
+2. MCP `add_comment` aracı — kapı kapandığına göre artık açılabilir.
+
+---
+
 ## 0-I. 12 Eylül, sabah — 0.4.0 canlıda doğrulandı, OAuth keşif ucu kapandı
 
 **Canlı tarama:** `initialize → stoaboard 0.4.0`, on üç araç, üçü yazma.
