@@ -14,6 +14,65 @@ güven, düzyazıya değil.
 
 ---
 
+## 0-R. 12 Eylül, gece — `add_comment` başarı yolu canlıda doğrulandı
+
+0.4.1 on iki gün önce çıkmıştı ama **başarı yolu hiç denenmemişti**: yazma
+araçlarının reddetme dalları taranmıştı, gerçek bir yorum MCP üzerinden
+yazılmamıştı. Bu akşam yazıldı.
+
+Cowork'te (yeni sohbet — araç listesi değiştiği için bayat sohbet yeni aracı
+görmez) `ghghhg` projesindeki (id 7) #114 kartına yorum eklendi: **yorum #25**,
+yazar `eray-atalay`, 23:54 TR. `get_task` ile okundu: yorum sayısı 0 → 1,
+`comments_list` içinde metin birebir duruyor. Yani yazma ve okuma tarafı
+tutarlı.
+
+### Cowork'ün söylemediği kısım: denetim kaydı
+
+Asıl merak edilen buydu ve raporda yoktu, o yüzden veritabanına salt okuma
+sorgusuyla bakıldı:
+
+```
+mcp.comment_added   user=Eray Atalay (#2)
+                    detail={"task_id":"114","comment_id":"25"}
+```
+
+**Yorum metni hiçbir denetim satırında geçmiyor.** 0-K'da tasarlanan kural —
+"denetim kaydı kim-ne-yaptı tablosudur, içerik deposu değil" — kaynakta değil
+**canlıda** doğrulandı. Kaynağı zaten testler koruyordu; burada sorulan şey
+üretimdeki satırın ne taşıdığıydı.
+
+Bütün `mcp.*` izi de tutarlı okunuyor ve #114'ün hikâyesini eksiksiz
+anlatıyor: `task_created` → `task_moved` (todo→doing) → `task_updated`
+(title) → `comment_added`. Yanında sabahki bağlayıcı uğraşından kalan dört
+`mcp.auth_failed` satırı duruyor (`anahtar sunulmadı`, `bilinmeyen anahtar`) —
+başarısız kimlik denemesi de iz bırakıyor, amaç da buydu.
+
+On dört araç, dördü yazıyor; **dördünün de başarı yolu artık canlıda
+görüldü.**
+
+### Hâlâ denenmeyen: bahsetmenin pozitif dalı
+
+Deneme yorumunda `@` yoktu. Yani `bahsedilenleriCoz` ve üye havuzu sorgusu
+canlı yolda çalışmadı; 0-J'de kapatılan kapsam kusurunun **reddetme** tarafı
+testlerle kilitli ama **kabul** tarafı yalnızca birim testleriyle biliniyor.
+Bilerek bırakılıyor: gerçek bir üyeyi etiketlemek ona gerçek bildirim
+göndermek demek.
+
+### İki belge ifadesi düzeltildi
+
+DEVIR'in kendi kuralı "çelişki görürsen buna güven" olduğu için, yazıldığında
+doğru olup artık yanlış olan iki ifade yerinde güncellendi: 0-K'daki "başarı
+yolu denenmedi" ve 0-J'deki "canlı yol denenmedi". Kayıtlar silinmedi, üstüne
+tarihli güncelleme düşüldü.
+
+### Sıradaki
+
+1. Deneme kartı #114 hâlâ `ghghhg` projesinde; silinmesi Eray'ın onayına bağlı.
+2. Soket yolunun e-posta göndermemesi (TODO) — karar bekliyor.
+3. Bildirim ucunun gerçekten gerekli olup olmadığı (istemcide çağrılmıyor).
+
+---
+
 ## 0-Q. 12 Eylül, gece yarısı — bildirim ucu üyelik kapısından geçiyor
 
 0-P'de metnin **nasıl** basıldığı kapandı (kaçış). Açık kalan soru **kime**
@@ -483,6 +542,11 @@ Cowork'te, yeni bir sohbette denemek gerekiyor (araç listesi değişti).
 Bahsetmenin pozitif dalı da denenmedi — gerçek bir üyeyi etiketlemek ona
 gerçek bildirim göndermek demek.
 
+> **Güncelleme (12 Eylül gecesi — 0-R):** başarı yolu denendi ve geçti. #114
+> kartına MCP üzerinden yorum yazıldı (yorum #25) ve denetim kaydının
+> kimlik-yalnızca olduğu canlıda doğrulandı. Bahsetmenin pozitif dalı **hâlâ
+> denenmedi**: deneme metninde `@` yoktu.
+
 ### Sıradaki
 
 1. Cowork'te `add_comment` denemesi (yeni sohbet).
@@ -541,6 +605,11 @@ testiyle aynı hikâye.
 **Denenmeyen:** canlı yol. Yeni kodda bir Prisma sorgusu var ve testler onu
 göremiyor; bugün iki kez yalnızca çalışma anında görünen alan adı hatasına
 takıldık (`createdAt`, `fromCol`). Gerçek bir yorum yazmadan bu doğrulanmıyor.
+
+> **Güncelleme (12 Eylül gecesi — 0-R):** canlı yol denendi. MCP üzerinden
+> yazılan gerçek bir yorum uçtan uca geçti ve çalışma anında alan adı hatası
+> çıkmadı. Bahsetme dalı yine de kapsam dışı kaldı: deneme metninde `@` yoktu,
+> yani üye havuzu sorgusu canlıda hiç çalışmadı.
 
 ### Sıradaki
 
