@@ -921,9 +921,14 @@ Ofiste dal itmek, yerelde **alınamayan** bir doğrulama sağlıyor.
       **Gereken:** supertest benzeri bir koşum + sahte oturum + veritabanı
       taklidi. Asıl engel bu. Yazılınca ilk hedef: çalışma alanları arası
       IDOR, rol yükseltme, ve `view_reports` olmadan başkasının raporu.
-- [ ] **`yetki.test.js` yalnızca `routes/` ve `sockets/` tarıyor.** Yeni bir
-      dizine uç eklenirse tarama onu görmez. Uç kayıtları başka bir yere
-      taşınırsa testteki `ROUTES`/`SOCKETS` yolları güncellenmeli.
+- [x] **`yetki.test.js` yalnızca `routes/` ve `sockets/` tarıyor.** *(Kapandı
+      12 Eylül 2026 — DEVIR 0-N.)* Madde küçük görünüyordu ama **fiilî** bir
+      kör nokta vardı: `app.js:189`'daki `app.get('/')` taramanın desenine
+      uymadığı için hiç görünmüyordu — "her uç kimlik doğrulamasından geçer"
+      testi o ucu hiç görmeden yeşil kalıyordu. Kapsam artık elle değil
+      **kaynaktan** türetiliyor: `app.js` neyi mount ediyorsa tarama onu
+      görmek zorunda, mount edilen her dosyada en az bir uç bulunmalı, ve
+      `app.js` de taranıyor. Beş mutasyonun beşi de yakalandı.
 - [ ] **Test kapsamı saf mantıkla sınırlı.** ~~Otomatik test yok.~~ 1–3 Eylül
       arasında sıfırdan **137 test** yazıldı (`server/test/`): güvenlik
       regresyonları, modül yükleme (smoke), raporlama saf mantığı ve dil

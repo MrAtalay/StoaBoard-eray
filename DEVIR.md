@@ -5,12 +5,70 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 12 Eylül 2026 öğleden sonra, **ev makinesinde** (5432 açık).
+**Son güncelleme:** 12 Eylül 2026 akşam, **ev makinesinde** (5432 açık).
 
 > **MCP 0.4.0 canlıda ve uçtan uca doğrulandı** (12 Eylül sabahı): tarama 64
 > geçti / 0 kaldı, ilk gerçek kart Cowork'ten açıldı (#114), denetim kaydında
 > üç `mcp.task_*` satırı. Bağlayıcı kurulumu **No sign-in + `x-auth-token`**
 > (0-I). Sıradaki iş: kart yorumundaki `@bahsetme` sızıntısı.
+
+---
+
+## 0-N. 12 Eylül, akşam — yetki taramasının kapsamı kaynaktan türetiliyor
+
+TODO'nun küçük maddesi: "`yetki.test.js` yalnızca `routes/` ve `sockets/`
+tarıyor." Küçük görünüyordu; bakınca **fiilî** bir kör nokta çıktı.
+
+`app.js:189`'da gerçek bir uç var — `app.get('/', ...)`. Taramanın deseni
+`(\w*[Rr]outer)\.(get|post|…)` olduğu için `app.get(` yapısal olarak
+görünmüyordu. Yani "her uç kimlik doğrulamasından geçer" testi, bir ucu hiç
+görmeden yeşil kalıyordu. O uç bugün meşru biçimde açık (SPA kökü — giriş
+yapmamış kullanıcı da giriş ekranını almalı), ama karar hiçbir yerde görünür
+değildi. Artık `ACIK_UCLAR`da gerekçesiyle duruyor.
+
+### Asıl kusur listenin kendisiydi
+
+Kapsam elle bakımlıydı: iki dizin adı testin içinde sabit. Yeni bir dizine uç
+eklense ya da bir router taşınsa tarama onu görmez ve üstteki testler
+**sessizce** geçerdi — koruma kalktığı hâlde yeşil kalırlardı. Deponun tekrar
+eden kusuru: **doğrulayanın kapsamı, doğruladığı şeyden bağımsız
+daralabiliyor.**
+
+Kapsam artık kaynaktan türetiliyor. `app.js` neyi mount ediyorsa tarama onu
+görmek zorunda; liste bayatlayamaz, çünkü liste yok. Dört kapı:
+
+1. `app.js`'te router taşıyan her import `./routes/` altından gelmeli.
+2. `index.js`'te soket işleyicisi taşıyan her import `./sockets/` altından.
+3. Mount edilen her `routes/` dosyasında tarama **en az bir uç** bulmalı —
+   router adlandırması desene uymazsa o dosyanın tamamı denetimsiz kalırdı.
+4. `app.js` de taranıyor; oradaki uçlar `ACIK_UCLAR`a gerekçesiyle yazılmak
+   zorunda.
+
+`app.get('io')` tuzağı ayrıca eleniyor: Express'te `app.get` hem uç tanımı
+hem **ayar okuması**. Uç yolları `/` ile başlıyor; başlamayan eşleşme hayalet
+uç sayılmıyor.
+
+### Doğrulama
+
+378 → **382 test**, hepsi geçiyor. Beş mutasyon denendi, **beşi de
+yakalandı**: `routes/` dışından router mount etmek, `sockets/` dışından soket
+işleyicisi kaydetmek, `app.js GET /` girdisini `ACIK_UCLAR`dan çıkarmak,
+`app.js`e korumasız yeni bir uç eklemek, ve mount edilen bir dosyada router
+adını desene uymaz hâle getirmek. Son ikisi taramanın `app.js`'i gerçekten
+gördüğünü kanıtlıyor.
+
+**Kapanmayan sınıf aynı yerde duruyor:** bir ucun kapsamlamasının *doğru*
+olup olmadığı hâlâ test edilmiyor (TODO'daki "Uç testleri" maddesi). O iş
+supertest benzeri bir koşum + oturum/veritabanı taklidi istiyor; statik
+tarama denenmiş ve 70 mutasyon ucunun 46'sı yanlış pozitif çıktığı için
+bilinçli olarak bırakılmıştı. Bu tur o kararı değiştirmiyor.
+
+### Sıradaki
+
+1. Cowork'te `add_comment` denemesi (yeni sohbet) — makine başı iş.
+2. Deneme kartı #114 `ghghhg` projesinde duruyor.
+3. Bildirimler test altına alınmalı — TODO'nun en değerli açık maddesi
+   ("bu depoda en çok kusur çıkan alan").
 
 ---
 

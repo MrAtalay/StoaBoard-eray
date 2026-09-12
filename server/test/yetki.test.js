@@ -22,8 +22,11 @@ import { fileURLToPath } from 'node:url';
 import { yorumsuzDosya } from './yardimcilar.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROUTES = path.resolve(__dirname, '..', 'src', 'routes');
-const SOCKETS = path.resolve(__dirname, '..', 'src', 'sockets');
+const SRC = path.resolve(__dirname, '..', 'src');
+const ROUTES = path.join(SRC, 'routes');
+const SOCKETS = path.join(SRC, 'sockets');
+const APP = path.join(SRC, 'app.js');
+const INDEX = path.join(SRC, 'index.js');
 
 // ─── 1. Kimlik doğrulaması olmayan uç ───────────────────────────────────────
 //
@@ -44,19 +47,29 @@ const ACIK_UCLAR = new Map([
   ['auth.js POST /forgot-password', 'parola sıfırlama, tanımı gereği giriş yapmadan kullanılır'],
   ['auth.js POST /reset-password',  'aynı akışın ikinci adımı; kod ile doğrulanıyor'],
   ['auth.js POST /google',          'Google ile giriş — kimlik burada kuruluyor'],
+  // app.js'teki uç, tarama oraya da bakmaya başlayınca görünür oldu. SPA kökü:
+  // giriş yapmamış kullanıcı da giriş ekranını alabilmeli, yoksa uygulama hiç
+  // açılmaz. Kararın kendisi yeni değil; yalnızca artık görünür.
+  ['app.js GET /',                  'SPA kökü — index.html servis ediyor, oturum açmamış kullanıcı giriş ekranını almalı'],
 ]);
 
-/** routes/ altındaki tüm uç kayıtlarını çıkarır. */
+/** routes/ altındaki ve app.js içindeki tüm uç kayıtlarını çıkarır. */
 function ucKayitlari() {
   const kayitlar = [];
-  for (const ad of fs.readdirSync(ROUTES).sort()) {
-    if (!ad.endsWith('.js')) continue;
+  // app.js ayrıca taranıyor, çünkü uç ORADA da tanımlanabiliyor: `app.get('/')`
+  // bugün gerçekten var ve yalnızca router deseni arandığı sürece yapısal
+  // olarak görünmezdi — korumasız kalsa test yeşil kalırdı.
+  const kaynaklar = fs.readdirSync(ROUTES).sort()
+    .filter((ad) => ad.endsWith('.js'))
+    .map((ad) => [ad, path.join(ROUTES, ad)]);
+  kaynaklar.push(['app.js', APP]);
+  for (const [ad, dosyaYolu] of kaynaklar) {
     // Yorumlar boşaltılarak okunuyor: yorum satırına alınmış bir uç kaydı
     // gerçek uç sayılırsa, var olmayan bir uç için "korumasız" denir ya da
     // ACIK_UCLAR listesi hayalet kayıtla şişer.
-    const src = yorumsuzDosya(path.join(ROUTES, ad));
-    // tasksRouter.patch( · notesRouter.post( · router.get(
-    const eslesmeler = [...src.matchAll(/(\w*[Rr]outer)\.(get|post|patch|put|delete)\(/g)];
+    const src = yorumsuzDosya(dosyaYolu);
+    // tasksRouter.patch( · notesRouter.post( · router.get( · app.get(
+    const eslesmeler = [...src.matchAll(/(\w*[Rr]outer|app)\.(get|post|patch|put|delete)\(/g)];
     for (let i = 0; i < eslesmeler.length; i += 1) {
       const m = eslesmeler[i];
       // Kayıt çok satırlı yazılıyor:
@@ -80,10 +93,15 @@ function ucKayitlari() {
         : m.index + 400;
       const pencere = src.slice(m.index, sinir);
       const yolEsl = /['"`]([^'"`]*)['"`]/.exec(pencere);
+      const ucYolu = yolEsl ? yolEsl[1] : '?';
+      // `app.get('io')` Express'in AYAR okuması, uç kaydı değil — uç yolları
+      // her zaman '/' ile başlar. Bu ayrım olmasaydı ayar okumaları hayalet
+      // uç olarak listeye girer ve ACIK_UCLAR'ı gereksizce şişirirdi.
+      if (m[1] === 'app' && !ucYolu.startsWith('/')) continue;
       kayitlar.push({
         dosya: ad,
         metot: m[2].toUpperCase(),
-        yol: yolEsl ? yolEsl[1] : '?',
+        yol: ucYolu,
         satir: src.slice(0, m.index).split(/\r?\n/).length,
         // İki denk kapı var. `requireAuth` oturum çerezine bakar; `requireMcpToken`
         // bearer anahtara. İkincisi MCP ucunda kullanılıyor, çünkü istek
@@ -164,6 +182,77 @@ describe('MCP ucu — kendi kimlik kapısından geçmeli', () => {
     // üstteki test boş kümeyle sessizce geçerdi.
     const mcp = ucKayitlari().filter((k) => k.dosya === 'mcp.js');
     assert.ok(mcp.length >= 3, `mcp.js'te beklenenden az uç bulundu: ${mcp.length}`);
+  });
+});
+
+// ─── 1c. Tarama kapsamı — kapsam listesi elle bakımlı olmasın ───────────────
+//
+// Kusur sınıfı: tarama `routes/` ve `sockets/` dizinlerini ELLE biliyordu.
+// Yeni bir dizine uç eklenir ya da bir router başka yere taşınırsa tarama onu
+// görmez ve üstteki testler SESSİZCE geçer — koruma kalktığı hâlde yeşil
+// kalırlar. Bu, deponun tekrar eden kusuru: doğrulayanın kapsamı, doğruladığı
+// şeyden bağımsız daralabiliyor.
+//
+// Kapsam artık kaynaktan türetiliyor: `app.js` neyi mount ediyorsa tarama onu
+// görmek zorunda. Liste bayatlayamaz, çünkü liste yok.
+
+describe('tarama kapsamı — mount edilen her şey taranıyor', () => {
+  const appSrc = yorumsuzDosya(APP);
+  const indexSrc = yorumsuzDosya(INDEX);
+
+  test('router taşıyan her import routes/ altından geliyor', () => {
+    const disarida = [];
+    for (const m of appSrc.matchAll(/import\s*\{([^}]*)\}\s*from\s*'([^']+)'/g)) {
+      if (!/[Rr]outer\b/.test(m[1])) continue;
+      if (!m[2].startsWith('./routes/')) {
+        disarida.push(`${m[1].trim().replace(/\s+/g, ' ')} ← ${m[2]}`);
+      }
+    }
+    assert.deepEqual(
+      disarida, [],
+      'Bu router routes/ dışından geliyor ve yetki taraması onu görmüyor. '
+      + 'Ya routes/ altına taşı ya da ROUTES kümesini genişlet — aksi hâlde o '
+      + 'dosyadaki korumasız bir uç bu testlerden sessizce geçer.',
+    );
+  });
+
+  test('soket işleyicisi taşıyan her import sockets/ altından geliyor', () => {
+    const disarida = [];
+    for (const m of indexSrc.matchAll(/import\s*\{([^}]*)\}\s*from\s*'([^']+)'/g)) {
+      if (!/register\w*Handlers/.test(m[1])) continue;
+      if (!m[2].startsWith('./sockets/')) {
+        disarida.push(`${m[1].trim().replace(/\s+/g, ' ')} ← ${m[2]}`);
+      }
+    }
+    assert.deepEqual(
+      disarida, [],
+      'Soket işleyicisi sockets/ dışından kaydediliyor; kimlik taraması onu '
+      + 'görmüyor. SOCKETS kümesini genişlet ya da dosyayı sockets/ altına al.',
+    );
+  });
+
+  test('mount edilen her routes dosyasında tarama en az bir uç buluyor', () => {
+    const mountlanan = [...appSrc.matchAll(/from\s*'\.\/routes\/([\w.-]+)'/g)].map((m) => m[1]);
+    assert.ok(
+      mountlanan.length >= 10,
+      `app.js'te beklenenden az router dosyası görüldü: ${mountlanan.length}`,
+    );
+    const gorulen = new Set(ucKayitlari().map((k) => k.dosya));
+    const korler = [...new Set(mountlanan)].filter((ad) => !gorulen.has(ad)).sort();
+    assert.deepEqual(
+      korler, [],
+      'Bu dosyalar mount ediliyor ama tarama içlerinde tek bir uç bulamadı. '
+      + 'Router adlandırması desene uymuyor olabilir; o dosyadaki uçların '
+      + 'hiçbiri korunuyor mu diye denetlenmiyor demektir.',
+    );
+  });
+
+  test('app.js içindeki uçlar gerçekten taranıyor', () => {
+    // `app.get('/')` router deseniyle görünmezdi. Tarama onu görmezse
+    // ACIK_UCLAR'daki girdisi de hayalete döner ve "liste bayatlamıyor"
+    // testi bunu yakalar; bu test ise doğrudan söylüyor.
+    const appUclari = ucKayitlari().filter((k) => k.dosya === 'app.js');
+    assert.ok(appUclari.length >= 1, 'app.js taranmıyor — oradaki uçlar denetim dışı');
   });
 });
 
