@@ -28,6 +28,7 @@ export const AUDIT = {
   MCP_TASK_CREATED: 'mcp.task_created',
   MCP_TASK_UPDATED: 'mcp.task_updated',
   MCP_TASK_MOVED: 'mcp.task_moved',
+  MCP_COMMENT_ADDED: 'mcp.comment_added',
 };
 
 function clientIp(req) {

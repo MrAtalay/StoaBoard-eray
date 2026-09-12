@@ -85,7 +85,7 @@ const OLMAYAN = 2147480000;
  * Veri değiştiren araçlar. Tarama bunları yalnızca REDDEDİLDİKLERİ yollardan
  * çağırıyor — ayrıntı "Yazma araçları" bölümünde.
  */
-const YAZMA_ARACLARI = new Set(['create_task', 'update_task', 'move_task']);
+const YAZMA_ARACLARI = new Set(['create_task', 'update_task', 'move_task', 'add_comment']);
 
 function anahtariSec() {
   if (process.env.MCP_TOKEN) {
@@ -893,6 +893,8 @@ async function tara() {
       workspace_id: w, task_id: ilkKart.id, add_assignees: [HAYALET], remove_assignees: [HAYALET],
     }, 'err_mcp_assignee_conflict');
     await dene('move_task', { workspace_id: w, task_id: ilkKart.id, col: 'olmayan-kolon-xyz' }, 'err_mcp_column_not_found');
+    await dene('add_comment', { workspace_id: OLMAYAN, task_id: ilkKart.id, text: 'mcp-tara' }, 'err_mcp_workspace_mismatch');
+    await dene('add_comment', { workspace_id: w, task_id: OLMAYAN, text: 'mcp-tara' }, 'err_task_not_found');
 
     const yok = await arac('move_task', { workspace_id: w, task_id: OLMAYAN, col: ilkKart.col });
     kontrol('olmayan göreve yazma → get_task ile birebir aynı 404', yok.hata && yok.metin === durum.ref?.gorev, yok.metin.slice(0, 140));

@@ -16,6 +16,31 @@ commit'te sürüm artırılır ve buraya yazılır.
 
 ---
 
+## 0.4.1 — 12 Eylül 2026
+
+Dördüncü yazma aracı: **`add_comment`**. On dört araç, dördü yazıyor.
+
+Araç 0.4.0'da açılmamıştı, çünkü kart yorumundaki `@bahsetme` bildirimi
+alıcıyı bütün platformda arıyordu; aynı sabah kapatıldı (DEVIR 0-J) ve araç
+onun üstüne geldi.
+
+- **`add_comment`** — `workspace_id`, `task_id`, `text`. Öbür yazma
+  araçlarıyla aynı üç kapı: aktif alan (uyuşmazlıkta 409), görev aktif alanda
+  mı (değilse olmayanla aynı 404), API'nin kendi kapıları.
+- Metindeki `@ad` yalnızca **kartın alanının üyelerine** bildirim gönderir; ad
+  birden fazla üyeye uyuyorsa kimseye gitmez. Görevin atananları zaten
+  bildirim alır.
+- **Tekrarlanabilir değil** (`idempotentHint: false`): aynı çağrı iki kez
+  yapılırsa iki yorum oluşur. Açıklama modele bunu söylüyor.
+- Denetim kaydı: `mcp.comment_added`, ayrıntıda yalnızca görev ve yorum
+  kimliği — **yorum metni yazılmıyor**.
+
+Kırıcı değişiklik yok; okuma yüzeyi ve öbür araçlar aynı.
+
+> **Araç listesi değişti — yeni sohbet aç.**
+
+---
+
 ## 0.4.0 — 11 Eylül 2026
 
 İlk yazma araçları: on üç araç, üçü yazıyor. `whoami` artık

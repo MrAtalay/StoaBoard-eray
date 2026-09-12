@@ -74,6 +74,7 @@ const ACTION_LABEL = {
   'mcp.task_created': ['rep_act_mcp_created', 'Kart açıldı — MCP'],
   'mcp.task_updated': ['rep_act_mcp_updated', 'Kart düzenlendi — MCP'],
   'mcp.task_moved': ['rep_act_mcp_moved', 'Kart taşındı — MCP'],
+  'mcp.comment_added': ['rep_act_mcp_comment', 'Yorum yazıldı — MCP'],
 };
 
 const REPORT_LABEL = {

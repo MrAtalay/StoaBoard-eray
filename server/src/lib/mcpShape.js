@@ -434,6 +434,7 @@ export const ARAC_BASLIKLARI = {
   create_task: { tr: 'Görev oluştur', en: 'Create task' },
   update_task: { tr: 'Görevi düzenle', en: 'Edit task' },
   move_task: { tr: 'Görevi taşı', en: 'Move task' },
+  add_comment: { tr: 'Yorum ekle', en: 'Add comment' },
 };
 
 /**

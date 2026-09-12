@@ -91,7 +91,7 @@ export const mcpRouter = Router();
 // cevaplanamıyor. Yüzeyi değiştiren her commit'te bump et; `initialize`
 // yanıtındaki serverInfo.version dağıtım kanıtı olarak okunabilsin.
 // Sürüm geçmişi ve kırıcı değişiklikler: MCP-SURUMLER.md.
-const MCP_VERSION = '0.4.0';
+const MCP_VERSION = '0.4.1';
 
 /**
  * Araçların fiilen kullandığı izinler.
@@ -1095,6 +1095,59 @@ function buildMcpServer(user, dil, req) {
         moved: true,
         from: once,
         task: { ...gorevDetayi(yanit.data, { bitisKolonlari: kolonlar.kume }), project_name: g.proje.name },
+      }, kapi.workspace);
+    },
+  );
+
+  // ── add_comment ──────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'add_comment',
+    {
+      title: B('add_comment'),
+      description:
+        'Bir göreve yorum yazar. Yorum kullanıcının adına eklenir. Kullanıcı '
+        + 'açıkça istemediyse yorum yazma. workspace_id zorunludur ve AKTİF '
+        + 'alanın kimliği olmalıdır; değilse 409 döner ve hiçbir şey yazılmaz. '
+        + 'Görev aktif alanda değilse "bulunamadı" döner. '
+        + 'Metinde @ad yazarsan o kişiye bildirim gider, ama yalnızca kartın '
+        + 'çalışma alanının üyelerinden biriyse ve ad tek bir üyeye uyuyorsa; '
+        + 'birden fazla üyeye uyan bir ad kimseye bildirim göndermez. Görevin '
+        + 'atananları zaten bildirim alır. '
+        + 'Bu araç tekrarlanabilir DEĞİLDİR: aynı çağrıyı iki kez yaparsan iki '
+        + 'ayrı yorum oluşur, hata aldığını sanıp yeniden deneme.',
+      inputSchema: {
+        workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
+        task_id: kimlik('list_tasks içindeki id'),
+        text: z.string().trim().min(1).max(5000).describe('yorum metni, düz metin'),
+      },
+      annotations: yazma,
+    },
+    async ({ workspace_id, task_id, text }) => {
+      const kapi = await yazmaKapisi(user, workspace_id);
+      if (!kapi.ok) return hata(kapi.yanit);
+
+      const g = await aktifGorev(user, task_id);
+      if (!g.ok) return hata(g.yanit);
+
+      const yanit = await callSelf(user, `/api/tasks/${task_id}/comments`, {
+        method: 'POST',
+        body: { text },
+      });
+      if (!yanit.ok) return hata(yanit);
+
+      recordAudit(req, {
+        workspaceId: kapi.workspace.id,
+        user,
+        action: AUDIT.MCP_COMMENT_ADDED,
+        // Yorum metni kayda YAZILMIYOR: denetim kaydı "kim ne yaptı" tablosu,
+        // içerik deposu değil (audit.js'in başındaki kural).
+        detail: { task_id: metinKimlik(task_id), comment_id: metinKimlik(yanit.data?.id) },
+      });
+      return baglamli(user, {
+        added: true,
+        comment: yanit.data,
+        task: { id: metinKimlik(task_id), title: g.gorev.title, project_name: g.proje.name },
       }, kapi.workspace);
     },
   );
