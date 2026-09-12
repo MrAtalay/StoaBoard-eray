@@ -7,11 +7,77 @@ güven, düzyazıya değil.
 
 **Son güncelleme:** 11 Eylül 2026 gecesi, **ev makinesinde** (5432 açık).
 
-> **MCP 0.4.0 — ilk yazma araçları** (`create_task`, `update_task`,
-> `move_task`), bu kayıtla canlıya gidiyor (0-H). Yerelde 64 geçti / 0 kaldı,
-> dokuz mutasyonun dokuzu yakalandı. **Başarı yolu henüz canlıda denenmedi:**
-> dağıtımdan sonra yeni bir Cowork sohbetinde kart aç, taşı, düzenle. Açık
-> güvenlik işi: kart yorumundaki `@bahsetme` alıcıyı bütün platformda arıyor.
+> **MCP 0.4.0 canlıda ve uçtan uca doğrulandı** (12 Eylül sabahı): tarama 64
+> geçti / 0 kaldı, ilk gerçek kart Cowork'ten açıldı (#114), denetim kaydında
+> üç `mcp.task_*` satırı. Bağlayıcı kurulumu **No sign-in + `x-auth-token`**
+> (0-I). Sıradaki iş: kart yorumundaki `@bahsetme` sızıntısı.
+
+---
+
+## 0-I. 12 Eylül, sabah — 0.4.0 canlıda doğrulandı, OAuth keşif ucu kapandı
+
+**Canlı tarama:** `initialize → stoaboard 0.4.0`, on üç araç, üçü yazma.
+**64 geçti, 0 kaldı, 2 atlandı** — yerel koşuyla birebir. Yazma araçlarının
+dokuz reddetme yolu canlıda da doğru çalıştı; kart sayısı 16 → 16.
+
+### Cowork uçtan uca — ilk gerçek yazma
+
+`ghghhg` projesinde kart **#114**: `create_task` → "Yapılacak", `move_task` →
+"Devam Ediyor" (`moved: true`), `update_task` → başlık. İki kapı da doğru
+sebeple reddetti:
+
+- `efe-kapan-1` ataması → 400 `err_assignee_not_member`, `invalid_assignees`
+  ile. Model sessizce geçmedi ve **`efe-kapan`'ı kendiliğinden atamadı**,
+  sordu.
+- Mytherra'ya (workspace_id 13) kart açma denemesi → 409
+  `err_mcp_workspace_mismatch`, yanıtta aktif alan.
+
+**Veritabanından doğrulandı — denetim kaydını ilk kez gördük:** üç satır,
+`mcp.task_created {task_id: 114, project_id: 7}`, `mcp.task_moved {from:
+todo, to: doing}`, `mcp.task_updated {fields: [title]}`. Hepsi alan 1, IP
+kayıtlı ve **içerik yok** (başlık, açıklama yazılmıyor — `audit.js`in kuralı).
+Reddedilen deneme hiç satır bırakmadı: yalnızca başarılı yazma kaydediliyor.
+Geçiş defterinde iki satır: `yok → Yapılacak`, `Yapılacak → Devam Ediyor`.
+
+**`efe-kapan-1` netleşti:** alanın gerçek üyesi `efe-kapan`; `-1` ikinci bir
+hesap ve kartlara atanmış. TODO'daki `uniqueSlug` teşhisi doğruydu.
+
+### Bağlayıcı kurulumu — ve tek yönlü kapı
+
+Bağlayıcı "needs_reconnect" gösterdi, disconnect edildi ve **geri
+bağlanamadı**: "Couldn't register with StoaBoard's sign-in service". Sebep
+ekrandaki **Authentication** bölümü: "Sign in now (Detected)" seçiliydi ve o
+seçenek OAuth akışını şart koşuyor — StoaBoard'da OAuth sunucusu yok.
+
+**Doğru kurulum:** Add custom connector → adres
+`https://www.stoaboard.com/mcp` → **Authentication: No sign-in** → Request
+headers: `x-auth-token` = anahtar (slug öneki olmadan) → **Add**. "Connect"
+düğmesine basılmaz. Ardından her sohbette **+ → Connectors**'tan açılır; araç
+listesi bağlantı başında çekildiği için araç yüzeyi değiştiyse yeni sohbet
+gerekir.
+
+**Tuzak:** başlıkla kimlik kurulmuş bir bağlayıcıda "disconnect" tek yönlü
+kapı. Geri bağlanma OAuth'a gidiyor ve kimlik ayarları sonradan
+düzenlenemiyor; tek yol kaldırıp yeniden eklemek.
+
+### Kusur: `/.well-known/*` 200 + HTML döndürüyordu
+
+"Detected" ibaresinin kökü bizdeydi. `/api` ile başlamayan her adres SPA
+yedeğine düşüyor, yani `/.well-known/oauth-authorization-server` **200 ve
+`index.html`** dönüyordu; istemci bunu "OAuth keşif ucu var" diye okudu.
+Yokluk sessizce bir HTML sayfasına dönüşüyordu.
+
+**Düzeltme:** `app.js`te SPA yedeğinden **önce** `/.well-known` için 404.
+Yerel denemede dört keşif adresi de 404 + JSON, normal SPA adresleri hâlâ
+200 + HTML. İki tarama testi (kapı yedekten önce mi, 404 mü) **dört
+mutasyonla** sınandı — kapıyı kaldır, yedekten sonraya taşı, yoruma al, 404
+yerine 200 döndür — dördü de yakalandı.
+
+### Sıradaki iş
+
+1. Kart yorumundaki `@bahsetme` sızıntısı (TODO, en öncelikli), ardından
+   `add_comment`.
+2. Deneme kartı #114 `ghghhg` projesinde duruyor; silinebilir.
 
 ---
 

@@ -66,7 +66,11 @@ Aynı gece **MCP 0.4.0**: ilk yazma araçları (`create_task`, `update_task`,
 (DEVIR 0-H). Açık güvenlik işi: kart yorumundaki `@bahsetme` alıcıyı bütün
 platformda arıyor (TODO).
 
-Test sayısı **319**, hepsi geçiyor. Ayrıntılı durum için **her zaman
+12 Eylül sabahı 0.4.0 **canlıda doğrulandı** (tarama 64/0/2) ve ilk gerçek
+yazma Cowork'ten yapıldı (kart #114, denetim kaydında üç `mcp.task_*` satırı).
+Aynı turda `/.well-known/*` 404 döndürülmeye başlandı (DEVIR 0-I).
+
+Test sayısı **321**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
 tarihli ve daha güvenilir.
 
@@ -116,6 +120,13 @@ ikisinde de varsa kökteki sessizce yok sayılır. 11 Eylül'de canlı MCP anaht
 köke yazıldı, tarama `server/.env`'deki eskisini gönderdi ve sebep bir saat
 dağıtımda arandı. Değişkeni `server/.env`'e yaz.
 
+**`/api` dışındaki her adres SPA'ya düşüyor — yokluk 404 ile söylenmeli.**
+12 Eylül'de bağlayıcı kurulamadı, çünkü `/.well-known/oauth-*` 200 + HTML
+dönüyordu ve Claude bunu "OAuth var" diye okudu ("Detected"), sonra kayıt
+düştü. `app.js` artık `/.well-known` için 404 veriyor, testle kilitli. Makine
+okuyan yeni bir yol eklerken aynı soruyu sor: bu adres **yokken** istemci ne
+görüyor?
+
 **Veritabanına bağlanamıyorsan** (`P1001`, `ECONNRESET`, zaman aşımı) muhtemelen
 ağ 5432'yi engelliyor — kurumsal ağlarda yaygın. "Can't reach database server" =
 ağ sorunu; "kullanıcı bulunamadı" = bağlantı iyi, mesele veride. Neon'un
@@ -125,7 +136,7 @@ tarayıcı içi SQL Editor'ü HTTPS üzerinden çalıştığı için o ağlarda 
 
 ## Çalışma biçimi
 
-**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 319 test,
+**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 321 test,
 veritabanı gerektirmez, birkaç saniye sürer. Çıktıda `[db] warmup failed` /
 "Can't reach database server" görürsen bu bir test hatası **değil**: uygulama
 modülü yüklenirken bağlantıyı deniyor, kurumsal ağda 5432 kapalı. Ölçüt en
@@ -154,7 +165,7 @@ derlemeyi çalıştırıp kırmızıysa push'u iptal ediyor. Kancalar `.git/hook
 içinde takip edilmediği için depoda `.githooks/` klasöründe duruyorlar; komut
 git'e oraya bakmasını söylüyor. Bilerek atlamak için `git push --no-verify`.
 
-**Kanca ofis ağında da çalışır.** 319 testin hiçbiri veritabanı istemiyor;
+**Kanca ofis ağında da çalışır.** 321 testin hiçbiri veritabanı istemiyor;
 çalışmayan tek şey uygulamanın kendisi. Kanca sahte bir `DATABASE_URL` ile
 koşuyor ki test koşusu ağa bağımlı hale gelip asılı kalmasın.
 
