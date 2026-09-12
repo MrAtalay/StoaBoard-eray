@@ -14,6 +14,60 @@ güven, düzyazıya değil.
 
 ---
 
+## 0-Q. 12 Eylül, gece yarısı — bildirim ucu üyelik kapısından geçiyor
+
+0-P'de metnin **nasıl** basıldığı kapandı (kaçış). Açık kalan soru **kime**
+yazılabildiğiydi: `POST /api/notifications` hedef kullanıcı için yalnızca
+"böyle biri var mı" diye bakıyordu. Yani kimliği doğrulanmış herhangi biri,
+hiç tanımadığı birine serbest metinle bildirim gönderebiliyordu — kimlik avı
+ve taciz yüzeyi. XSS kapandığı için zararsız değil, sadece daha az ağır.
+
+Artık hedef, gönderenin **aktif çalışma alanının üyesi** olmak zorunda.
+
+### Düzeltirken ikinci bir kusur çıktı: kullanıcı-var-mı kahini
+
+Uç, olmayan kullanıcı için 404, var olan için 201 dönüyordu. Yani kimlik
+numarası denenerek "bu kimlikte kullanıcı var mı" sorusu cevaplanabiliyordu.
+GUVENLIK.md §4'ün 8. sorusu tam bunu yasaklıyor: *"Var/yok farkı bir oracle
+oluşturuyor mu?"* Artık ikisi de **aynı 403'ü** alıyor; ayrım dışarıdan
+görünmüyor.
+
+### Yeni soyutlama yazılmadı
+
+Üyelik kuralının zaten tek bir okuyucusu vardı — `usersShareWorkspace`
+(`lib/workspace.js`), soket bahsetme kapısının da kullandığı fonksiyon. İkinci
+bir okuyucu yazmak bu deponun tekrar eden kusuru olurdu; mevcut olan
+çağrıldı. Reddetme kodu da yeni değil: `err_not_workspace_member` iki sözlükte
+de zaten kayıtlıydı, yani `dil.test.js` tarafında hiçbir şey kıpırdamadı.
+
+Bir de tip süzgeci eklendi: `user_id` metin gelirse eskiden doğrudan Prisma'ya
+düşüp 500 üretirdi. `Number.isInteger` önce süzüyor ve geçersiz kimlik de
+**aynı 403'e** düşüyor — kapalı başarısızlık.
+
+### Uç zaten ölüydü, yine de silinmedi
+
+`API.createNotification` istemcide tanımlı ama **hiçbir yerden çağrılmıyor**.
+Silmek en temiz çözüm olurdu; ama bir ucu kaldırmak ürün kararıdır ve dışarıda
+bir tüketicisi olup olmadığını buradan göremiyorum. Kapı kondu, silme sorusu
+TODO'da açık bırakıldı.
+
+### Doğrulama
+
+438 → **441 test**. Dört mutasyonun **dördü de yakalandı**: kapıyı tamamen
+kaldırmak (2 test düştü), `usersShareWorkspace` çağrısını düşürmek (1),
+var/yok kahinini geri getirmek (1), tip süzgecini kaldırmak (1). Test
+veritabanı istemiyor: uç kaynağında, yorumlar boşaltılarak doğrulanıyor —
+`guvenlik.test.js`teki yerleşik kalıp.
+
+### Sıradaki
+
+1. Cowork'te `add_comment` denemesi (yeni sohbet) — makine başı iş.
+2. Deneme kartı #114 `ghghhg` projesinde duruyor.
+3. Soket yolunun e-posta göndermemesi (TODO) ve bu ucun gerçekten gerekli
+   olup olmadığı.
+
+---
+
 ## 0-P. 12 Eylül, gece yarısı — bildirim metninde saklı XSS kapandı
 
 Aranmıyordu; bir önceki turun (0-O) sözleşme testini yazarken çıktı. Bildirim

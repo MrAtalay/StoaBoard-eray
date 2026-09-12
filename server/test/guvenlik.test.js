@@ -933,3 +933,63 @@ describe('dangerouslySetInnerHTML — her sink kaçıştan geçiyor', () => {
     assert.ok(sayi >= 3, `beklenenden az sink bulundu: ${sayi}`);
   });
 });
+
+// ─── Bildirim ucu — başkasına yazmak üyelik ister ───────────────────────────
+//
+// KUSUR (12 Eylül 2026): `POST /api/notifications` hedef kullanıcı için
+// yalnızca "böyle biri var mı" diye bakıyordu. Kimliği doğrulanmış herhangi
+// biri, hiç tanımadığı birine serbest metinle bildirim gönderebiliyordu —
+// kimlik avı ve taciz yüzeyi. Metnin HTML olarak basılması ayrı bir kusurdu
+// ve 0-P'de kapandı; bu madde "kime yazabilirim" sorusuydu.
+//
+// İkinci kusur aynı yerdeydi: olmayan kullanıcı 404, var olan kullanıcı 201
+// alıyordu. Yani uç bir **kullanıcı-var-mı kahini**ydi (GUVENLIK.md §4, 8.
+// soru). Artık ikisi de aynı 403'ü alıyor.
+//
+// Veritabanı gerektirmeden uç kaynağında doğrulanıyor; yorumlar boşaltılarak
+// okunuyor, çünkü kuralı anlatan yorum ihlali örtebiliyor.
+
+describe('bildirim ucu — başkasına yazmak üyelik kapısından geçiyor', () => {
+  const src = yorumsuzDosya(path.resolve(__dirname, '..', 'src', 'routes', 'notifications.js'));
+
+  function postIsleyicisi() {
+    const bas = "notificationsRouter.post(\n  '/',";
+    const i = src.indexOf(bas);
+    assert.ok(i !== -1, 'POST /api/notifications bulunamadı — tarama deseni bozulmuş olabilir');
+    const kalan = src.slice(i + bas.length);
+    const son = kalan.search(/\nnotificationsRouter\./);
+    return son === -1 ? kalan : kalan.slice(0, son);
+  }
+
+  test('üyelik kapısı var ve yazmadan ÖNCE geliyor', () => {
+    const h = postIsleyicisi();
+    const kapi = h.indexOf('usersShareWorkspace(');
+    const yazma = h.indexOf('createAndPush(');
+    assert.ok(kapi !== -1,
+      'üyelik kapısı yok — kimliği doğrulanmış herkes herkese bildirim yazabilir');
+    assert.ok(yazma !== -1, 'yazma çağrısı bulunamadı — tarama deseni bozulmuş olabilir');
+    assert.ok(kapi < yazma,
+      'kapı yazma çağrısından sonra geliyor — bildirim yine de yazılır (kapalı başarısızlık ihlali)');
+  });
+
+  test('kullanıcı var/yok kahini geri gelmedi', () => {
+    const h = postIsleyicisi();
+    assert.ok(
+      !/err_user_not_found/.test(h),
+      'uç yine "kullanıcı bulunamadı" diyor: üye olmayanla olmayan kullanıcı '
+      + 'ayırt edilebilir hâle geldi, yani uç bir kullanıcı-var-mı kahni.',
+    );
+    assert.ok(
+      !/prisma\.user\.findUnique/.test(h),
+      'uç hedef kullanıcıyı doğrudan arıyor — kapı yerine varlık kontrolü geri gelmiş olabilir',
+    );
+  });
+
+  test('reddetme kapalı başarısızlık — geçersiz kimlik de reddediliyor', () => {
+    const h = postIsleyicisi();
+    // `Number.isInteger` olmadan metin bir kimlik Prisma'ya düşer ve 500
+    // üretirdi; kapı önce tipi süzüyor.
+    assert.ok(/Number\.isInteger\(/.test(h), 'hedef kimliğin tipi doğrulanmıyor');
+    assert.ok(/403/.test(h), 'reddetme 403 ile yapılmıyor');
+  });
+});

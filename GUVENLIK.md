@@ -157,6 +157,9 @@ birleştirilmez.** Cevaplar commit mesajına ya da PR açıklamasına yazılır.
 ## 5 · Mevcut durum
 
 **Yapıldı**
+- `POST /api/notifications` üyelik kapısından geçiyor: hedef, gönderenin aktif
+  çalışma alanının üyesi olmalı. Olmayan kullanıcı ile üye olmayan aynı 403'ü
+  alıyor — kullanıcı-var-mı kahini kapandı *(12 Eylül, DEVIR 0-Q)*
 - Bildirim ve etkinlik metinlerinde **saklı XSS** kapandı: şablon değerleri ve
   çevrilemeyen ham gövde kaçışlanıyor (`client/src/bildirimMetni.js`); her
   `dangerouslySetInnerHTML` sink'i tarama ile kapıya bağlı *(12 Eylül, DEVIR 0-P)*

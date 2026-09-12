@@ -396,7 +396,11 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       Sonuç: HTTP sohbet ucundan gelen bir bahsetme e-posta üretirken soketten
       gelen üretmiyor. Metin sözleşmesi bozuk değil — asimetri sessiz, kullanıcı
       neden bazı bahsetmelerde posta aldığını bilmiyor. *(DEVIR 0-O)*
-- [ ] **`POST /api/notifications` üyelik kontrolü yapmıyor.** Hedef kullanıcı
+- [x] **`POST /api/notifications` üyelik kontrolü yapmıyor.** *(Kapandı 12
+      Eylül 2026 — DEVIR 0-Q: hedef artık gönderenin aktif alanının üyesi
+      olmak zorunda; olmayan kullanıcı ile üye olmayan aynı 403'ü alıyor, yani
+      kullanıcı-var-mı kahini de kapandı. Ucun gerçekten gerekli olup olmadığı
+      hâlâ açık: istemcide tanımlı ama hiç çağrılmıyor.)* Hedef kullanıcı
       için yalnızca "var mı" diye bakıyor; çalışma alanı ya da üyelik kapısı
       yok. Kimliği doğrulanmış herhangi biri, herhangi bir kullanıcıya bildirim
       gönderebiliyor. Metin artık kaçışlanıyor (DEVIR 0-P) yani XSS değil, ama
