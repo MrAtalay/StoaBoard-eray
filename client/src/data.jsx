@@ -1,5 +1,7 @@
 // API client + DATA bootstrap
 
+import { bildirimMetni, etkinlikMetni, htmlCoz } from './bildirimMetni.js';
+
 const TR_MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 const EN_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -100,30 +102,15 @@ function fmtAbsoluteDateTime(iso) {
 }
 // fmtAbsoluteDateTime exported below
 
-function _fillTemplate(tpl, params) {
-  return tpl.replace(/\{(\w+)\}/g, (_, k) => params[k] ?? '');
-}
-
+// Gövde `dangerouslySetInnerHTML` ile basılıyor; kaçış kuralı ve gerekçesi
+// bildirimMetni.js içinde. Buradakiler yalnızca `window.t`yi enjekte eden
+// ince sarmalayıcılar — saf çekirdek ayrı dosyada ki test edilebilsin.
 function renderNotifText(raw) {
-  try {
-    const d = JSON.parse(raw);
-    if (!d || !d.type) throw new Error('no type');
-    const key = 'notif_' + d.type;
-    const tpl = window.t?.(key);
-    if (tpl) return _fillTemplate(tpl, d);
-  } catch (_) {}
-  return raw; // fallback: show raw (legacy Turkish) text as-is
+  return bildirimMetni(raw, (k) => window.t?.(k));
 }
 
 function renderActivityText(raw) {
-  try {
-    const d = JSON.parse(raw);
-    if (!d || !d.type) throw new Error('no type');
-    const key = 'activity_' + d.type;
-    const tpl = window.t?.(key);
-    if (tpl) return _fillTemplate(tpl, d);
-  } catch (_) {}
-  return raw;
+  return etkinlikMetni(raw, (k) => window.t?.(k));
 }
 
 // renderNotifText, renderActivityText exported below
@@ -2157,6 +2144,7 @@ export {
   _parseServerDate,
   renderNotifText,
   renderActivityText,
+  htmlCoz,
   isOverdue,
   getCommands,
   TR_MONTHS,

@@ -157,6 +157,9 @@ birleştirilmez.** Cevaplar commit mesajına ya da PR açıklamasına yazılır.
 ## 5 · Mevcut durum
 
 **Yapıldı**
+- Bildirim ve etkinlik metinlerinde **saklı XSS** kapandı: şablon değerleri ve
+  çevrilemeyen ham gövde kaçışlanıyor (`client/src/bildirimMetni.js`); her
+  `dangerouslySetInnerHTML` sink'i tarama ile kapıya bağlı *(12 Eylül, DEVIR 0-P)*
 - Genel/özel kullanıcı serileştirici ayrımı — e-posta yalnızca kişinin kendi
   profilinde
 - Direkt mesajlar çalışma alanı ortaklığı ile korunuyor; özel kanallar üyelik

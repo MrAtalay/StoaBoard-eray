@@ -5,12 +5,88 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 12 Eylül 2026 gece, **ev makinesinde** (5432 açık).
+**Son güncelleme:** 12 Eylül 2026 gece yarısı, **ev makinesinde** (5432 açık).
 
 > **MCP 0.4.0 canlıda ve uçtan uca doğrulandı** (12 Eylül sabahı): tarama 64
 > geçti / 0 kaldı, ilk gerçek kart Cowork'ten açıldı (#114), denetim kaydında
 > üç `mcp.task_*` satırı. Bağlayıcı kurulumu **No sign-in + `x-auth-token`**
 > (0-I). Sıradaki iş: kart yorumundaki `@bahsetme` sızıntısı.
+
+---
+
+## 0-P. 12 Eylül, gece yarısı — bildirim metninde saklı XSS kapandı
+
+Aranmıyordu; bir önceki turun (0-O) sözleşme testini yazarken çıktı. Bildirim
+metninin okuyucularını haritalarken zincir kendini gösterdi.
+
+### Zincir
+
+1. `notifications.jsx:270` ve `views/dashboard.jsx:340` bildirim/etkinlik
+   metnini **`dangerouslySetInnerHTML`** ile basıyor.
+2. `data.jsx`teki `_fillTemplate` şablon değerlerini **kaçışsız**
+   yerleştiriyordu: `tpl.replace(/\{(\w+)\}/g, (_, k) => params[k] ?? '')`.
+3. Şablonlar HTML taşıyor (`<strong>{who}</strong>`) ve değerlerin **hepsi
+   kullanıcı girdisi**: `preview` doğrudan sohbet mesajından
+   (`text.slice(0, 80)`), `title` kart başlığından, `who` kullanıcı adından.
+4. Çevrilemeyen gövde (`return raw`) hiç dokunulmadan HTML olarak basılıyordu.
+
+Yani **sıradan bir DM'e ya da kart başlığına** yazılan
+`<img src=x onerror=…>` alıcının tarayıcısında çalışıyordu — saklı XSS.
+`POST /api/notifications` serbest metin kabul ettiği ve hedef kullanıcıyı
+gövdeden aldığı için saldırgan kurbanı da seçebiliyordu. İstemcide hiçbir
+kaçış/sanitize yardımcısı yoktu ve depoda XSS'le ilgili tek bir test de yoktu.
+
+### Düzeltme nerede olmalı
+
+Sunucuda temizlemek yanlış olurdu: metin depoda duruyor ve başka tüketicileri
+var — e-posta kendi düz-metin temizliğini zaten yapıyor (`mailer.js`). Tehlike
+**HTML olarak yorumlandığı yerde** doğuyor, düzeltme de orada.
+
+Saf çekirdek `client/src/bildirimMetni.js` dosyasına çıkarıldı: `htmlKacir`,
+`htmlCoz`, `sablonDoldur`, `bildirimMetni`, `etkinlikMetni`. React'e ve
+`window`a bağlı olmadığı için `guvenlik.test.js` **gerçek fonksiyonu içe
+aktarıp** sınıyor — kaynak taramasıyla değil. `data.jsx` artık yalnızca
+`window.t`yi enjekte eden ince bir sarmalayıcı.
+
+Kural: şablonun kendi etiketleri bizim ve sabit; **içeri giren her değer
+kaçışlanır.** Toast düz metin gösterdiği için orada kaçış geri çözülüyor
+(`htmlCoz`), yoksa kullanıcı `&lt;img&gt;` gibi varlık kodları görürdü.
+
+### Kalıcı kapı
+
+Tek seferlik düzeltme yetmez: aynı kusur başka bir ekranda sessizce geri
+döner. `client/src` altındaki **her** `dangerouslySetInnerHTML` taranıyor ve
+ya kaçışlı bir üreticiden beslenmeli ya da gerekçesiyle istisna listesinde
+olmalı (`legal.jsx`in sabit `<style>` blokları). Yeni bir sink eklenirse test
+kırılıyor — mutasyonla doğrulandı.
+
+### Kendi testim de yanlıştı
+
+İlk koşuda iki test düştü ve sebep kod değil **benim ölçütümdü**: çıktıda
+`onerror=` dizgisinin yokluğunu aramıştım. O dizgi kaçışlanmış metinde de düz
+metin olarak duruyor ve zararsız — `<` etkisizleştikten sonra etiket hiç
+oluşamaz. Fazla katı bir iddia da kusurdur: birini olmayan bir hatanın peşine
+düşürürdü. Doğru ölçüt açılı parantezin kaçışlanmış olması.
+
+### Doğrulama
+
+428 → **438 test**. Beş mutasyonun **beşi de yakalandı**: şablon kaçışını
+kaldırmak (3 test düştü), ham gövdeyi yine doğrudan basmak (2), `htmlKacir`ın
+`<` karakterini bırakması (5), kaçışsız yeni bir sink eklemek (1), etkinlik
+metnini ham basmak (1). İstemci derlemesi de temiz.
+
+### Bilerek yapılmayan, TODO'ya yazılan iki iş
+
+1. **Soket yolu e-posta göndermiyor** — `sockets/chat.js` `createAndPush`ı
+   atlıyor, dolayısıyla `dispatchEmail` o yoldan hiç çalışmıyor.
+2. **`POST /api/notifications` üyelik kontrolü yapmıyor** — metin artık
+   kaçışlı olduğu için XSS değil, ama istenmeyen bildirim hâlâ mümkün.
+
+### Sıradaki
+
+1. Cowork'te `add_comment` denemesi (yeni sohbet) — makine başı iş.
+2. Deneme kartı #114 `ghghhg` projesinde duruyor.
+3. Yukarıdaki iki madde.
 
 ---
 

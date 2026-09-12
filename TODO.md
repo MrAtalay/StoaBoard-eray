@@ -390,6 +390,19 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       davranışının **yeniden tasarlanmasını** beklemek zorunda değil — mevcut
       davranışı kilitlemek de değer üretir, çünkü tasarım değişirken neyin
       bilerek değiştiğini görürsün.
+- [ ] **Soket yolu bildirim e-postası göndermiyor.** `sockets/chat.js` bildirimi
+      doğrudan `prisma.notification.create` ile yazıyor ve `createAndPush`ı
+      atlıyor; e-posta gönderimi (`dispatchEmail`) yalnızca orada çağrılıyor.
+      Sonuç: HTTP sohbet ucundan gelen bir bahsetme e-posta üretirken soketten
+      gelen üretmiyor. Metin sözleşmesi bozuk değil — asimetri sessiz, kullanıcı
+      neden bazı bahsetmelerde posta aldığını bilmiyor. *(DEVIR 0-O)*
+- [ ] **`POST /api/notifications` üyelik kontrolü yapmıyor.** Hedef kullanıcı
+      için yalnızca "var mı" diye bakıyor; çalışma alanı ya da üyelik kapısı
+      yok. Kimliği doğrulanmış herhangi biri, herhangi bir kullanıcıya bildirim
+      gönderebiliyor. Metin artık kaçışlanıyor (DEVIR 0-P) yani XSS değil, ama
+      istenmeyen bildirim ve kimlik avı metni hâlâ mümkün. GUVENLIK.md §4'ün
+      2. ve 3. soruları bu uçta cevapsız. Ucun istemcide tek çağrısı
+      `API.createNotification`; gerçekten gerekli mi, o da sorulmalı.
 - [ ] **Giriş ekranındaki istatistikler uydurma.** `auth.jsx:673` "1.200+ aktif
       takım" ve "38k+ görev tamamlandı", `auth.jsx:1293` "6k+ takım", "%98
       memnuniyet", "15m+ görev" diyor. Veritabanında 11 çalışma alanı ve ana

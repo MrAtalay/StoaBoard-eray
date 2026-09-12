@@ -4,7 +4,7 @@ import React, { useState as useS, useEffect as useEf, useRef as useRef } from 'r
 import { createRoot } from 'react-dom/client';
 import { io } from 'socket.io-client';
 import { Icon } from './icons.jsx';
-import { API, renderNotifText } from './data.jsx';
+import { API, renderNotifText, htmlCoz } from './data.jsx';
 import { Avatar, Sidebar, Topbar, ToastContainer } from './shell.jsx';
 import { AddTaskModal } from './modals.jsx';
 import { TaskDrawer } from './drawer.jsx';
@@ -413,7 +413,10 @@ function App() {
           (tur === null || EKRANI_KESENLER.has(tur))
         ) {
           const metin = renderNotifText(notif.text);
-          if (metin) window.showToast?.(String(metin).replace(/<[^>]*>/g, ''), 'info');
+          // Toast düz metin gösteriyor: etiketler söküldükten sonra kaçış geri
+          // çözülüyor, yoksa kullanıcı `&lt;img&gt;` gibi varlık kodları görürdü.
+          // Metnin kendisi artık kaçışlı geliyor (bildirimMetni.js).
+          if (metin) window.showToast?.(htmlCoz(String(metin).replace(/<[^>]*>/g, '')), 'info');
         }
       }
     });

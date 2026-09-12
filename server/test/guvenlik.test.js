@@ -317,7 +317,8 @@ describe('denetim kaydı — yönetim eylemleri bağlı', () => {
 // person-report oracle'ıyla aynı sınıf. Karar mentionAllowed'a çıkarıldı.
 
 import { mentionAllowed } from '../src/lib/channels.js';
-import { yorumsuzKaynak, yorumsuzDosya } from './yardimcilar.js';
+import { yorumsuzKaynak, yorumsuzDosya, kaynakDosyalari } from './yardimcilar.js';
+import { htmlKacir, htmlCoz, sablonDoldur, bildirimMetni, etkinlikMetni } from '../../client/src/bildirimMetni.js';
 
 describe('mentionAllowed — bahsetme bildirimi görünürlük kapısı', () => {
   test('DM: yalnızca karşı tarafa gider', () => {
@@ -803,5 +804,132 @@ describe('yorum ucu — bahsetme kapısından geçiyor', () => {
       !/user\.findFirst/.test(h),
       'yorum ucu yine bütün platformda kullanıcı arıyor — bahsetme sızıntısı geri geldi',
     );
+  });
+});
+
+// ─── Bildirim metni — saklı XSS ─────────────────────────────────────────────
+//
+// KUSUR (12 Eylül 2026): bildirim ve etkinlik metinleri istemcide
+// `dangerouslySetInnerHTML` ile basılıyor (`notifications.jsx:270`,
+// `views/dashboard.jsx:340`) ve şablon değerleri KAÇIŞSIZ yerleştiriliyordu:
+//
+//     tpl.replace(/\{(\w+)\}/g, (_, k) => params[k] ?? '')
+//
+// Değerlerin hepsi kullanıcı girdisi. `preview` doğrudan sohbet mesajından
+// geliyor, `title` kart başlığından. Yani bir DM'e ya da kart başlığına
+// yazılan `<img src=x onerror=…>` alıcının tarayıcısında çalışıyordu.
+// `POST /api/notifications` ucu serbest metin kabul ettiği ve çevrilemeyen
+// gövde HAM basıldığı için saldırgan hedefi de seçebiliyordu.
+//
+// Kaçış istemciye, HTML'in üretildiği yere konuldu (`client/src/bildirimMetni.js`).
+// Sunucuda temizlemek yanlış olurdu: metin depoda duruyor ve başka tüketicileri
+// var — e-posta kendi düz-metin temizliğini zaten yapıyor.
+//
+// GUVENLIK.md §4/10: kapatılan her kusur için buraya bir regresyon testi.
+
+describe('bildirim metni — değerler kaçışlanıyor (saklı XSS)', () => {
+  const ZARARLI = '<img src=x onerror=alert(1)>';
+
+  test('şablon değeri kaçışlanıyor, şablonun kendi etiketi korunuyor', () => {
+    const cikti = sablonDoldur('<strong>{who}</strong>: {preview}', {
+      who: 'Eray', preview: ZARARLI,
+    });
+    assert.ok(!cikti.includes('<img'), `ham etiket geçti: ${cikti}`);
+    assert.ok(cikti.includes('&lt;img'), 'değer kaçışlanmamış');
+    assert.ok(cikti.includes('<strong>Eray</strong>'), 'şablonun kendi etiketi bozulmuş');
+  });
+
+  test('DM önizlemesi: sohbet mesajı betik taşıyamaz', () => {
+    // Gerçek akış: chat.js `preview: text.slice(0, 80)` yazıyor.
+    const ceviri = (k) => (k === 'notif_dm_received'
+      ? '<strong>{who}</strong> sana mesaj gönderdi: {preview}' : null);
+    const cikti = bildirimMetni(
+      JSON.stringify({ type: 'dm_received', who: 'Eray', preview: ZARARLI }), ceviri,
+    );
+    // Ölçüt `onerror=` dizgisinin yokluğu DEĞİL: o dizgi kaçışlanmış metinde
+    // de düz metin olarak duruyor ve zararsızdır — `<` etkisizleştikten sonra
+    // etiket hiç oluşamaz. Doğru ölçüt açılı parantezin kaçışlanmış olması.
+    assert.ok(!/<img/i.test(cikti), `ham etiket geçti: ${cikti}`);
+    assert.ok(cikti.includes('&lt;img'), `değer kaçışlanmamış: ${cikti}`);
+  });
+
+  test('etkinlik akışı: kart başlığı betik taşıyamaz', () => {
+    // Gerçek akış: tasks.js `buildNotificationText('task_created', { title })`.
+    const ceviri = (k) => (k === 'activity_task_created' ? 'yeni kart: <em>{title}</em>' : null);
+    const cikti = etkinlikMetni(
+      JSON.stringify({ type: 'task_created', title: ZARARLI }), ceviri,
+    );
+    // Ölçüt `onerror=` dizgisinin yokluğu DEĞİL: o dizgi kaçışlanmış metinde
+    // de düz metin olarak duruyor ve zararsızdır — `<` etkisizleştikten sonra
+    // etiket hiç oluşamaz. Doğru ölçüt açılı parantezin kaçışlanmış olması.
+    assert.ok(!/<img/i.test(cikti), `ham etiket geçti: ${cikti}`);
+    assert.ok(cikti.includes('&lt;img'), `değer kaçışlanmamış: ${cikti}`);
+  });
+
+  test('çevrilemeyen gövde de kaçışlanıyor — serbest metin ucunun düştüğü dal', () => {
+    const cikti = bildirimMetni('<script>alert(1)</script>', () => null);
+    assert.ok(!/<script/.test(cikti), `ham HTML geçti: ${cikti}`);
+    assert.ok(cikti.includes('&lt;script&gt;'), 'kaçış uygulanmamış');
+  });
+
+  test('sözlükte karşılığı olmayan tür de ham basılmıyor', () => {
+    const cikti = bildirimMetni(JSON.stringify({ type: 'bilinmeyen', x: ZARARLI }), () => null);
+    assert.ok(!/<img/.test(cikti), `ham HTML geçti: ${cikti}`);
+  });
+
+  test('tırnak ve & karakterleri de kaçışlanıyor — öznitelik bağlamı', () => {
+    assert.equal(htmlKacir('"&\''), '&quot;&amp;&#39;');
+  });
+
+  test('htmlCoz düz metne geri çeviriyor — toast varlık kodu göstermez', () => {
+    assert.equal(htmlCoz(htmlKacir('a<b>&c')), 'a<b>&c');
+  });
+
+  test('boş ve tanımsız girdi çökmüyor', () => {
+    assert.doesNotThrow(() => bildirimMetni(null, () => null));
+    assert.doesNotThrow(() => etkinlikMetni(undefined, () => null));
+    assert.equal(htmlKacir(null), '');
+  });
+});
+
+// Kaçış tek yerde yapılıyor; bu tarama onu KALICI kılıyor. Yeni bir
+// `dangerouslySetInnerHTML` eklenirse ya kaçışlı bir üreticiden beslenmeli ya
+// da buraya gerekçesiyle yazılmalı. Aksi hâlde aynı kusur başka bir ekranda
+// sessizce geri döner.
+describe('dangerouslySetInnerHTML — her sink kaçıştan geçiyor', () => {
+  const ISTISNA = new Map([
+    ['views/legal.jsx', 'sabit <style> blokları — kullanıcı girdisi taşımıyor'],
+  ]);
+  const GUVENLI = /__html:\s*(renderNotifText|renderActivityText)\(/;
+
+  test('kullanıcı girdisi basan her sink kaçışlı üreticiden besleniyor', () => {
+    const kok = path.resolve(__dirname, '..', '..', 'client', 'src');
+    const bulgular = [];
+    for (const tam of kaynakDosyalari(kok, /\.jsx?$/)) {
+      const goreli = path.relative(kok, tam).split(path.sep).join('/');
+      const src = yorumsuzDosya(tam);
+      src.split('\n').forEach((satir, i) => {
+        if (!satir.includes('dangerouslySetInnerHTML')) return;
+        if (ISTISNA.has(goreli)) return;
+        if (GUVENLI.test(satir)) return;
+        bulgular.push(`${goreli}:${i + 1}  ${satir.trim().slice(0, 70)}`);
+      });
+    }
+    assert.deepEqual(
+      bulgular, [],
+      'Bu satır HTML enjeksiyonu açıyor. Değeri kaçışlayan bir üreticiden '
+      + 'besle (bildirimMetni.js) ya da gerçekten sabit içerikse bu testteki '
+      + 'ISTISNA listesine gerekçesiyle yaz.',
+    );
+  });
+
+  test('tarama gerçekten sink buluyor', () => {
+    // Desen bozulursa üstteki test boş kümeyle sessizce geçerdi.
+    const kok = path.resolve(__dirname, '..', '..', 'client', 'src');
+    let sayi = 0;
+    for (const tam of kaynakDosyalari(kok, /\.jsx?$/)) {
+      sayi += (yorumsuzDosya(tam).match(/dangerouslySetInnerHTML/g) || []).length;
+    }
+    assert.ok(sayi >= 3, `beklenenden az sink bulundu: ${sayi}`);
   });
 });
