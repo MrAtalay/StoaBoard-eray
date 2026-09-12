@@ -72,6 +72,8 @@ Aynı turda `/.well-known/*` 404 döndürülmeye başlandı (DEVIR 0-I).
 Kart yorumundaki `@bahsetme` sızıntısı da kapandı (DEVIR 0-J): bahsedilen kişi
 artık yalnızca kartın alanının üyeleri arasında aranıyor, belirsiz önek
 kimseye bildirim göndermiyor.
+Hemen ardından **0.4.1**: `add_comment` aracı (DEVIR 0-K). Yorum aracı 0.4.0'da
+bilerek bekletilmişti; bahsetme kapsamı daralınca açıldı.
 
 Test sayısı **333**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri

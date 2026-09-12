@@ -748,9 +748,9 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       belirsizlikte istemcinin **ne yapması gerektiğini** de söylemeli
       ("beklediğin alan değilse kullanıcıya sor, devam etme"). Bu açıklamalar
       sunucunun en güçlü tarafı.
-- [~] **3. adım — yazma araçları.** *(0.4.0, 11 Eylül 2026: `create_task`,
-      `update_task`, `move_task` — DEVIR 0-H. Yorum, silme, etiket, alt görev ve
-      alan değiştirme bekliyor.)* En sona, çünkü **atama bildirim üretiyor.**
+- [~] **3. adım — yazma araçları.** *(0.4.0–0.4.1, 11–12 Eylül 2026:
+      `create_task`, `update_task`, `move_task`, `add_comment` — DEVIR 0-H ve
+      0-K. Silme, etiket, alt görev ve alan değiştirme bekliyor.)* En sona, çünkü **atama bildirim üretiyor.**
       Sohbet kapsam dışı bırakıldı, ama "sadece pano" dendiğinde bile dışa
       dokunan nokta bu: kart açmak sessiz, atamak arkadaşının ekranında beliriyor.
 - [ ] **4. adım — `my_open_tasks` ucu.** İki hafta gerçek kullanımdan sonra,

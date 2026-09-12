@@ -14,6 +14,48 @@ güven, düzyazıya değil.
 
 ---
 
+## 0-K. 12 Eylül, sabah — MCP 0.4.1: `add_comment`
+
+Dördüncü yazma aracı. 0.4.0'da bilinçli olarak dışarıda bırakılmıştı, çünkü
+kart yorumundaki `@bahsetme` alıcıyı bütün platformda arıyordu; o kapandı
+(0-J) ve araç onun üstüne geldi. On dört araç, dördü yazıyor.
+
+**Yeni kural yok — miras alınan üç kapı:** aktif alan (`workspace_id`
+zorunlu, uyuşmazlıkta 409), görev aktif alanda mı (`aktifGorev`; değilse
+olmayanla aynı 404), API'nin kendi kapıları. Denetim kaydı
+`mcp.comment_added`, ayrıntıda yalnızca görev ve yorum kimliği —
+**yorum metni yazılmıyor.**
+
+**Açıklamada iki uyarı var, ikisi de modelin yanlış yapabileceği şeyler
+için:** `@ad` yalnızca alan üyesine ve ad tek bir üyeye uyuyorsa bildirim
+gönderir; araç **tekrarlanabilir değildir** (`idempotentHint: false`), aynı
+çağrı iki kez yapılırsa iki yorum oluşur.
+
+### Doğrulamanın asıl kazancı: yeni test yazılmadı
+
+`add_comment` için **tek bir yeni test yazılmadı** ve yine de dört mutasyonun
+dördü yakalandı: alan kapısını kaldır, görev kapısını kaldır, denetim kaydını
+sil, aracı salt okuma diye işaretle. Sebep, 0.4.0'da kuralın belgeye değil
+**doğrulayana** yazılmış olması: taramalar "her yazma aracı" diye konuşuyor,
+yeni araç kendiliğinden kapsama giriyor. Test sayısı 333'te sabit kaldı.
+
+Yerel tarama 0.4.1'e karşı **66 geçti, 0 kaldı, 2 atlandı** — iki yeni
+reddetme denemesiyle (yanlış alan 409, olmayan görev 404).
+
+**Denenmeyen:** başarı yolu. Gerçek bir yorum MCP üzerinden yazılmadı; bunu
+Cowork'te, yeni bir sohbette denemek gerekiyor (araç listesi değişti).
+Bahsetmenin pozitif dalı da denenmedi — gerçek bir üyeyi etiketlemek ona
+gerçek bildirim göndermek demek.
+
+### Sıradaki
+
+1. Cowork'te `add_comment` denemesi (yeni sohbet).
+2. Deneme kartı #114 hâlâ `ghghhg` projesinde duruyor.
+3. TODO'da kalanlar: MCP'de silme/etiket/alt görev, `updated_at` şema kararı,
+   sayfalama, anahtar sayfası.
+
+---
+
 ## 0-J. 12 Eylül, sabah — kart yorumundaki `@bahsetme` kapsamı daraldı
 
 **Kusur:** `POST /tasks/:id/comments` bahsedilen kişiyi
