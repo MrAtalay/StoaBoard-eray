@@ -37,6 +37,7 @@ import { buildNotificationText, createAndPush } from '../lib/notifications.js';
 import { recordTransition } from '../lib/reporting.js';
 import { reqLang } from '../lib/lang.js';
 import { atananlariDenetle, atamaSluglari } from '../lib/assignees.js';
+import { bahsedilenleriCoz } from '../lib/mentions.js';
 
 export const projectTasksRouter = Router({ mergeParams: true }); // /projects/:projectId/tasks
 export const tasksRouter = Router();         // /tasks/:taskId
@@ -736,21 +737,46 @@ tasksRouter.post(
       }
     }
 
-    // @mention parse
+    // @mention — yalnızca bu alanın üyeleri
+    //
+    // Eskiden bahsedilen kişi `user.findFirst({ name: { startsWith } })` ile
+    // BÜTÜN platformda aranıyordu: "@Ali" yazmak başka bir şirketteki adı Ali
+    // ile başlayan birine yorumun ilk 80 karakterini gönderebiliyordu.
+    // Kapsam artık kartın alanının üyeleriyle sınırlı; karar saf ve test
+    // edilebilir (`lib/mentions.js`).
     const mentions = [...text.matchAll(MENTION_RE)].map((m) => m[1]);
-    for (const fname of mentions) {
-      const mentioned = await prisma.user.findFirst({
-        where: { name: { startsWith: fname, mode: 'insensitive' } },
+    if (mentions.length) {
+      const uyeSatirlari = await prisma.workspaceMember.findMany({
+        where: { workspaceId: project.workspaceId },
+        select: { user: { select: { id: true, name: true } } },
       });
-      if (mentioned && mentioned.id !== user.id && !notified.has(mentioned.id)) {
+      const cozum = bahsedilenleriCoz(mentions, uyeSatirlari.map((m) => m.user));
+
+      // Çözülemeyen bahsetme sessizce yutulmuyor: yorum kaydediliyor ama
+      // bildirim gitmediği sunucu günlüğüne yazılıyor (CLAUDE.md, koşulun
+      // yokluk hâli gürültü çıkarmalı). Günlüğe ad yazılıyor, yorum metni
+      // değil.
+      for (const b of cozum.belirsiz) {
+        console.warn(`[mention] "${b.ad}" birden fazla üyeye uyuyor, bildirim gönderilmedi:`, b.adaylar.join(', '));
+      }
+      if (cozum.bulunamayan.length) {
+        console.warn('[mention] alanda karşılığı olmayan ad, bildirim gönderilmedi:', cozum.bulunamayan.join(', '));
+      }
+
+      for (const kisi of cozum.eslesen) {
+        if (kisi.id === user.id || notified.has(kisi.id)) continue;
         notifsToPush.push({
-          userId: mentioned.id,
+          userId: kisi.id,
+          // Metin bilerek JSON değil: `renderNotification` switch'inde
+          // `mention` diye bir dal yok; JSON verilirse `default`a düşer ve
+          // gövdesi boş bildirim çıkar. Düz metin dalı onu "Sizden
+          // bahsedildi" diye işliyor ve HTML'i temizliyor.
           text: `<strong>${user.name}</strong> seni bir görev yorumunda bahsetti: ${text.slice(0, 80)}`,
           taskId,
           senderSlug: user.slug,
           workspaceId: project.workspaceId,
         });
-        notified.add(mentioned.id);
+        notified.add(kisi.id);
       }
     }
 

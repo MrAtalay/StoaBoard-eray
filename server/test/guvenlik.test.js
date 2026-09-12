@@ -27,6 +27,7 @@ import {
 import { renderNotification } from '../src/lib/mailer.js';
 import { parseMcpTokens, lookupSlug, MIN_TOKEN_LENGTH } from '../src/lib/mcpToken.js';
 import { atananlariDenetle, atamaSluglari } from '../src/lib/assignees.js';
+import { bahsedilenleriCoz, adKatla } from '../src/lib/mentions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -695,5 +696,120 @@ describe('OAuth keşif uçları — SPA yedeğine düşmüyor', () => {
   test('404 dönüyor', () => {
     const blok = src.slice(src.indexOf(KESIF), src.indexOf(YEDEK));
     assert.ok(/status\(404\)/.test(blok), '/.well-known 404 dışında bir şey dönüyor');
+  });
+});
+
+// ─── Kart yorumundaki @bahsetme yalnızca alan üyelerine gider ──────────────
+//
+// Kusur (12 Eylül 2026): `POST /tasks/:id/comments` bahsedilen kişiyi
+// `user.findFirst({ name: { startsWith, insensitive } })` ile BÜTÜN platformda
+// arıyordu ve ilk eşleşene bildirim gönderiyordu. "@Ali" yazan bir üye, başka
+// bir şirketteki adı Ali ile başlayan birine yorumun ilk 80 karakterini
+// sızdırabiliyordu. Sohbetteki bahsetme 2 Eylül'de `mentionAllowed` ile
+// kapatılmıştı; kart yorumu o turun dışında kalmıştı.
+
+describe('bahsedilenleriCoz — bahsetme alan üyeleriyle sınırlı', () => {
+  const efe = { id: 1, name: 'Efe Kapan' };
+  const eray = { id: 2, name: 'Eray Atalay' };
+  const ilker = { id: 3, name: 'İlker Demir' };
+  const uyeler = [efe, eray, ilker];
+
+  test('alan üyesi tek eşleşmede bildirim alıyor', () => {
+    const r = bahsedilenleriCoz(['Eray'], uyeler);
+    assert.deepEqual(r.eslesen, [eray]);
+    assert.deepEqual(r.belirsiz, []);
+    assert.deepEqual(r.bulunamayan, []);
+  });
+
+  test('üye olmayan hiçbir koşulda eşleşmiyor — kusurun kendisi', () => {
+    // Platformda "Ali Veli" olsa bile bu alanın üyesi değilse havuza girmiyor.
+    const r = bahsedilenleriCoz(['Ali'], uyeler);
+    assert.deepEqual(r.eslesen, []);
+    assert.deepEqual(r.bulunamayan, ['Ali']);
+  });
+
+  test('boş üye listesi: kimseye bildirim yok — kapalı başarısızlık', () => {
+    const r = bahsedilenleriCoz(['Eray'], []);
+    assert.deepEqual(r.eslesen, []);
+    assert.deepEqual(r.bulunamayan, ['Eray']);
+  });
+
+  test('belirsiz önek kimseye gitmiyor, adaylar bildiriliyor', () => {
+    const ikinciEfe = { id: 4, name: 'Efe Yıldız' };
+    const r = bahsedilenleriCoz(['Efe'], [...uyeler, ikinciEfe]);
+    assert.deepEqual(r.eslesen, []);
+    assert.equal(r.belirsiz.length, 1);
+    assert.deepEqual(r.belirsiz[0].adaylar.sort(), ['Efe Kapan', 'Efe Yıldız']);
+  });
+
+  test('belirsizlikte tam ad yazılmışsa o kişi seçiliyor', () => {
+    const efeY = { id: 4, name: 'Efe' };
+    const r = bahsedilenleriCoz(['Efe'], [efe, efeY]);
+    assert.deepEqual(r.eslesen, [efeY]);
+    assert.deepEqual(r.belirsiz, []);
+  });
+
+  test('Türkçe harf katlaması: @ilker İlker ile eşleşiyor', () => {
+    assert.deepEqual(bahsedilenleriCoz(['ilker'], uyeler).eslesen, [ilker]);
+    assert.deepEqual(bahsedilenleriCoz(['İLKER'], uyeler).eslesen, [ilker]);
+  });
+
+  test('aynı kişi iki kez bahsedilse bir kez bildirim alıyor', () => {
+    const r = bahsedilenleriCoz(['Eray', 'eray'], uyeler);
+    assert.deepEqual(r.eslesen, [eray]);
+  });
+
+  test('farklı önekler aynı kişiye çıkıyorsa yine tek bildirim', () => {
+    // Ad tekrarı elemesi bunu göremiyor: "Eray" ile "Era" iki ayrı anahtar
+    // ama aynı kişiye çıkıyor. Kimlik elemesini koruyan tek test bu; ilk
+    // hâlinde yoktu ve mutasyon (kimlik elemesini sil) KAÇMIŞTI.
+    const r = bahsedilenleriCoz(['Eray', 'Era'], uyeler);
+    assert.deepEqual(r.eslesen, [eray]);
+  });
+});
+
+describe('adKatla — I/ı/İ/i aynı yere düşüyor', () => {
+  test('dört i harfi de aynı', () => {
+    const hedef = adKatla('ilker');
+    for (const v of ['İlker', 'ILKER', 'ılker']) assert.equal(adKatla(v), hedef);
+  });
+
+  test('boş girdi patlamıyor', () => {
+    assert.equal(adKatla(null), '');
+    assert.equal(adKatla(undefined), '');
+  });
+});
+
+// Uç gerçekten bu kapıdan geçiyor mu — kaynakta doğrulanıyor, yorumlar
+// silinerek (CLAUDE.md: kuralı anlatan yorum ihlali örtebiliyor).
+
+describe('yorum ucu — bahsetme kapısından geçiyor', () => {
+  const src = fs
+    .readFileSync(path.resolve(__dirname, '..', 'src', 'routes', 'tasks.js'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  function yorumIsleyicisi() {
+    const bas = "tasksRouter.post(\n  '/:taskId/comments',";
+    const i = src.indexOf(bas);
+    assert.ok(i !== -1, 'yorum ucu bulunamadı — tarama deseni bozulmuş olabilir');
+    const kalan = src.slice(i + bas.length);
+    const son = kalan.search(/\n(tasksRouter|commentsRouter|subtasksRouter|projectTasksRouter)\./);
+    return son === -1 ? kalan : kalan.slice(0, son);
+  }
+
+  test('bahsedilenler alan üyeleriyle çözülüyor', () => {
+    const h = yorumIsleyicisi();
+    assert.ok(h.includes('bahsedilenleriCoz('), 'bahsetme kapısı yok — regresyon');
+    assert.ok(/workspaceMember\.findMany/.test(h), 'üye havuzu alandan çekilmiyor');
+  });
+
+  test('platform geneli ad araması geri gelmedi', () => {
+    const h = yorumIsleyicisi();
+    assert.ok(
+      !/user\.findFirst/.test(h),
+      'yorum ucu yine bütün platformda kullanıcı arıyor — bahsetme sızıntısı geri geldi',
+    );
   });
 });
