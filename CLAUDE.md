@@ -75,7 +75,7 @@ kimseye bildirim göndermiyor.
 Hemen ardından **0.4.1**: `add_comment` aracı (DEVIR 0-K). Yorum aracı 0.4.0'da
 bilerek bekletilmişti; bahsetme kapsamı daralınca açıldı.
 
-Test sayısı **333**, hepsi geçiyor. Ayrıntılı durum için **her zaman
+Test sayısı **345**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
 tarihli ve daha güvenilir.
 
@@ -141,7 +141,7 @@ tarayıcı içi SQL Editor'ü HTTPS üzerinden çalıştığı için o ağlarda 
 
 ## Çalışma biçimi
 
-**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 333 test,
+**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 345 test,
 veritabanı gerektirmez, birkaç saniye sürer. Çıktıda `[db] warmup failed` /
 "Can't reach database server" görürsen bu bir test hatası **değil**: uygulama
 modülü yüklenirken bağlantıyı deniyor, kurumsal ağda 5432 kapalı. Ölçüt en
@@ -170,7 +170,7 @@ derlemeyi çalıştırıp kırmızıysa push'u iptal ediyor. Kancalar `.git/hook
 içinde takip edilmediği için depoda `.githooks/` klasöründe duruyorlar; komut
 git'e oraya bakmasını söylüyor. Bilerek atlamak için `git push --no-verify`.
 
-**Kanca ofis ağında da çalışır.** 333 testin hiçbiri veritabanı istemiyor;
+**Kanca ofis ağında da çalışır.** 345 testin hiçbiri veritabanı istemiyor;
 çalışmayan tek şey uygulamanın kendisi. Kanca sahte bir `DATABASE_URL` ile
 koşuyor ki test koşusu ağa bağımlı hale gelip asılı kalmasın.
 
@@ -271,9 +271,13 @@ kilitli — aynı kural, ayrı mekanizma.
 testi tam da koruduğu mutasyonu kaçırdı: sorgudan `deletedAt: null`
 çıkarıldığı hâlde geçti, çünkü pencere hemen üstteki **açıklama yorumundaki**
 aynı metni kod sandı. Tuzağın ironisi kayda değer — kuralı anlatan yorum,
-kuralın ihlalini örtüyor. `mcp.test.js` artık `yorumsuz()` ile okuyor;
-`dil.test.js` ve `yetki.test.js` de kaynak tarıyor ve **orada bu kontrol
-henüz yapılmadı.**
+kuralın ihlalini örtüyor. 12 Eylül'de bütün tarayıcılar tek bir okuyucuda
+birleşti: **`test/yardimcilar.js`** (DEVIR 0-L). Kaynak tarayan yeni bir test
+yazarken `yorumsuzKaynak()` ya da `yorumsuzDosya()` kullan, kendi yorum
+elemeni yazma — o yol bu depoda üç ayrı cevaba ve üç ayrı kör noktaya çıktı.
+Yorumlar silinmiyor, **boşluğa çevriliyor**: satır numaraları ve konumlar
+korunuyor. Sabit boyutlu bir pencere kullanıyorsan onu kod karakteri üzerinden
+ölç (boşluğu sıkıştır), yoksa yorumu bol bir blokta pencere koda ulaşmaz.
 
 Aynı gün tuzak iki biçimde daha düştü: **blok yorumu** olmayan bir ihlal
 uydurdu (JSDoc'taki eski kod alıntısı), ve **iç içe parantezi geçemeyen bir

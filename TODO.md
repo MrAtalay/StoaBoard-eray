@@ -520,12 +520,15 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       anki araç adlarını dönerse, bayat bir sohbet kendi listesinde olmayan
       aracı görüp kullanıcıya "yeni sohbet aç" diyebilir. Bayatlığı imkânsız
       kılmıyor, görünür kılıyor.
-- [ ] **`dil.test.js` ve `yetki.test.js` tarayıcıları yorumları silmiyor.**
-      `mcp.test.js`teki `yorumsuz()` üç kez ders verdi (11 Eylül): satır
-      yorumu bir ihlali ÖRTTÜ, blok yorumu olmayan bir ihlal UYDURDU, iç içe
-      parantezi geçemeyen bir desen gerçekçi gerilemeyi KAÇIRDI. Kaynak tarayan
-      öteki iki testte bu kontroller yok; `yorumsuz()` ortak bir yardımcıya
-      taşınıp orada da kullanılmalı, sonra her biri mutasyonla sınanmalı.
+- [x] **`dil.test.js` ve `yetki.test.js` tarayıcıları yorumları silmiyor.**
+      *(Kapandı 12 Eylül 2026 — DEVIR 0-L.)* Sorun maddede yazandan genişti:
+      "yorum nedir" sorusunun depoda **üç ayrı cevabı** vardı ve üçü de farklı
+      şeyi kaçırıyordu. Tarayıcı `test/yardimcilar.js` içine çıkarıldı, on iki
+      çağrı yeri (beş test dosyası) ona bağlandı. Taşımadan önce gerçek kaynak
+      kümesine karşı ölçüldü ve üç kör nokta buldu — tırnak taşıyan düzenli
+      ifade, JSX metnindeki Türkçe kesme işareti, şablon içindeki `${...}`
+      bölgesi; üçü de kapandı. Mutasyon **iki yönlü** koşuldu (ihlal önce kod,
+      sonra yorum biçiminde), 16/16 beklendiği gibi.
 - [ ] **Serileştirici sözleşmesi teste bağlanmalı.** Aynı kusur iki gün üst
       üste, iki ayrı yerde çıktı: `columnToDict` slug'ı `id` adıyla veriyor,
       tüketici `.slug` diye arıyor (9 Eylül MCP araçları, 10 Eylül

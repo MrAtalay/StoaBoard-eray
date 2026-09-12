@@ -187,7 +187,7 @@ describe('izin listesi — sunucu ile arayüz aynı olmalı', () => {
     const settingsPath = path.resolve(
       __dirname, '..', '..', 'client', 'src', 'views', 'settings.jsx',
     );
-    const src = fs.readFileSync(settingsPath, 'utf8');
+    const src = yorumsuzDosya(settingsPath);
 
     const blok = src.slice(
       src.indexOf('const PERM_LABELS_KEYS = {'),
@@ -250,9 +250,7 @@ describe('renderNotification', () => {
 
 describe('çöp kutusu boşaltma — toplu kalıcı silme yetki ister', () => {
   // Satır sonundan bağımsız olsun diye CRLF → LF normalize edilir.
-  const wsSrc = fs
-    .readFileSync(path.resolve(__dirname, '..', 'src', 'routes', 'workspaces.js'), 'utf8')
-    .replace(/\r\n/g, '\n');
+  const wsSrc = yorumsuzDosya(path.resolve(__dirname, '..', 'src', 'routes', 'workspaces.js'));
 
   // DELETE /me/trash işleyicisini izole et: tanımından bir sonraki uca kadar.
   function trashDeleteHandler(src) {
@@ -298,9 +296,7 @@ describe('çöp kutusu boşaltma — toplu kalıcı silme yetki ister', () => {
 
 describe('denetim kaydı — yönetim eylemleri bağlı', () => {
   // Satır sonundan bağımsız olsun diye CRLF → LF normalize edilir.
-  const wsSrc = fs
-    .readFileSync(path.resolve(__dirname, '..', 'src', 'routes', 'workspaces.js'), 'utf8')
-    .replace(/\r\n/g, '\n');
+  const wsSrc = yorumsuzDosya(path.resolve(__dirname, '..', 'src', 'routes', 'workspaces.js'));
 
   for (const action of ['MEMBER_REMOVED', 'MEMBER_ROLE_CHANGED', 'WORKSPACE_TRASH_EMPTIED']) {
     test(`${action} denetim kaydına yazılıyor`, () => {
@@ -321,6 +317,7 @@ describe('denetim kaydı — yönetim eylemleri bağlı', () => {
 // person-report oracle'ıyla aynı sınıf. Karar mentionAllowed'a çıkarıldı.
 
 import { mentionAllowed } from '../src/lib/channels.js';
+import { yorumsuzKaynak, yorumsuzDosya } from './yardimcilar.js';
 
 describe('mentionAllowed — bahsetme bildirimi görünürlük kapısı', () => {
   test('DM: yalnızca karşı tarafa gider', () => {
@@ -470,11 +467,18 @@ describe('sessiz yutulan hata — sunucuda çıplak boş catch yok', () => {
   test('hiçbir sunucu dosyasında yorumsuz catch {} yok', () => {
     const bulgular = [];
     for (const tam of jsDosyalari(SRC)) {
-      const src = fs.readFileSync(tam, 'utf8');
-      src.split(/\r?\n/).forEach((satir, i) => {
+      const ham = fs.readFileSync(tam, 'utf8').replace(/\r\n/g, '\n');
+      const temizSatirlar = yorumsuzKaynak(ham).split('\n');
+      ham.split('\n').forEach((satir, i) => {
         const kirpik = satir.trim();
-        // Yorum satırlarını atla: emit.js kusuru anlatırken kalıbı yazıyor.
-        if (kirpik.startsWith('//') || kirpik.startsWith('*')) return;
+        // İki kaynağa birden bakılıyor, çünkü yorumun burada İKİ ayrı rolü var:
+        //   - Yorumun İÇİNDEKİ `catch {}` bulgu değildir (emit.js kusuru
+        //     anlatırken kalıbı yazıyor). Boşaltılmış satırda `catch` kalmaz.
+        //   - Bloğun İÇİNDEKİ yorum ise ihlali aklar: açıklamalı boş catch
+        //     bilerek serbest. Bu ayrım yalnızca HAM satırda görülebilir;
+        //     boşaltılmış satırda `catch { /* sebep */ }` gerçek bir boş
+        //     catch'e dönüşür ve meşru kod bulgu sayılırdı.
+        if (!temizSatirlar[i].includes('catch')) return;
         if (/catch\s*(\([^)]*\))?\s*\{\s*\}/.test(satir)) {
           bulgular.push(`${path.relative(SRC, tam)}:${i + 1}  ${kirpik}`);
         }
@@ -626,11 +630,7 @@ describe('atamaSluglari — girdi biçimi', () => {
 // (CLAUDE.md, 11 Eylül). Bu testler mutasyonla sınandı.
 
 describe('görev atama uçları — üyelik kapısından geçiyor', () => {
-  const src = fs
-    .readFileSync(path.resolve(__dirname, '..', 'src', 'routes', 'tasks.js'), 'utf8')
-    .replace(/\r\n/g, '\n')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+  const src = yorumsuzDosya(path.resolve(__dirname, '..', 'src', 'routes', 'tasks.js'));
 
   function isleyici(baslangic) {
     const i = src.indexOf(baslangic);
@@ -676,11 +676,7 @@ describe('görev atama uçları — üyelik kapısından geçiyor', () => {
 // Veritabanı gerektirmeden kaynakta doğrulanıyor; yorumlar önce siliniyor.
 
 describe('OAuth keşif uçları — SPA yedeğine düşmüyor', () => {
-  const src = fs
-    .readFileSync(path.resolve(__dirname, '..', 'src', 'app.js'), 'utf8')
-    .replace(/\r\n/g, '\n')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+  const src = yorumsuzDosya(path.resolve(__dirname, '..', 'src', 'app.js'));
 
   const KESIF = "app.use('/.well-known'";
   const YEDEK = 'app.use((req, res) => {';
@@ -784,11 +780,7 @@ describe('adKatla — I/ı/İ/i aynı yere düşüyor', () => {
 // silinerek (CLAUDE.md: kuralı anlatan yorum ihlali örtebiliyor).
 
 describe('yorum ucu — bahsetme kapısından geçiyor', () => {
-  const src = fs
-    .readFileSync(path.resolve(__dirname, '..', 'src', 'routes', 'tasks.js'), 'utf8')
-    .replace(/\r\n/g, '\n')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+  const src = yorumsuzDosya(path.resolve(__dirname, '..', 'src', 'routes', 'tasks.js'));
 
   function yorumIsleyicisi() {
     const bas = "tasksRouter.post(\n  '/:taskId/comments',";

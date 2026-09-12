@@ -5,12 +5,94 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 11 Eylül 2026 gecesi, **ev makinesinde** (5432 açık).
+**Son güncelleme:** 12 Eylül 2026 öğlen, **ev makinesinde** (5432 açık).
 
 > **MCP 0.4.0 canlıda ve uçtan uca doğrulandı** (12 Eylül sabahı): tarama 64
 > geçti / 0 kaldı, ilk gerçek kart Cowork'ten açıldı (#114), denetim kaydında
 > üç `mcp.task_*` satırı. Bağlayıcı kurulumu **No sign-in + `x-auth-token`**
 > (0-I). Sıradaki iş: kart yorumundaki `@bahsetme` sızıntısı.
+
+---
+
+## 0-L. 12 Eylül, öğle — kaynağı tarayan testler tek bir yorum tarayıcısında birleşti
+
+Yeni özellik yok; bu tur bir **doğrulama borcu** kapattı. TODO'daki madde
+"`dil.test.js` ve `yetki.test.js` tarayıcıları yorumları silmiyor" diyordu.
+Bakınca sorun daha genişti: "yorum nedir" sorusunun depoda **üç ayrı cevabı**
+vardı ve üçü de farklı şeyi kaçırıyordu.
+
+1. `satir.trim().startsWith('//')` — beş yerde. Satır ortasında başlayan
+   yorumu ve blok yorumunun içini görmüyor.
+2. `.replace(/\/\*...\*\//g, '')` + satır silme — beş yerde. Yorum satırlarını
+   **sildiği** için satır numaralarını kaydırıyor; `dosya:satır` bildiren bir
+   taramada kullanılamaz.
+3. `dil.test.js` içindeki karakter tarayıcısı — doğru yaklaşım, ama tek
+   dosyada hapis ve iki kör noktası var.
+
+Bu, CLAUDE.md'de adı konmuş kusur sınıfının ta kendisi: **aynı olgunun birden
+çok okuyucusu**. Tarayıcı `test/yardimcilar.js` içine çıkarıldı, on iki çağrı
+yeri (beş test dosyası) ona bağlandı. `kontrast.test.js` bilerek dışarıda:
+CSS tarıyor ve JS biçimli bir tarayıcının stil sayfasında işi yok.
+
+### Ölçüldü, varsayılmadı — ölçüm üç kör nokta buldu
+
+Tarayıcı taşınmadan önce gerçek kaynak kümesine karşı koşuldu. Mevcut hâli
+`server/src` içinde **7**, `client/src` içinde **9** yorum satırını
+boşaltamıyordu. Yani dil taraması bugün de kör bir tarayıcıyla çalışıyordu;
+yalnızca henüz yanlış bir sonuca yol açmamıştı. Üç sebep:
+
+- **Tırnak taşıyan düzenli ifade.** `csv.js`teki `/[";\n\r]/` ve
+  `notes.js`teki ters tırnaklı sınıf, tarayıcıya sahte bir dize açtırıyor;
+  o noktadan sonraki yorumlar hiç boşalmıyordu.
+- **JSX metnindeki Türkçe kesme işareti.** `Claude'un`, `Chat'e` — aynı sahte
+  dize. Çözüm dilin kendi kuralı: tek/çift tırnaklı dize ham satır sonu
+  taşıyamaz, taşıyor görünüyorsa o tırnak dize açmıyordur.
+- **Şablon dizesi içindeki `${...}`.** `data.jsx:222`deki yorum, şablonun
+  tamamı opak sanıldığı için hiç görülmüyordu.
+
+Üçü de tarayıcıya öğretildi; iki ağaçta da sayı **sıfır**. Ölçüm bir kerelik
+kalmasın diye `yardimcilar.test.js` bunu her koşuda yeniden yapıyor: bütün
+sunucu ve istemci kaynaklarını tarıyor, boşalmamış tek bir yorum satırı
+bırakmıyor. Yeni yazılan bir kaynak tarayıcıyı kör ederse test kırılır —
+kural belgede değil, doğrulayanda.
+
+### Bir davranış değişikliği, bir yerde ödendi
+
+Yorumlar artık silinmiyor, **boşluğa çevriliyor**; uzunluk ve satır
+değişmezleri korunuyor, böylece `m.index` ve `dosya:satır` hesapları geçerli
+kalıyor. Bedeli sabit boyutlu pencerelerde çıktı: `mcp.test.js`teki 400
+karakterlik pencere, `projects.js`te sayım ile `deletedAt: null` arasındaki
+yedi satırlık yorum yüzünden koda ulaşamaz oldu ve test **düştü**. Ölçüt
+zaten "sonraki 400 karakter KOD"du; artık öyle yazılıyor (boşluk
+sıkıştırılarak) ve yorum hacminden bağımsız. Taranan bütün sabit pencereler
+denetlendi — sessizce zayıflamış başka yer yok.
+
+### `catch {}` kuralı iki kaynağa birden bakıyor
+
+Boş catch taramasında yorumun **iki ayrı rolü** var ve naif bir geçiş birini
+bozardı. Yorumun İÇİNDEKİ `catch {}` bulgu değildir (emit.js kusuru
+anlatırken kalıbı yazıyor); ama bloğun İÇİNDEKİ yorum ihlali **aklar** —
+açıklamalı boş catch bilerek serbest. Boşaltılmış satırda
+`catch { /* sebep */ }` gerçek bir boş catch'e dönüşür ve meşru kod bulgu
+sayılırdı. Bu yüzden kural iki kaynağa bakıyor: **ham** satır "boş mu"
+sorusuna, **boşaltılmış** satır "gerçek kod mu" sorusuna cevap veriyor.
+
+### Doğrulama
+
+Test sayısı 333 → **345**; on iki yeni testin hepsi tarayıcının kendisi için.
+Mutasyon **iki yönlü** koşuldu: beş tarayıcının her birine aynı ihlal önce
+kod, sonra `//`, sonra `/* */` biçiminde enjekte edildi — 15 denemenin 15'i
+beklendiği gibi (kod düştü, yorum geçti). Tek yönlü deneme yanıltırdı:
+hiçbir şey görmeyen bir tarayıcı da "yorumu görmedi" testini geçer. On
+altıncı deneme, meşru `catch { /* sebep */ }`ın hâlâ serbest olduğunu
+doğruluyor.
+
+### Sıradaki
+
+1. Cowork'te `add_comment` denemesi (yeni sohbet) — hâlâ açık.
+2. Deneme kartı #114 `ghghhg` projesinde duruyor.
+3. TODO'da kalanlar: MCP'de silme/etiket/alt görev, `updated_at` şema kararı,
+   sayfalama, anahtar sayfası.
 
 ---
 

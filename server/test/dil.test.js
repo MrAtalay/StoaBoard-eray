@@ -22,11 +22,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { yorumsuzKaynak, yorumsuzDosya } from './yardimcilar.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(__dirname, '..', '..', 'client', 'src');
 
-const dataSrc = fs.readFileSync(path.join(CLIENT, 'data.jsx'), 'utf8');
+const dataSrc = yorumsuzDosya(path.join(CLIENT, 'data.jsx'));
 
 /** APP_I18N içindeki bir dil bloğunun anahtarlarını çıkarır. */
 function sozlukAnahtarlari(lang) {
@@ -39,14 +40,13 @@ function sozlukAnahtarlari(lang) {
   // Satır satır işliyoruz, çünkü iki tuzak var:
   //   1. Yorum satırlarında Türkçe kesme işareti geçiyor ("3 Eylül'e"). Tek
   //      tırnak, string sökücüyü yanıltıp araya giren gerçek anahtarları yutar.
-  //      Bu yüzden yorum satırları önce tamamen atılıyor.
+  //      Bu yüzden yorumlar okunurken boşaltılıyor (yardimcilar.js).
   //   2. Bir satırda birden fazla anahtar olabiliyor (`a:'x', b:'y',`) ve
   //      değerlerin içinde iki nokta geçebiliyor; değerler silinmezse ya ikinci
   //      anahtar kaçar ya da metnin içinden hayalet anahtar üretilir.
   const anahtarlar = new Set();
   // bas+1: blok başlığının kendisi ("tr: {") anahtar sayılmasın.
   for (const satir of satirlar.slice(bas + 1, son)) {
-    if (satir.trim().startsWith('//')) continue;
     // Hem tek hem çift tırnak: içinde kesme işareti geçen Türkçe değerler
     // ("DM'ler her zaman gelir") çift tırnakla yazılmış. Yalnızca tek tırnağı
     // sökmek, değerin içindeki kesme işaretinin sahte string başlatıp sonraki
@@ -129,34 +129,6 @@ const DEKORATIF = new Set([
 
 const TURKCE = /[çğıöşüÇĞİÖŞÜ]/;
 
-// Yorumları boşlukla değiştirir; satır numaraları korunur, dize içerikleri
-// olduğu gibi kalır. Yorumlardaki Türkçe açıklama bulgu sayılmasın diye.
-function yorumSil(src) {
-  let out = '';
-  let i = 0;
-  const n = src.length;
-  while (i < n) {
-    const c = src[i];
-    const c2 = src[i + 1];
-    if (c === '/' && c2 === '/') {
-      while (i < n && src[i] !== '\n') { out += ' '; i += 1; }
-    } else if (c === '/' && c2 === '*') {
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) {
-        out += src[i] === '\n' ? '\n' : ' '; i += 1;
-      }
-      out += '  '; i += 2;
-    } else if (c === '"' || c === "'" || c === '`') {
-      out += c; i += 1;
-      while (i < n && src[i] !== c) {
-        if (src[i] === '\\') { out += src[i]; i += 1; if (i < n) { out += src[i]; i += 1; } continue; }
-        out += src[i]; i += 1;
-      }
-      if (i < n) { out += src[i]; i += 1; }
-    } else { out += c; i += 1; }
-  }
-  return out;
-}
-
 // Dile göre bölünmüş veri tabloları — meşru, atlanır.
 //
 // Takvim tatilleri dile göre AYRI KÜME kullanıyor: getHoliday() içinde
@@ -212,7 +184,7 @@ describe('görünüm dosyaları — çıplak Türkçe metin kalmamalı', () => {
       const ad = path.basename(dosya);
       if (ISTISNA.has(ad)) continue;
       const ham = fs.readFileSync(dosya, 'utf8');
-      const src = yorumSil(ham);
+      const src = yorumsuzKaynak(ham);
       const atlanacak = new Set([...authSozlukSatirlari(ham), ...dilVerisiSatirlari(ham)]);
       const satirlar = src.split(/\r?\n/);
       const satirNo = (idx) => src.slice(0, idx).split(/\r?\n/).length;
@@ -322,7 +294,7 @@ describe('görünüm dosyaları — çıplak Türkçe metin kalmamalı', () => {
   // sözlüğünü taşıyor. Ayrı mekanizma ama aynı kural geçerli: iki dil de
   // eksiksiz olmalı, yoksa authT sessizce Türkçe'ye düşer.
   test('AUTH_I18N tr ve en aynı anahtarları taşımalı', () => {
-    const src = fs.readFileSync(path.join(CLIENT, 'views', 'auth.jsx'), 'utf8');
+    const src = yorumsuzDosya(path.join(CLIENT, 'views', 'auth.jsx'));
     const satirlar = src.split(/\r?\n/);
     const blok = (lang) => {
       const bas = satirlar.findIndex((l) => new RegExp(`^  ${lang}: \\{`).test(l));
@@ -331,7 +303,6 @@ describe('görünüm dosyaları — çıplak Türkçe metin kalmamalı', () => {
       while (son < satirlar.length && !/^ {2}\},?$/.test(satirlar[son])) son += 1;
       const set = new Set();
       for (const s of satirlar.slice(bas + 1, son)) {
-        if (s.trim().startsWith('//')) continue;
         const t = s.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, "''");
         for (const m of t.matchAll(/\b([a-z][a-z0-9_]*)\s*:/g)) set.add(m[1]);
       }
@@ -353,10 +324,8 @@ describe('görünüm dosyaları — çıplak Türkçe metin kalmamalı', () => {
     for (const dosya of jsxDosyalari(CLIENT)) {
       const ad = path.basename(dosya);
       if (ISTISNA.has(ad)) continue;
-      const satirlar = fs.readFileSync(dosya, 'utf8').split(/\r?\n/);
+      const satirlar = yorumsuzDosya(dosya).split(/\r?\n/);
       satirlar.forEach((satir, i) => {
-        const kirpik = satir.trim();
-        if (kirpik.startsWith('//') || kirpik.startsWith('*')) return;
         for (const m of satir.matchAll(attrRe)) {
           if (TURKCE.test(m[2])) bulgular.push(`${ad}:${i + 1}  ${m[1]}="${m[2]}"`);
         }
@@ -391,9 +360,7 @@ describe('sunucu hata mesajları — koda bağlı ve çevrili olmalı', () => {
   test('error alanı düz Türkçe metin değil, kod taşıyor', () => {
     const bulgular = [];
     for (const ad of HATA_DOSYALARI) {
-      const src = fs.readFileSync(
-        path.resolve(__dirname, '..', 'src', 'routes', ad), 'utf8',
-      );
+      const src = yorumsuzDosya(path.resolve(__dirname, '..', 'src', 'routes', ad));
       for (const m of src.matchAll(/\berror:\s*'([^']+)'/g)) {
         if (TURKCE.test(m[1]) || /\s/.test(m[1])) bulgular.push(`${ad}  error: '${m[1]}'`);
       }
@@ -416,9 +383,7 @@ describe('sunucu hata mesajları — koda bağlı ve çevrili olmalı', () => {
     const en = sozlukAnahtarlari('en');
     const eksik = [];
     for (const ad of HATA_DOSYALARI) {
-      const src = fs.readFileSync(
-        path.resolve(__dirname, '..', 'src', 'routes', ad), 'utf8',
-      );
+      const src = yorumsuzDosya(path.resolve(__dirname, '..', 'src', 'routes', ad));
       for (const m of src.matchAll(/\berror:\s*'(err_[a-z0-9_]+)'/g)) {
         if (DINAMIK_MESAJLI.has(m[1])) continue;
         if (!tr.has(m[1])) eksik.push(`${m[1]} (tr)`);

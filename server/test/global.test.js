@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { yorumsuzKaynak } from './yardimcilar.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '..', '..', 'client', 'src');
@@ -59,19 +60,12 @@ function kaynakDosyalari(dir) {
   return out;
 }
 
-/** Yorum satırlarını çıkar — yorumdaki `window.x` yanlış alarm üretmesin. */
-function yorumsuz(src) {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1');
-}
-
 test('okunan her window.* globali bir yerde atanmış olmalı', () => {
   const dosyalar = kaynakDosyalari(SRC);
   assert.ok(dosyalar.length > 0, 'istemci kaynak dosyası bulunamadı');
 
   const tumKaynak = dosyalar
-    .map((f) => yorumsuz(fs.readFileSync(f, 'utf8')))
+    .map((f) => yorumsuzKaynak(fs.readFileSync(f, 'utf8')))
     .join('\n');
 
   const okunanlar = new Set(

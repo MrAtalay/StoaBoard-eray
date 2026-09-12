@@ -51,6 +51,7 @@ import {
   DESC_SINIRI,
 } from '../src/lib/mcpShape.js';
 import { ALL_PERMISSIONS, memberPermissions } from '../src/lib/permissions.js';
+import { yorumsuzDosya } from './yardimcilar.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '..', 'src');
@@ -402,11 +403,14 @@ describe('baslik', () => {
  * JSDoc bloğundaki eski kodun alıntısı "girintili JSON kaldı" testini
  * kırdı. Kod temizdi, test yorumu kod sandı — birincide ihlali örtmüştü,
  * ikincide olmayan bir ihlal uydurdu. Blok yorumlar da artık siliniyor.
+ *
+ * 12 Eylül: tarayıcı test/yardimcilar.js içine taşındı. Sebep aynı sınıf —
+ * "yorum nedir" sorusunun depoda ÜÇ ayrı cevabı vardı ve üçü de farklı şeyi
+ * kaçırıyordu. Buradaki sürüm satır silerek çalışıyordu, yani satır numarası
+ * bildiren taramalarda kullanılamıyordu. Tek okuyucu artık dize, düzenli
+ * ifade ve şablon farkında; satır ve konum değişmezlerini koruyor.
  */
-const yorumsuz = (yol) =>
-  fs.readFileSync(path.join(SRC, ...yol.split('/')), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+const yorumsuz = (yol) => yorumsuzDosya(path.join(SRC, ...yol.split('/')));
 
 describe('araç başlıkları — kullanıcı metni, iki dilde', () => {
   const mcpSrc = yorumsuz('routes/mcp.js');
@@ -467,7 +471,13 @@ describe('açık görev tanımı — üç yerde de aynı olmalı', () => {
       const src = yorumsuz(dosya);
       const bas = src.indexOf(cagri);
       assert.ok(bas > 0, `${cagri} bulunamadı — sayım taşınmışsa test güncellenmeli`);
-      const blok = src.slice(bas, bas + 400);
+      // Pencere boslugu sikistirilarak aliniyor. Yorumlar artik SILINMIYOR,
+      // bosluga cevriliyor (satir ve konum degismezleri korunsun diye), bu
+      // yuzden sabit 400 karakter yorumu bol bir blokta koda hic ulasmiyordu:
+      // projects.js'te sayim ile `deletedAt: null` arasinda yedi satir yorum
+      // var. Olcut zaten hep "sonraki 400 karakter KOD" idi; simdi oyle
+      // yaziliyor ve yorum hacminden bagimsiz.
+      const blok = src.slice(bas).replace(/\s+/g, ' ').slice(0, 400);
       assert.ok(
         /deletedAt:\s*null/.test(blok),
         'Açık görev sayımı silinmiş kartları da sayıyor; liste onları vermiyor.',

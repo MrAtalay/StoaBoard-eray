@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { yorumsuzDosya } from './yardimcilar.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROUTES = path.resolve(__dirname, '..', 'src', 'routes');
@@ -50,7 +51,10 @@ function ucKayitlari() {
   const kayitlar = [];
   for (const ad of fs.readdirSync(ROUTES).sort()) {
     if (!ad.endsWith('.js')) continue;
-    const src = fs.readFileSync(path.join(ROUTES, ad), 'utf8');
+    // Yorumlar boşaltılarak okunuyor: yorum satırına alınmış bir uç kaydı
+    // gerçek uç sayılırsa, var olmayan bir uç için "korumasız" denir ya da
+    // ACIK_UCLAR listesi hayalet kayıtla şişer.
+    const src = yorumsuzDosya(path.join(ROUTES, ad));
     // tasksRouter.patch( · notesRouter.post( · router.get(
     const eslesmeler = [...src.matchAll(/(\w*[Rr]outer)\.(get|post|patch|put|delete)\(/g)];
     for (let i = 0; i < eslesmeler.length; i += 1) {
@@ -179,10 +183,8 @@ describe('soket — kimlik olay gövdesinden okunamaz', () => {
     const bulgular = [];
     for (const ad of fs.readdirSync(SOCKETS).sort()) {
       if (!ad.endsWith('.js')) continue;
-      const src = fs.readFileSync(path.join(SOCKETS, ad), 'utf8');
+      const src = yorumsuzDosya(path.join(SOCKETS, ad));
       src.split(/\r?\n/).forEach((satir, i) => {
-        const kirpik = satir.trim();
-        if (kirpik.startsWith('//') || kirpik.startsWith('*')) return;
         for (const m of satir.matchAll(KIMLIK_SIZINTISI)) {
           bulgular.push(`${ad}:${i + 1}  ${m[0]}`);
         }
@@ -197,7 +199,7 @@ describe('soket — kimlik olay gövdesinden okunamaz', () => {
   });
 
   test('kimlik çözümü oturuma bağlı', () => {
-    const src = fs.readFileSync(path.join(SOCKETS, 'chat.js'), 'utf8');
+    const src = yorumsuzDosya(path.join(SOCKETS, 'chat.js'));
     assert.match(
       src, /socket\.request\??\.\s*session\??\.\s*userId/,
       'sockets/chat.js kimliği oturumdan çözmüyor — auth modeli değişmiş olabilir.',
