@@ -5,12 +5,98 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 12 Eylül 2026 akşam, **ev makinesinde** (5432 açık).
+**Son güncelleme:** 12 Eylül 2026 gece, **ev makinesinde** (5432 açık).
 
 > **MCP 0.4.0 canlıda ve uçtan uca doğrulandı** (12 Eylül sabahı): tarama 64
 > geçti / 0 kaldı, ilk gerçek kart Cowork'ten açıldı (#114), denetim kaydında
 > üç `mcp.task_*` satırı. Bağlayıcı kurulumu **No sign-in + `x-auth-token`**
 > (0-I). Sıradaki iş: kart yorumundaki `@bahsetme` sızıntısı.
+
+---
+
+## 0-O. 12 Eylül, gece — bildirim metni sözleşmesi teste bağlandı
+
+TODO'nun kendi sözleriyle "bu depoda en çok kusur çıkan alan". Altı kusur
+geçmişte elle bulundu, hiçbirini bir test yakalamadı. Bu tur o alanın **en
+ölçülebilir** parçasını kapattı: bildirim metninin biçimi.
+
+### Bir üretici, üç okuyucu
+
+`buildNotificationText(type, params)` yalnızca `JSON.stringify({type, ...params})`
+üretiyor — serbest biçimli bir JSON, şeması hiçbir yerde yazılı değil. Üç ayrı
+okuyucusu var ve hiçbiri ötekini görmüyor:
+
+1. **İstemci** (`data.jsx`): `type`ten i18n anahtarı türetiyor
+   (`notif_<tür>` / `activity_<tür>`), sonra çevirideki `{who}` `{task}` gibi
+   yer tutucuları parametrelerle dolduruyor.
+2. **E-posta** (`mailer.js`): türe göre `who`, `task`, `preview`, `col` okuyor.
+3. **Akış raporu** (`throughput.js`): `task_moved` kayıtlarından `parsed.col`
+   okuyup kolon **başlığıyla** eşleştiriyor.
+
+Sessiz yanlışın mekanizması burada: `_fillTemplate` bilinmeyen yer tutucuyu
+`params[k] ?? ''` ile **boş dizeye** çeviriyor. Bir parametre yeniden
+adlandırılırsa cümlenin ortası sessizce boşalır — istisna yok, log yok. Anahtar
+hiç yoksa kullanıcı ham JSON görüyor. `throughput` tarafında ise üretici `col`a
+slug yazsa eşleşme tamamen kaçar ve rapor **sıfır dolu bir grafiğe** döner.
+
+On bir tür, beş route dosyası ve soket işleyicisi taranarak envantere alındı;
+tablo elle bakımlı değil, kaynaktan denetleniyor. Her tür için: iki dilde
+anahtar var mı, şablondaki her yer tutucu üreticide gerçekten üretiliyor mu,
+e-posta gövdesi gerçek üretici çıktısıyla doluyor mu.
+
+### Mutasyon somut bir hata buldu — onay değil
+
+İlk koşuda 46 testin 46'sı geçti ve altı mutasyonun **beşi** yakalandı.
+Altıncısı kaçtı: sözleşme dışından yazılmış bir `notification.create`, hemen
+ardından gelen meşru çağrının `buildNotificationText` metnini görüp aklandı.
+Sebep benim yazdığım sabit **400 karakterlik pencereydi**.
+
+Bu, `yetki.test.js`te de düşmüş olan sınıfın aynısı — DEVIR'deki ifadeyle
+"pencere sonraki kaydın içine taşıyor ve korumasız bir uç, komşusunun ara
+yazılımını görüp aklanıyordu". **Komşuluk, testin ölçtüğü şeyi sessizce
+genişletiyor.** Üçüncü kez aynı tuzak.
+
+Düzeltme pencereyi büyütmek değil, **hiç pencere kullanmamak**: çağrının kendi
+argümanları parantez dengelenerek çıkarılıyor (dize içindeki parantezler
+atlanarak). Sonra altı mutasyonun altısı da yakalandı.
+
+### Bilerek değiştirilmeyen iki bulgu
+
+Test yazarken çıktılar, ikisi de davranış değişikliği gerektiriyor ve karar
+senin:
+
+1. **Soket yolu `createAndPush`i atlıyor.** `sockets/chat.js` bildirimi
+   doğrudan `prisma.notification.create` ile yazıyor — metin sözleşmesine
+   uyuyor (iyi), ama e-posta gönderimi o yoldan hiç çalışmıyor. Yani HTTP
+   sohbet ucundan gelen bir bahsetme e-posta üretirken soketten gelen
+   üretmiyor. Asimetri sessiz.
+2. **`POST /api/notifications` gövdeden gelen metni doğrudan yazıyor** ve
+   hedef kullanıcı için yalnızca "var mı" kontrolü yapıyor — üyelik ya da
+   alan kontrolü yok. Kimliği doğrulanmış herhangi biri, herhangi bir
+   kullanıcıya istediği metinle bildirim gönderebiliyor. Test bunu
+   `SERBEST_METIN` muafiyet listesine gerekçesiyle yazarak **görünür** kıldı
+   (`ACIK_UCLAR` kalıbı); ikinci bir serbest-metin yolu listeye yazılmadan
+   eklenemiyor.
+
+**Kapsam dışı bırakılan:** okundu durumu. TODO maddesi onu da istiyor ama
+"bildirim okundu bilgisi sunucuya hiç yazılmıyor" ayrı bir **açık kusur**
+maddesi; saf fonksiyona indirmek üretim davranışını değiştirmek demek. Madde
+bu yüzden `[~]` (kısmi) işaretlendi.
+
+### Doğrulama
+
+382 → **428 test**, hepsi geçiyor. Altı mutasyon, altısı da yakalandı
+(pencere düzeltmesinden sonra): üretici parametresini yeniden adlandırmak,
+sözlükte karşılığı olmayan yeni tür eklemek, `task_moved`a slug yazmak,
+istemci sözlüğünden bir anahtarı silmek, şablona üretilmeyen bir yer tutucu
+koymak, ve sözleşme dışından serbest metinle bildirim yazmak.
+
+### Sıradaki
+
+1. Cowork'te `add_comment` denemesi (yeni sohbet) — makine başı iş.
+2. Deneme kartı #114 `ghghhg` projesinde duruyor.
+3. Yukarıdaki iki bulgu karar bekliyor (soket e-posta asimetrisi, serbest
+   metin ucunun üyelik kontrolü).
 
 ---
 

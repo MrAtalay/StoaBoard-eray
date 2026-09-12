@@ -349,7 +349,19 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       yeniden tanımla ve okundu işaretlemeyi tamamen kullanıcıya bırak.
       (c) sekmeyi korur ve bugünkü davranışa en yakın olanıdır.
       Cevap verilmeden kod yazılmamalı; [BILDIRIMLER.md](BILDIRIMLER.md) oku.
-- [ ] **Bildirimler test altına alınmalı — bu depoda en çok kusur çıkan alan.**
+- [~] **Bildirimler test altına alınmalı — bu depoda en çok kusur çıkan alan.**
+      *(Kısmen kapandı 12 Eylül 2026 — DEVIR 0-O.)* **Metin sözleşmesi**
+      kapandı: on bir bildirim türü kaynaktan envantere alındı, her tür için
+      istemci sözlüğünde iki dilde anahtar ve şablondaki her yer tutucunun
+      üreticide gerçekten üretildiği doğrulanıyor (`_fillTemplate` eksik
+      parametreyi boş dizeye çeviriyor — sessiz yanlışın mekanizması buydu).
+      `throughput.js` dikişi de kilitli: `task_moved` kaydına slug yazılırsa
+      akış raporu sessizce boşalıyordu. Sözleşme dışından serbest metinle
+      yazan tek uç muafiyet listesinde, gerekçesiyle. 46 test, altı
+      mutasyonun altısı yakalandı.
+      **Kalan:** okundu durumu — aşağıdaki "okundu bilgisi sunucuya hiç
+      yazılmıyor" maddesine bağlı; saf fonksiyona indirmek üretim davranışını
+      değiştirmek demek, o yüzden ayrı ele alınacak.
       Geçmiş sayıyor: bahsetme bildiriminin çalışma alanı/kanal kapsamını
       aşması (`de25569`), panelin ikinci tıklamada kapanmaması, sohbet/bildirim
       panel çakışması (`6e95261`), sekme açılınca dashboard'a kayma
