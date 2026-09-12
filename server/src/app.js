@@ -190,6 +190,19 @@ export function createApp() {
     res.type('html').send(indexHtml);
   });
 
+  // --- OAuth keşif uçları: yok, ve bunu açıkça söyle ---
+  //
+  // Bu adresler SPA yedeğine düşüyordu, yani istemci 200 + HTML alıyordu.
+  // Claude'un bağlayıcı ekranı bunu "OAuth var" diye okuyup (Detected)
+  // "Sign in now"u seçti ve kayıt "couldn't register" ile düştü; bağlayıcı
+  // 10 ve 12 Eylül 2026'da tam olarak bu yüzden kurulamadı. StoaBoard'da
+  // OAuth sunucusu yok, kimlik `x-auth-token` başlığıyla kuruluyor
+  // (`routes/mcp.js`). Yokluk sessizce HTML döndürerek değil, 404 ile
+  // söylenir — bu deponun "koşulun yokluk hâli gürültü çıkarmalı" kuralı.
+  app.use('/.well-known', (_req, res) => {
+    res.status(404).json({ error: 'Not found' });
+  });
+
   // --- 404 fallback ---
   app.use((req, res) => {
     if (req.path.startsWith('/api')) {

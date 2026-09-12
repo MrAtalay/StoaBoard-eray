@@ -662,3 +662,38 @@ describe('görev atama uçları — üyelik kapısından geçiyor', () => {
     );
   });
 });
+
+// ─── OAuth keşif uçları — yokluk 404 ile söyleniyor ────────────────────────
+//
+// Kusur (12 Eylül 2026): `/.well-known/oauth-authorization-server` ve
+// kardeşleri SPA yedeğine düşüp 200 + HTML döndürüyordu. Claude'un bağlayıcı
+// ekranı bunu "OAuth var" diye okudu (ekranda "Detected"), "Sign in now"u
+// seçti ve kayıt "couldn't register" ile düştü — bağlayıcı kurulamaz hâle
+// geldi. StoaBoard'da OAuth sunucusu yok; kimlik x-auth-token başlığıyla
+// kuruluyor. Yokluk sessiz kalmamalı.
+//
+// Veritabanı gerektirmeden kaynakta doğrulanıyor; yorumlar önce siliniyor.
+
+describe('OAuth keşif uçları — SPA yedeğine düşmüyor', () => {
+  const src = fs
+    .readFileSync(path.resolve(__dirname, '..', 'src', 'app.js'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  const KESIF = "app.use('/.well-known'";
+  const YEDEK = 'app.use((req, res) => {';
+
+  test('/.well-known SPA yedeğinden ÖNCE ele alınıyor', () => {
+    const kesif = src.indexOf(KESIF);
+    const yedek = src.indexOf(YEDEK);
+    assert.ok(kesif !== -1, '/.well-known ele alınmıyor — SPA yedeği 200 + HTML döndürür');
+    assert.ok(yedek !== -1, 'SPA yedeği bulunamadı — tarama deseni bozulmuş olabilir');
+    assert.ok(kesif < yedek, '/.well-known SPA yedeğinden sonra geliyor, yani hiç çalışmıyor');
+  });
+
+  test('404 dönüyor', () => {
+    const blok = src.slice(src.indexOf(KESIF), src.indexOf(YEDEK));
+    assert.ok(/status\(404\)/.test(blok), '/.well-known 404 dışında bir şey dönüyor');
+  });
+});
