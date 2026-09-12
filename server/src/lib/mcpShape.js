@@ -435,6 +435,12 @@ export const ARAC_BASLIKLARI = {
   update_task: { tr: 'Görevi düzenle', en: 'Edit task' },
   move_task: { tr: 'Görevi taşı', en: 'Move task' },
   add_comment: { tr: 'Yorum ekle', en: 'Add comment' },
+  delete_task: { tr: 'Görevi çöpe at', en: 'Trash task' },
+  restore_task: { tr: 'Görevi geri al', en: 'Restore task' },
+  add_subtask: { tr: 'Alt görev ekle', en: 'Add subtask' },
+  update_subtask: { tr: 'Alt görevi düzenle', en: 'Edit subtask' },
+  delete_subtask: { tr: 'Alt görevi sil', en: 'Delete subtask' },
+  set_active_workspace: { tr: 'Aktif alanı değiştir', en: 'Switch workspace' },
 };
 
 /**

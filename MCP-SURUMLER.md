@@ -16,6 +16,77 @@ commit'te sürüm artırılır ve buraya yazılır.
 
 ---
 
+## 0.5.0 — 13 Eylül 2026
+
+**Yazma araçları tamamlandı.** Yirmi araç, onu yazıyor. TODO'daki "3. adım —
+yazma araçları" maddesinin eksik dört parçası (silme, etiket, alt görev, alan
+değiştirme) bu sürümde kapandı.
+
+### Eklenen araçlar
+
+- **`delete_task`** — kartı **çöp kutusuna** taşır. Kalıcı silme bu yüzeyde
+  YOK ve olmayacak: API'de ayrı bir `/permanent` ucu var, geri dönüşü yok ve
+  modele verilmesi bilinçli olarak reddedildi. Kart 30 gün çöpte durur.
+  Zaten çöpteki karta ikinci kez yazılmıyor — `deletedAt` tazelenseydi 30
+  günlük sayaç sessizce başa dönerdi.
+- **`restore_task`** — çöpteki kartı panoya geri alır. `delete_task` ile çift
+  oluşturuyor: modele verilen silme yetkisinin geri dönüşü var.
+- **`add_subtask`**, **`update_subtask`**, **`delete_subtask`** — kontrol
+  listesi maddeleri. `update_subtask` done/title alıyor; kartın ilerleme
+  yüzdesi alt görevlerden hesaplandığı için ikisi de ilerlemeyi değiştirir.
+  `delete_subtask` KALICI (alt görevin çöp kutusu yok) ve açıklaması bunu
+  söylüyor.
+- **`set_active_workspace`** — aktif çalışma alanını değiştirir.
+
+### `update_task` artık etiket de alıyor
+
+`add_labels` / `remove_labels` — tam liste DEĞİL. Sebep atananlarla birebir
+aynı: API `labels` alanını alınca önce hepsini siliyor, sonra verilenleri
+kuruyor; tam liste isteyen bir araç modelin "bir etiket ekle" niyetini öbür
+etiketleri sessizce silmeye çevirirdi.
+
+Bilinmeyen slug **sessizce yutulmuyor**: API `if (label)` ile tanımadığı
+etiketi yok sayıyordu, yani model "etiketledim" sanır ve kartta hiçbir şey
+olmazdı. Araç slug'ı projenin etiket kataloğuna karşı doğruluyor ve
+`err_mcp_label_not_found` ile geçerli listeyi döndürüyor — kolon slug'ındaki
+`kolonYok` tuzağının aynısı.
+
+### Alt görev aitliği ayrı bir kapı
+
+Alt görev uçları kimliği **doğrudan** alıyor (`/api/subtasks/:id`). Aitlik MCP
+tarafında doğrulanmasaydı aktif alan kapısı boşa düşerdi: model başka bir
+kartın alt görevini yalnızca kimliğiyle düzenleyebilirdi. İki araç da alt
+görevin o karta ait olduğunu `get_task` yanıtındaki `subtasks_detail`
+üzerinden doğruluyor; değilse `err_mcp_subtask_not_found`.
+
+### `set_active_workspace` bilinçli bir istisna
+
+**Aktif alan tarayıcı oturumuyla ORTAK** (`users.currentWorkspaceId`). Bu araç
+kullanıcının ekranında açık olan alanı da değiştiriyor; açıklaması bunu açıkça
+söylüyor ve `destructiveHint: true` taşıyor.
+
+Araç, öbür yazma araçlarının geçtiği `yazmaKapisi`ndan **geçmiyor** — o kapı
+"istenen alan = aktif alan" diye baktığı için bu aracı tanımı gereği
+reddederdi. Üyelik denetimi API tarafında (403) ve olduğu gibi modele
+iletiliyor. Muafiyet `mcp.test.js` içindeki `ALAN_KAPISIZ` listesinde
+gerekçesiyle kayıtlı; liste bayatlayamıyor (ayrı test aracın varlığını
+doğruluyor) ve muafiyet yalnızca alan kapısını kaldırıyor — denetim kaydı ve
+salt-okuma işareti şartları bu araca da uygulanıyor.
+
+### Denetim kaydı
+
+Altı yeni eylem: `mcp.task_deleted`, `mcp.task_restored`, `mcp.subtask_added`,
+`mcp.subtask_updated`, `mcp.subtask_deleted`, `mcp.workspace_switched`.
+Ayrıntıda yalnızca kimlikler ve alan adları — alt görev metni de, etiket
+değişikliği dışındaki içerik de yazılmıyor. `mcp.workspace_switched`,
+"kullanıcının ekranındaki alanı Claude değiştirdi" sorusunun tek cevabı.
+
+Kırıcı değişiklik yok; okuma yüzeyi ve önceki araçlar aynı.
+
+> **Araç listesi değişti — yeni sohbet aç.**
+
+---
+
 ## 0.4.1 — 12 Eylül 2026
 
 Dördüncü yazma aracı: **`add_comment`**. On dört araç, dördü yazıyor.

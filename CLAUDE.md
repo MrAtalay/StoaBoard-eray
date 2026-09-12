@@ -74,8 +74,11 @@ artık yalnızca kartın alanının üyeleri arasında aranıyor, belirsiz önek
 kimseye bildirim göndermiyor.
 Hemen ardından **0.4.1**: `add_comment` aracı (DEVIR 0-K). Yorum aracı 0.4.0'da
 bilerek bekletilmişti; bahsetme kapsamı daralınca açıldı.
+**0.5.0** (13 Eylül, DEVIR 0-S) yazma araçlarını tamamladı: silme (çöpe),
+geri alma, alt görevler, alan değiştirme ve `update_task`'a etiket. Yirmi
+araç, onu yazıyor; kalıcı silme yüzeye bilinçli olarak çıkmadı.
 
-Test sayısı **441**, hepsi geçiyor. Ayrıntılı durum için **her zaman
+Test sayısı **446**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
 tarihli ve daha güvenilir.
 
@@ -141,7 +144,7 @@ tarayıcı içi SQL Editor'ü HTTPS üzerinden çalıştığı için o ağlarda 
 
 ## Çalışma biçimi
 
-**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 441 test,
+**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 446 test,
 veritabanı gerektirmez, birkaç saniye sürer. Çıktıda `[db] warmup failed` /
 "Can't reach database server" görürsen bu bir test hatası **değil**: uygulama
 modülü yüklenirken bağlantıyı deniyor, kurumsal ağda 5432 kapalı. Ölçüt en
@@ -170,7 +173,7 @@ derlemeyi çalıştırıp kırmızıysa push'u iptal ediyor. Kancalar `.git/hook
 içinde takip edilmediği için depoda `.githooks/` klasöründe duruyorlar; komut
 git'e oraya bakmasını söylüyor. Bilerek atlamak için `git push --no-verify`.
 
-**Kanca ofis ağında da çalışır.** 441 testin hiçbiri veritabanı istemiyor;
+**Kanca ofis ağında da çalışır.** 446 testin hiçbiri veritabanı istemiyor;
 çalışmayan tek şey uygulamanın kendisi. Kanca sahte bir `DATABASE_URL` ile
 koşuyor ki test koşusu ağa bağımlı hale gelip asılı kalmasın.
 

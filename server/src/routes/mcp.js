@@ -91,7 +91,7 @@ export const mcpRouter = Router();
 // cevaplanamıyor. Yüzeyi değiştiren her commit'te bump et; `initialize`
 // yanıtındaki serverInfo.version dağıtım kanıtı olarak okunabilsin.
 // Sürüm geçmişi ve kırıcı değişiklikler: MCP-SURUMLER.md.
-const MCP_VERSION = '0.4.1';
+const MCP_VERSION = '0.5.0';
 
 /**
  * Araçların fiilen kullandığı izinler.
@@ -397,6 +397,41 @@ function kolonYok(kolonlar, istenen) {
       error: 'err_mcp_column_not_found',
       message: `"${istenen}" diye bir kolon yok — geçerli slug'lar valid_columns'ta`,
       valid_columns: kolonlar.map((c) => c.id),
+    },
+  };
+}
+
+/**
+ * Olmayan etiket. Kolon slug'ındaki tuzağın aynısı: `PATCH /tasks/:id`
+ * tanımadığı etiket slug'ını **sessizce yok sayıyor** (`if (label)`, else yok),
+ * yani model "etiketledim" sanırdı ve kartta hiçbir şey olmazdı.
+ */
+function etiketYok(gecerliler, istenenler) {
+  return {
+    status: 400,
+    data: {
+      error: 'err_mcp_label_not_found',
+      message: `Şu etiketler bu projede yok: ${istenenler.join(', ')} — geçerliler valid_labels'ta`,
+      unknown_labels: istenenler,
+      valid_labels: gecerliler,
+    },
+  };
+}
+
+/**
+ * Olmayan ya da başka karta ait alt görev.
+ *
+ * Kapalı başarısızlık: alt görev uçları kimliği doğrudan alıyor ve karta
+ * aitliği MCP tarafında doğrulanmazsa, aktif alan kapısı boşa düşerdi —
+ * model başka bir kartın alt görevini kimliğiyle düzenleyebilirdi.
+ */
+function altGorevYok(altlar, istenen) {
+  return {
+    status: 404,
+    data: {
+      error: 'err_mcp_subtask_not_found',
+      message: `Bu görevde ${istenen} kimlikli bir alt görev yok`,
+      valid_subtasks: altlar.map((s) => String(s.id)),
     },
   };
 }
@@ -959,7 +994,10 @@ function buildMcpServer(user, dil, req) {
         + 'olmalıdır; değilse 409 döner, hiçbir şey yazılmaz. Atananlar tam '
         + 'liste olarak DEĞİL, add_assignees / remove_assignees ile verilir — '
         + 'öbür atananlar korunur. Yalnızca alan üyeleri eklenebilir; yeni '
-        + 'eklenen kişiye bildirim gider. desc verilirse eski açıklamanın '
+        + 'eklenen kişiye bildirim gider. Etiketler de tam liste DEĞİL, '
+        + 'add_labels / remove_labels ile verilir; slug projenin etiket '
+        + 'kataloğunda yoksa hata döner ve hiçbir şey yazılmaz. '
+        + 'desc verilirse eski açıklamanın '
         + 'yerine geçer. due ya da start için null tarihi siler. Görev aktif '
         + 'alanda değilse "bulunamadı" döner.',
       inputSchema: {
@@ -974,10 +1012,17 @@ function buildMcpServer(user, dil, req) {
           .describe('eklenecek kullanıcı slug\'ları — list_members'),
         remove_assignees: z.array(z.string()).max(20).optional()
           .describe('çıkarılacak kullanıcı slug\'ları'),
+        add_labels: z.array(z.string()).max(20).optional()
+          .describe('eklenecek etiket slug\'ları — get_task yanıtındaki labels'),
+        remove_labels: z.array(z.string()).max(20).optional()
+          .describe('çıkarılacak etiket slug\'ları'),
       },
       annotations: { ...yazma, destructiveHint: true, idempotentHint: true },
     },
-    async ({ workspace_id, task_id, title, desc, priority, due, start, add_assignees, remove_assignees }) => {
+    async ({
+      workspace_id, task_id, title, desc, priority, due, start,
+      add_assignees, remove_assignees, add_labels, remove_labels,
+    }) => {
       const kapi = await yazmaKapisi(user, workspace_id);
       if (!kapi.ok) return hata(kapi.yanit);
 
@@ -1008,6 +1053,35 @@ function buildMcpServer(user, dil, req) {
         govde.assignees = liste;
       }
 
+      // Etiketler de tam liste DEĞİL, ekle/çıkar ile. Sebebi atananlarla
+      // birebir aynı: API `labels` alanını alınca önce hepsini siliyor, sonra
+      // verilenleri kuruyor. Tam liste isteyen bir araç, modelin "bir etiket
+      // ekle" niyetini öbür etiketleri sessizce silmeye çevirirdi.
+      // `atamaListesi` slug aritmetiği yapıyor, atananlara özel değil.
+      const etiketEkle = add_labels || [];
+      const etiketCikar = remove_labels || [];
+      if (etiketEkle.length || etiketCikar.length) {
+        const katalog = await callSelf(user, `/api/projects/${g.proje.id}/labels`);
+        if (!katalog.ok) return hata(katalog);
+        const gecerli = Object.keys(katalog.data || {});
+        const bilinmeyen = [...new Set([...etiketEkle, ...etiketCikar])]
+          .filter((s) => !gecerli.includes(s));
+        if (bilinmeyen.length) return hata(etiketYok(gecerli, bilinmeyen));
+
+        const e = atamaListesi(g.gorev.labels, { ekle: etiketEkle, cikar: etiketCikar });
+        if (e.celiski.length) {
+          return hata({
+            status: 400,
+            data: {
+              error: 'err_mcp_label_conflict',
+              message: 'Aynı etiket hem eklenip hem çıkarılamaz',
+              conflicting: e.celiski,
+            },
+          });
+        }
+        govde.labels = e.liste;
+      }
+
       const alanlar = Object.keys(govde);
       if (!alanlar.length) {
         return hata({
@@ -1028,6 +1102,8 @@ function buildMcpServer(user, dil, req) {
           fields: alanlar,
           ...(ekle.length ? { assignees_added: ekle } : {}),
           ...(cikar.length ? { assignees_removed: cikar } : {}),
+          ...(etiketEkle.length ? { labels_added: etiketEkle } : {}),
+          ...(etiketCikar.length ? { labels_removed: etiketCikar } : {}),
         },
       });
       const kolonlar = await bitisKolonlariniGetir(user, g.proje.id);
@@ -1149,6 +1225,322 @@ function buildMcpServer(user, dil, req) {
         comment: yanit.data,
         task: { id: metinKimlik(task_id), title: g.gorev.title, project_name: g.proje.name },
       }, kapi.workspace);
+    },
+  );
+
+  // ── delete_task ──────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'delete_task',
+    {
+      title: B('delete_task'),
+      description:
+        'Bir görevi ÇÖP KUTUSUNA taşır. Kalıcı silme bu yüzeyde YOK: kart 30 '
+        + 'gün çöpte durur ve restore_task ile geri alınabilir. Kullanıcı '
+        + 'açıkça istemediyse silme; "şunu kaldır" gibi belirsiz bir ifadede '
+        + 'önce sor. workspace_id zorunludur ve AKTİF alanın kimliği olmalıdır; '
+        + 'değilse 409 döner. Görev aktif alanda değilse "bulunamadı" döner. '
+        + 'Kart zaten çöpteyse hiçbir şey yazılmaz ve deleted=false döner.',
+      inputSchema: {
+        workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
+        task_id: kimlik('list_tasks içindeki id'),
+      },
+      annotations: { ...yazma, destructiveHint: true, idempotentHint: true },
+    },
+    async ({ workspace_id, task_id }) => {
+      const kapi = await yazmaKapisi(user, workspace_id);
+      if (!kapi.ok) return hata(kapi.yanit);
+
+      const g = await aktifGorev(user, task_id);
+      if (!g.ok) return hata(g.yanit);
+
+      // Zaten çöpteyse ikinci kez yazmıyoruz: `deletedAt` tazelenirse kartın
+      // 30 günlük sayacı sessizce başa dönerdi.
+      if (g.gorev.deleted_at) {
+        return baglamli(user, {
+          deleted: false,
+          already_trashed: true,
+          task: { id: metinKimlik(task_id), title: g.gorev.title, project_name: g.proje.name },
+        }, kapi.workspace);
+      }
+
+      const yanit = await callSelf(user, `/api/tasks/${task_id}`, { method: 'DELETE' });
+      if (!yanit.ok) return hata(yanit);
+
+      recordAudit(req, {
+        workspaceId: kapi.workspace.id,
+        user,
+        action: AUDIT.MCP_TASK_DELETED,
+        detail: { task_id: metinKimlik(task_id), project_id: metinKimlik(g.proje.id) },
+      });
+      return baglamli(user, {
+        deleted: true,
+        restorable: true,
+        task: { id: metinKimlik(task_id), title: g.gorev.title, project_name: g.proje.name },
+      }, kapi.workspace);
+    },
+  );
+
+  // ── restore_task ─────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'restore_task',
+    {
+      title: B('restore_task'),
+      description:
+        'Çöp kutusundaki bir görevi panoya geri alır. Kartın çöpte olup '
+        + 'olmadığı get_task yanıtındaki deleted_at alanından görülür (dolu ise '
+        + 'çöpte). workspace_id zorunludur ve AKTİF alanın kimliği olmalıdır. '
+        + 'Kart zaten panodaysa hiçbir şey yazılmaz ve restored=false döner.',
+      inputSchema: {
+        workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
+        task_id: kimlik('list_tasks içindeki id'),
+      },
+      annotations: { ...yazma, idempotentHint: true },
+    },
+    async ({ workspace_id, task_id }) => {
+      const kapi = await yazmaKapisi(user, workspace_id);
+      if (!kapi.ok) return hata(kapi.yanit);
+
+      const g = await aktifGorev(user, task_id);
+      if (!g.ok) return hata(g.yanit);
+
+      if (!g.gorev.deleted_at) {
+        return baglamli(user, {
+          restored: false,
+          already_active: true,
+          task: { id: metinKimlik(task_id), title: g.gorev.title, project_name: g.proje.name },
+        }, kapi.workspace);
+      }
+
+      const yanit = await callSelf(user, `/api/tasks/${task_id}/restore`, { method: 'POST' });
+      if (!yanit.ok) return hata(yanit);
+
+      recordAudit(req, {
+        workspaceId: kapi.workspace.id,
+        user,
+        action: AUDIT.MCP_TASK_RESTORED,
+        detail: { task_id: metinKimlik(task_id), project_id: metinKimlik(g.proje.id) },
+      });
+      const kolonlar = await bitisKolonlariniGetir(user, g.proje.id);
+      return baglamli(user, {
+        restored: true,
+        task: {
+          ...gorevDetayi(yanit.data, { bitisKolonlari: kolonlar.ok ? kolonlar.kume : undefined }),
+          project_name: g.proje.name,
+        },
+      }, kapi.workspace);
+    },
+  );
+
+  // ── add_subtask ──────────────────────────────────────────────────────────
+
+  server.registerTool(
+    'add_subtask',
+    {
+      title: B('add_subtask'),
+      description:
+        'Bir görevin altına yeni alt görev (kontrol listesi maddesi) ekler. '
+        + 'Kartın ilerleme yüzdesi alt görevlerden hesaplandığı için ekleme '
+        + 'ilerlemeyi düşürebilir — bu beklenen davranış. workspace_id '
+        + 'zorunludur ve AKTİF alanın kimliği olmalıdır. Araç '
+        + 'TEKRARLANABİLİR DEĞİLDİR: aynı çağrı iki kez yapılırsa iki alt '
+        + 'görev oluşur.',
+      inputSchema: {
+        workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
+        task_id: kimlik('list_tasks içindeki id'),
+        title: z.string().trim().min(1).max(500).describe('alt görev metni'),
+      },
+      annotations: yazma,
+    },
+    async ({ workspace_id, task_id, title }) => {
+      const kapi = await yazmaKapisi(user, workspace_id);
+      if (!kapi.ok) return hata(kapi.yanit);
+
+      const g = await aktifGorev(user, task_id);
+      if (!g.ok) return hata(g.yanit);
+
+      const yanit = await callSelf(user, `/api/tasks/${task_id}/subtasks`, {
+        method: 'POST',
+        body: { title },
+      });
+      if (!yanit.ok) return hata(yanit);
+
+      recordAudit(req, {
+        workspaceId: kapi.workspace.id,
+        user,
+        action: AUDIT.MCP_SUBTASK_ADDED,
+        // Alt görev METNİ yazılmıyor — denetim kaydı içerik deposu değil.
+        detail: { task_id: metinKimlik(task_id), subtask_id: metinKimlik(yanit.data?.id) },
+      });
+      return baglamli(user, {
+        added: true,
+        subtask: yanit.data,
+        task: { id: metinKimlik(task_id), title: g.gorev.title, project_name: g.proje.name },
+      }, kapi.workspace);
+    },
+  );
+
+  // ── update_subtask ───────────────────────────────────────────────────────
+
+  server.registerTool(
+    'update_subtask',
+    {
+      title: B('update_subtask'),
+      description:
+        'Bir alt görevi işaretler/işareti kaldırır ya da metnini değiştirir. '
+        + 'subtask_id get_task yanıtındaki subtasks_detail listesinden alınır '
+        + 've o görevin alt görevi olmalıdır; başka kartın alt görevi verilirse '
+        + '"bulunamadı" döner. done değiştiğinde kartın ilerleme yüzdesi '
+        + 'yeniden hesaplanır. En az bir alan (done ya da title) verilmelidir.',
+      inputSchema: {
+        workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
+        task_id: kimlik('alt görevin bağlı olduğu görev — list_tasks içindeki id'),
+        subtask_id: kimlik('get_task yanıtındaki subtasks_detail içindeki id'),
+        done: z.boolean().optional().describe('true = tamamlandı işareti'),
+        title: z.string().trim().min(1).max(500).optional().describe('yeni metin'),
+      },
+      annotations: { ...yazma, idempotentHint: true },
+    },
+    async ({ workspace_id, task_id, subtask_id, done, title }) => {
+      const kapi = await yazmaKapisi(user, workspace_id);
+      if (!kapi.ok) return hata(kapi.yanit);
+
+      const g = await aktifGorev(user, task_id);
+      if (!g.ok) return hata(g.yanit);
+
+      // Aitlik kapısı: alt görev uçları kimliği doğrudan alıyor. Burada
+      // doğrulanmazsa aktif alan kapısı boşa düşer — model başka bir kartın
+      // alt görevini kimliğiyle düzenleyebilirdi.
+      const altlar = Array.isArray(g.gorev.subtasks_detail) ? g.gorev.subtasks_detail : [];
+      if (!altlar.some((s) => String(s.id) === String(subtask_id))) {
+        return hata(altGorevYok(altlar, metinKimlik(subtask_id)));
+      }
+
+      const govde = {};
+      if (done !== undefined) govde.done = done;
+      if (title !== undefined) govde.title = title;
+      if (!Object.keys(govde).length) {
+        return hata({
+          status: 400,
+          data: { error: 'err_mcp_nothing_to_update', message: 'Değiştirilecek alan verilmedi' },
+        });
+      }
+
+      const yanit = await callSelf(user, `/api/subtasks/${subtask_id}`, {
+        method: 'PATCH',
+        body: govde,
+      });
+      if (!yanit.ok) return hata(yanit);
+
+      recordAudit(req, {
+        workspaceId: kapi.workspace.id,
+        user,
+        action: AUDIT.MCP_SUBTASK_UPDATED,
+        detail: {
+          task_id: metinKimlik(task_id),
+          subtask_id: metinKimlik(subtask_id),
+          fields: Object.keys(govde),
+        },
+      });
+      return baglamli(user, {
+        updated: Object.keys(govde),
+        subtask: yanit.data,
+        task: { id: metinKimlik(task_id), title: g.gorev.title, project_name: g.proje.name },
+      }, kapi.workspace);
+    },
+  );
+
+  // ── delete_subtask ───────────────────────────────────────────────────────
+
+  server.registerTool(
+    'delete_subtask',
+    {
+      title: B('delete_subtask'),
+      description:
+        'Bir alt görevi KALICI olarak siler — alt görevlerin çöp kutusu yok, '
+        + 'geri alınamaz. Bu yüzden kullanıcı açıkça istemediyse çağırma. '
+        + 'subtask_id o görevin subtasks_detail listesinden olmalıdır. '
+        + 'Silme sonrası kartın ilerleme yüzdesi yeniden hesaplanır.',
+      inputSchema: {
+        workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
+        task_id: kimlik('alt görevin bağlı olduğu görev — list_tasks içindeki id'),
+        subtask_id: kimlik('get_task yanıtındaki subtasks_detail içindeki id'),
+      },
+      annotations: { ...yazma, destructiveHint: true, idempotentHint: true },
+    },
+    async ({ workspace_id, task_id, subtask_id }) => {
+      const kapi = await yazmaKapisi(user, workspace_id);
+      if (!kapi.ok) return hata(kapi.yanit);
+
+      const g = await aktifGorev(user, task_id);
+      if (!g.ok) return hata(g.yanit);
+
+      const altlar = Array.isArray(g.gorev.subtasks_detail) ? g.gorev.subtasks_detail : [];
+      if (!altlar.some((s) => String(s.id) === String(subtask_id))) {
+        return hata(altGorevYok(altlar, metinKimlik(subtask_id)));
+      }
+
+      const yanit = await callSelf(user, `/api/subtasks/${subtask_id}`, { method: 'DELETE' });
+      if (!yanit.ok) return hata(yanit);
+
+      recordAudit(req, {
+        workspaceId: kapi.workspace.id,
+        user,
+        action: AUDIT.MCP_SUBTASK_DELETED,
+        detail: { task_id: metinKimlik(task_id), subtask_id: metinKimlik(subtask_id) },
+      });
+      return baglamli(user, {
+        deleted: true,
+        task: { id: metinKimlik(task_id), title: g.gorev.title, project_name: g.proje.name },
+      }, kapi.workspace);
+    },
+  );
+
+  // ── set_active_workspace ─────────────────────────────────────────────────
+
+  server.registerTool(
+    'set_active_workspace',
+    {
+      title: B('set_active_workspace'),
+      description:
+        'AKTİF çalışma alanını değiştirir. DİKKAT: aktif alan kullanıcının '
+        + 'TARAYICI OTURUMUYLA ORTAK — bu araç kullanıcının ekranında açık olan '
+        + 'alanı da değiştirir. Yalnızca kullanıcı açıkça isterse çağır. '
+        + 'Değiştirdikten sonra öbür araçların workspace_id değeri de yeni alan '
+        + 'olmalıdır; eski alandaki kartlara artık yazamazsın. Üyesi olmadığın '
+        + 'alan için 403 döner. Alan kimlikleri list_workspaces\'ten alınır.',
+      inputSchema: {
+        workspace_id: kimlik('geçilecek alanın kimliği — list_workspaces içindeki id'),
+      },
+      annotations: { ...yazma, destructiveHint: true, idempotentHint: true },
+    },
+    async ({ workspace_id }) => {
+      // Bilerek `yazmaKapisi`ndan GEÇMİYOR: o kapı "istenen alan = aktif alan"
+      // diye bakıyor ve bu aracın işi tam olarak aktif alanı DEĞİŞTİRMEK.
+      // Kapı yerine API'nin kendi üyelik denetimi (403) olduğu gibi iletiliyor.
+      // Muafiyet `mcp.test.js` içindeki ALAN_KAPISIZ listesinde gerekçesiyle
+      // kayıtlı; liste bayatlayamıyor, çünkü ayrı bir test aracın varlığını
+      // doğruluyor.
+      const once = await aktifAlan(user);
+      if (String(once.workspace?.id ?? '') === String(workspace_id)) {
+        return baglamli(user, { switched: false, already_active: true }, once.workspace);
+      }
+
+      const yanit = await callSelf(user, `/api/workspaces/${workspace_id}/switch`, { method: 'POST' });
+      if (!yanit.ok) return hata(yanit);
+
+      recordAudit(req, {
+        workspaceId: Number(workspace_id) || null,
+        user,
+        action: AUDIT.MCP_WORKSPACE_SWITCHED,
+        detail: {
+          from: metinKimlik(once.workspace?.id ?? null),
+          to: metinKimlik(workspace_id),
+        },
+      });
+      const sonra = await aktifAlan(user);
+      return baglamli(user, { switched: true, previous: once.workspace }, sonra.workspace);
     },
   );
 

@@ -84,8 +84,19 @@ const OLMAYAN = 2147480000;
 /**
  * Veri değiştiren araçlar. Tarama bunları yalnızca REDDEDİLDİKLERİ yollardan
  * çağırıyor — ayrıntı "Yazma araçları" bölümünde.
+ *
+ * Liste BİLEREK elle tutuluyor. Kaynaktaki `annotations` alanlarından
+ * türetilseydi, doğruladığı şeyin kendisini referans alır ve kontrol
+ * boşalırdı: her iki taraf da aynı anda yanlış olabilirdi. Bağımsız bir
+ * beklenti olarak duruyor, yani yeni bir yazma aracı eklendiğinde burası da
+ * elle güncellenmek zorunda — bayatlarsa tarama kırılır ve bunu söyler.
  */
-const YAZMA_ARACLARI = new Set(['create_task', 'update_task', 'move_task', 'add_comment']);
+const YAZMA_ARACLARI = new Set([
+  'create_task', 'update_task', 'move_task', 'add_comment',
+  'delete_task', 'restore_task',
+  'add_subtask', 'update_subtask', 'delete_subtask',
+  'set_active_workspace',
+]);
 
 function anahtariSec() {
   if (process.env.MCP_TOKEN) {
@@ -873,6 +884,13 @@ async function tara() {
       ? prisma.task.count({ where: { projectId: { in: projeIdleri } } })
       : null);
     const once = await kartSayisi();
+    // Alt görev sayısı da ölçülüyor: 0.5.0 alt görev yazan araçlar getirdi ve
+    // bir reddetme yolu sızarsa kart sayısı değişmeden alt görev oluşabilir.
+    const kartIdleri = () => tumKartlar().map((k) => Number(k.id));
+    const altSayisi = async () => (db.ok
+      ? prisma.subtask.count({ where: { taskId: { in: kartIdleri() } } })
+      : null);
+    const altOnce = await altSayisi();
 
     const w = durum.alan.id;
     const baslik = 'mcp-tara — oluşmamalı, oluştuysa silinebilir';
@@ -913,12 +931,66 @@ async function tara() {
       atla('başka alandaki göreve yazma', 'kullanıcının öbür alanlarında kart yok');
     }
 
+    // ── 0.5.0 araçları ────────────────────────────────────────────────────
+    //
+    // Hepsi reddetme yolu: hiçbiri veri yazmıyor. Yazan dallar (gerçek silme,
+    // gerçek alt görev) bilerek burada değil — onları kullanıcı kendi
+    // panosunda sınıyor, tarama üretim verisine dokunmuyor.
+    const OLMAYAN_ALT = 999999999;
+
+    await dene('delete_task', { workspace_id: OLMAYAN, task_id: ilkKart.id }, 'err_mcp_workspace_mismatch');
+    await dene('delete_task', { workspace_id: w, task_id: OLMAYAN }, 'err_task_not_found');
+    await dene('restore_task', { workspace_id: OLMAYAN, task_id: ilkKart.id }, 'err_mcp_workspace_mismatch');
+    await dene('add_subtask', { workspace_id: OLMAYAN, task_id: ilkKart.id, title: baslik }, 'err_mcp_workspace_mismatch');
+    await dene('update_subtask', {
+      workspace_id: w, task_id: ilkKart.id, subtask_id: OLMAYAN_ALT, done: true,
+    }, 'err_mcp_subtask_not_found');
+    await dene('delete_subtask', {
+      workspace_id: w, task_id: ilkKart.id, subtask_id: OLMAYAN_ALT,
+    }, 'err_mcp_subtask_not_found');
+    await dene('update_task', {
+      workspace_id: w, task_id: ilkKart.id, add_labels: ['hayalet-etiket-xyz'],
+    }, 'err_mcp_label_not_found');
+    await dene('set_active_workspace', { workspace_id: OLMAYAN }, 'err_not_workspace_member');
+
+    // Etiket çelişkisi ancak GERÇEK bir slug ile sınanabilir: doğrulama
+    // bilinmeyen slug'ı önce elediği için hayalet slug çelişki dalına hiç
+    // ulaşmıyor. Kartta etiket yoksa atlanıyor — atlanan geçmiş SAYILMAZ.
+    const gercekEtiket = Array.isArray(ilkKart.labels) ? ilkKart.labels[0] : null;
+    if (gercekEtiket) {
+      await dene('update_task', {
+        workspace_id: w,
+        task_id: ilkKart.id,
+        add_labels: [gercekEtiket],
+        remove_labels: [gercekEtiket],
+      }, 'err_mcp_label_conflict');
+    } else {
+      atla('etiket çelişkisi', 'ilk kartta etiket yok');
+    }
+
+    // `restore_task` çöpte OLMAYAN kartta hiçbir şey yazmamalı. Bu bir başarı
+    // yanıtı ama yazmayan dal: no-op guard'ın gerçekten çalıştığını gösteriyor.
+    const geri = await arac('restore_task', { workspace_id: w, task_id: ilkKart.id });
+    kontrol(
+      'çöpte olmayan kartta restore_task yazmıyor',
+      !geri.hata && /"restored":\s*false/.test(geri.metin),
+      geri.metin.slice(0, 140),
+    );
+
     const sonra = await kartSayisi();
     if (once === null) {
       atla('kart sayısı değişmedi', 'veritabanına ulaşılamadı');
     } else {
       kontrol(`kart sayısı değişmedi (${once} → ${sonra})`, once === sonra,
         `tarama bir kart AÇTI — başlığı "${baslik}" olanı sil`);
+    }
+
+    const altSonra = await altSayisi();
+    if (altOnce === null) {
+      atla('alt görev sayısı değişmedi', 'veritabanına ulaşılamadı');
+    } else {
+      kontrol(`alt görev sayısı değişmedi (${altOnce} → ${altSonra})`, altOnce === altSonra,
+        'tarama bir ALT GÖREV oluşturdu — reddetme yolu sızdırıyor');
     }
   });
 

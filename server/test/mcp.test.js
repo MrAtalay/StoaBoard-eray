@@ -722,11 +722,46 @@ describe('yazma araçları — kapılar her araçta, yazmadan önce', () => {
     assert.ok(yazanlar.length >= 3, `yalnızca ${yazanlar.length} yazma aracı bulundu`);
   });
 
+  // Alan kapısından BİLEREK geçmeyen araçlar.
+  //
+  // Liste engellemek için değil KARARI GÖRÜNÜR KILMAK için var — `ACIK_UCLAR`
+  // kalıbının aynısı. Kapısız yeni bir araç eklenirse test kırılır ve
+  // geliştirici gerekçesini buraya yazmak zorunda kalır; karar gözden
+  // geçirmede görünür olur.
+  //
+  // Muafiyet YALNIZCA alan kapısını kaldırıyor. Denetim kaydı, salt-okuma
+  // işareti ve öbür şartlar bu araçlara da aynen uygulanıyor — aşağıda ayrıca
+  // doğrulanıyor, yoksa muafiyet sessizce "her şeyden muaf"a dönüşürdü.
+  const ALAN_KAPISIZ = new Map([
+    ['set_active_workspace',
+      'Aktif alanı DEĞİŞTİREN araç. `yazmaKapisi` "istenen alan = aktif alan" '
+      + 'diye baktığı için bu aracı tanımı gereği reddederdi. Üyelik denetimi '
+      + 'API tarafında (403) ve olduğu gibi modele iletiliyor.'],
+  ]);
+
   test('her yazma aracı workspace_id zorunlu alıyor ve alan kapısından geçiyor', () => {
     const kacak = yazanlar
+      .filter((b) => !ALAN_KAPISIZ.has(ad(b)))
       .filter((b) => !/workspace_id:\s*kimlik\(/.test(b) || !b.includes('yazmaKapisi('))
       .map(ad);
     assert.deepEqual(kacak, [], 'Bu araçlar aktif alanı doğrulamadan yazabilir');
+  });
+
+  test('alan kapısı muafiyet listesi bayatlamıyor', () => {
+    // Bayat muafiyet, muafiyetin kendisinden tehlikeli: araç silinip aynı adla
+    // kapısız geri gelseydi liste onu sessizce aklardı.
+    const kayitli = new Set(bloklar.map(ad));
+    const hayalet = [...ALAN_KAPISIZ.keys()].filter((a) => !kayitli.has(a));
+    assert.deepEqual(hayalet, [], 'ALAN_KAPISIZ listesinde artık var olmayan araç var');
+  });
+
+  test('muaf araç da denetim kaydı bırakıyor ve yazıyor diye işaretli', () => {
+    for (const aracAdi of ALAN_KAPISIZ.keys()) {
+      const b = bloklar.find((x) => ad(x) === aracAdi);
+      assert.ok(b, `${aracAdi} kayıtlı değil`);
+      assert.ok(b.includes('recordAudit('), `${aracAdi} denetim kaydı bırakmıyor`);
+      assert.ok(!b.includes('annotations: salt'), `${aracAdi} salt okuma diye işaretli`);
+    }
   });
 
   test('alan kapısı yazmadan ÖNCE geliyor', () => {
@@ -756,5 +791,40 @@ describe('yazma araçları — kapılar her araçta, yazmadan önce', () => {
     const isaretsiz = okuyanlar.filter((b) => !b.includes('annotations: salt')).map(ad);
     assert.ok(okuyanlar.length >= 10, `yalnızca ${okuyanlar.length} okuma aracı bulundu`);
     assert.deepEqual(isaretsiz, [], 'Okuma aracı salt okuma işareti taşımıyor');
+  });
+
+  // ── 0.5.0 ile gelen üç kapı ──────────────────────────────────────────────
+  //
+  // Üçü de yalnızca kodun içinde duruyordu; buraya alınmasalar mutasyon
+  // onları kaldırdığında hiçbir test kırılmazdı.
+
+  test('kalıcı silme yüzeye çıkmıyor', () => {
+    // MCP'de silme ÇÖPE taşımadır. API'de ayrı bir `/permanent` ucu var ve
+    // geri dönüşü yok; modele verilmesi bilinçli olarak reddedildi. Bir araç
+    // o ucu çağırmaya başlarsa kart 30 günlük emniyet payı olmadan gider.
+    const kacak = bloklar.filter((b) => /\/permanent/.test(b)).map(ad);
+    assert.deepEqual(kacak, [], 'Bir araç kalıcı silme ucunu çağırıyor — geri dönüşü yok');
+  });
+
+  test('alt görev araçları alt görevin karta ait olduğunu doğruluyor', () => {
+    // Alt görev uçları kimliği DOĞRUDAN alıyor (`/api/subtasks/:id`). Aitlik
+    // MCP tarafında doğrulanmazsa aktif alan kapısı boşa düşer: model başka
+    // bir kartın alt görevini yalnızca kimliğiyle düzenleyebilirdi.
+    const altli = bloklar.filter((b) => /subtask_id:\s*kimlik\(/.test(b));
+    assert.ok(altli.length >= 2, `alt görev aracı beklenenden az: ${altli.length}`);
+    const kacak = altli
+      .filter((b) => !b.includes('subtasks_detail') || !b.includes('altGorevYok('))
+      .map(ad);
+    assert.deepEqual(kacak, [], 'Bu araçlar alt görevin karta ait olduğunu doğrulamıyor');
+  });
+
+  test('etiket değişikliği proje kataloğundan doğrulanıyor', () => {
+    // API tanımadığı etiket slug'ını SESSİZCE yok sayıyor (`if (label)`, else
+    // yok). Doğrulama olmazsa model "etiketledim" sanır ve kartta hiçbir şey
+    // olmaz — kolon slug'ında `kolonYok` ile kapatılan tuzağın aynısı.
+    const etiketli = bloklar.filter((b) => /add_labels:/.test(b));
+    assert.ok(etiketli.length >= 1, 'etiket alan araç bulunamadı — tarama deseni bozuk olabilir');
+    const kacak = etiketli.filter((b) => !b.includes('etiketYok(')).map(ad);
+    assert.deepEqual(kacak, [], 'Bilinmeyen etiket slug\'ı sessizce yutulabilir');
   });
 });

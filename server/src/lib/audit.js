@@ -29,6 +29,15 @@ export const AUDIT = {
   MCP_TASK_UPDATED: 'mcp.task_updated',
   MCP_TASK_MOVED: 'mcp.task_moved',
   MCP_COMMENT_ADDED: 'mcp.comment_added',
+  // 0.5.0. Silme ÇÖPE taşımadır; kalıcı silme MCP yüzeyinde yok.
+  MCP_TASK_DELETED: 'mcp.task_deleted',
+  MCP_TASK_RESTORED: 'mcp.task_restored',
+  MCP_SUBTASK_ADDED: 'mcp.subtask_added',
+  MCP_SUBTASK_UPDATED: 'mcp.subtask_updated',
+  MCP_SUBTASK_DELETED: 'mcp.subtask_deleted',
+  // Aktif alan tarayıcı oturumuyla ortak: bu kayıt "kullanıcının ekranındaki
+  // alanı Claude değiştirdi" sorusunun tek cevabı.
+  MCP_WORKSPACE_SWITCHED: 'mcp.workspace_switched',
 };
 
 function clientIp(req) {

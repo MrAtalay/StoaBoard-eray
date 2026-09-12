@@ -75,6 +75,12 @@ const ACTION_LABEL = {
   'mcp.task_updated': ['rep_act_mcp_updated', 'Kart düzenlendi — MCP'],
   'mcp.task_moved': ['rep_act_mcp_moved', 'Kart taşındı — MCP'],
   'mcp.comment_added': ['rep_act_mcp_comment', 'Yorum yazıldı — MCP'],
+  'mcp.task_deleted': ['rep_act_mcp_deleted', 'Kart çöpe atıldı — MCP'],
+  'mcp.task_restored': ['rep_act_mcp_restored', 'Kart geri alındı — MCP'],
+  'mcp.subtask_added': ['rep_act_mcp_sub_added', 'Alt görev eklendi — MCP'],
+  'mcp.subtask_updated': ['rep_act_mcp_sub_updated', 'Alt görev düzenlendi — MCP'],
+  'mcp.subtask_deleted': ['rep_act_mcp_sub_deleted', 'Alt görev silindi — MCP'],
+  'mcp.workspace_switched': ['rep_act_mcp_ws_switched', 'Aktif alan değişti — MCP'],
 };
 
 const REPORT_LABEL = {

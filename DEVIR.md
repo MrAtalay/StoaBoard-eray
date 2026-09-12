@@ -5,12 +5,77 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 12 Eylül 2026 gece yarısı, **ev makinesinde** (5432 açık).
+**Son güncelleme:** 13 Eylül 2026 gece, **ev makinesinde** (5432 açık).
 
 > **MCP 0.4.0 canlıda ve uçtan uca doğrulandı** (12 Eylül sabahı): tarama 64
 > geçti / 0 kaldı, ilk gerçek kart Cowork'ten açıldı (#114), denetim kaydında
 > üç `mcp.task_*` satırı. Bağlayıcı kurulumu **No sign-in + `x-auth-token`**
 > (0-I). Sıradaki iş: kart yorumundaki `@bahsetme` sızıntısı.
+
+---
+
+## 0-S. 13 Eylül, gece — MCP 0.5.0: yazma araçları tamamlandı
+
+"MCP'yi bitirelim" denince kapsam TODO'daki `[~]` maddesiydi: 3. adımın eksik
+dört parçası — **silme, etiket, alt görev, alan değiştirme**. Hepsi kapandı.
+Yirmi araç, onu yazıyor.
+
+Ayrıntılı sürüm notu **MCP-SURUMLER.md 0.5.0**'da; burada yalnızca kararlar ve
+doğrulama.
+
+### Üç karar
+
+**Silme çöpe taşımadır.** API'de `/permanent` ucu var ama MCP yüzeyine
+çıkmadı: modele geri dönüşü olmayan bir yetki vermek yanlış olurdu. Karşılığı
+`restore_task` ile birlikte geldi, yani silme yetkisinin geri dönüşü var.
+Kural teste bağlı: hiçbir araç `/permanent` çağıramaz.
+
+**Etiket tam liste değil, ekle/çıkar.** API `labels` alanını alınca hepsini
+silip yeniden kuruyor; tam liste isteyen bir araç "bir etiket ekle" niyetini
+öbür etiketleri silmeye çevirirdi — 0.4.0'da atananlar için çözülen kusurun
+aynısı, aynı yardımcıyla (`atamaListesi`) çözüldü. Bilinmeyen slug da sessizce
+yutulmuyor.
+
+**`set_active_workspace` bilinçli bir istisna.** Aktif alan tarayıcı
+oturumuyla ortak, yani bu araç kullanıcının ekranını da değiştiriyor. Mevcut
+bir yapısal test onu haklı olarak reddetti ("her yazma aracı alan kapısından
+geçer"); muafiyet `ALAN_KAPISIZ` listesine gerekçesiyle yazıldı — `ACIK_UCLAR`
+kalıbı. Muafiyet **yalnızca** alan kapısı için; denetim kaydı ve salt-okuma
+şartları ayrı bir testle bu araca da uygulanıyor.
+
+### Testin kendisi de düzeltildi
+
+Yazdığım üç yeni kapıyı (alt görev aitliği, etiket doğrulaması, kalıcı silme
+yasağı) başlangıçta **hiçbir test korumuyordu** — yalnızca kodun içinde
+duruyorlardı. Mutasyon bunu gösterdi, üçü de yapısal teste bağlandı. Bu tur
+mutasyonun onay üretmediği, eksik bulduğu bir tur oldu.
+
+### Doğrulama
+
+441 → **446 test** (iki muafiyet testi, üç yeni kapı). **Yedi mutasyonun
+yedisi de yakalandı**: alan kapısını kaldırmak, denetim kaydını düşürmek,
+yazan aracı salt okuma işaretlemek, alt görev aitliğini kaldırmak, etiket
+doğrulamasını kaldırmak, kalıcı silme ucunu çağırmak, ve muafiyet listesinden
+aracı çıkarmak (üç test birden düştü — liste süs değil).
+
+**Yerel tarama 0.5.0'a karşı: 77 geçti, 0 kaldı, 2 atlandı.** Yedi yeni
+reddetme yolu doğru hata kodunu döndürdü, `restore_task`'ın no-op dalı
+doğrulandı, ve iki güvenlik ağı tuttu: **17 → 17 kart, 8 → 8 alt görev** —
+tarama hiçbir şey yazmadı. Atlanan ikisi veriye bağlı ve 0.5.0'dan önce de
+atlanıyordu.
+
+Taramadaki `YAZMA_ARACLARI` beklentisi de güncellendi (dört → on). Liste
+bilerek elle tutuluyor: kaynaktan türetilseydi doğruladığı şeyi referans alır
+ve kontrol boşalırdı.
+
+### Sıradaki
+
+1. **Dağıtım indikten sonra Cowork'te yeni sohbet** — araç listesi değişti,
+   bayat sohbet yeni altı aracı görmez. `serverInfo.version` 0.5.0 diyorsa
+   dağıtım inmiştir.
+2. Deneme kartı #114 hâlâ `ghghhg` projesinde.
+3. Kalan MCP maddeleri: `whoami`'ye `available_tools`, sayfalama, anahtar
+   sayfası, yetim atanan slug'ları.
 
 ---
 
