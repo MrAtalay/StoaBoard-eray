@@ -529,15 +529,16 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       ifade, JSX metnindeki Türkçe kesme işareti, şablon içindeki `${...}`
       bölgesi; üçü de kapandı. Mutasyon **iki yönlü** koşuldu (ihlal önce kod,
       sonra yorum biçiminde), 16/16 beklendiği gibi.
-- [ ] **Serileştirici sözleşmesi teste bağlanmalı.** Aynı kusur iki gün üst
-      üste, iki ayrı yerde çıktı: `columnToDict` slug'ı `id` adıyla veriyor,
-      tüketici `.slug` diye arıyor (9 Eylül MCP araçları, 10 Eylül
-      `weeklyDone`). İki tarafa ayrı ayrı bakınca ikisi de doğru görünüyor;
-      kusur sözleşmelerin **arasında** ve hiçbir birim testi göremiyor.
-      Önerilen: her `*ToDict` fonksiyonunun ürettiği alan kümesini teste
-      sabitle. Şekil değişince test kırılır ve tüketicilere bakmak zorunlu
-      hâle gelir. Kontrast ve vurgu testleri (10 Eylül) bu merdivenin aynı
-      basamağında; bu üçüncüsü.
+- [x] **Serileştirici sözleşmesi teste bağlanmalı.** *(Kapandı 12 Eylül 2026
+      — DEVIR 0-M.)* Maddede önerilen hâliyle **yetmezdi**: alan kümesini
+      dondurmak, alıntılanan iki kusurun hiçbirini yakalamazdı — `columnToDict`
+      hep böyle yazıyordu, üretici hiç değişmedi. Kusur sözleşmenin **iki
+      tarafı arasında**. `test/sozlesme.test.js` üç katman kuruyor: üretici
+      şekil kilidi (18 serileştirici; tablo elle bakımlı değil, kaynak
+      taranarak denetleniyor), **dikiş** (tüketici artık gerçek üretici
+      çıktısıyla besleniyor — `mcp.test.js` elle yazılmış sözlük kullandığı
+      için kusuru hiç görememişti) ve kimlik anlamları (slug / metne
+      çevrilmiş sayı / ham sayı). Yedi mutasyonun yedisi de yakalandı.
 - [ ] **MCP anahtarı kendi kendine alınabilmeli — bugün her kişi için Railway
       elle düzenleniyor.** Bugünkü akış: anahtar üret → `STOA_MCP_TOKENS`
       sonuna ekle → yeniden dağıt → anahtarı kişiye özel olarak ulaştır.

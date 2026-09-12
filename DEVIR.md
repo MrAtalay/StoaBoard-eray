@@ -5,12 +5,92 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 12 Eylül 2026 öğlen, **ev makinesinde** (5432 açık).
+**Son güncelleme:** 12 Eylül 2026 öğleden sonra, **ev makinesinde** (5432 açık).
 
 > **MCP 0.4.0 canlıda ve uçtan uca doğrulandı** (12 Eylül sabahı): tarama 64
 > geçti / 0 kaldı, ilk gerçek kart Cowork'ten açıldı (#114), denetim kaydında
 > üç `mcp.task_*` satırı. Bağlayıcı kurulumu **No sign-in + `x-auth-token`**
 > (0-I). Sıradaki iş: kart yorumundaki `@bahsetme` sızıntısı.
+
+---
+
+## 0-M. 12 Eylül, öğleden sonra — serileştirici sözleşmeleri teste bağlandı
+
+TODO'nun üçüncü maddesi kapandı, ama **istenenden farklı bir biçimde** —
+çünkü istenen hâli yetmiyordu.
+
+Madde şöyleydi: "her `*ToDict` fonksiyonunun ürettiği alan kümesini teste
+sabitle". Gerekçe doğruydu; aynı kusur iki gün üst üste, iki ayrı yerde
+çıkmıştı: `columnToDict` kolonun slug'ını `id` adıyla veriyor, tüketici
+`.slug` diye arayıp `undefined` alıyordu (9 Eylül MCP araçları, 10 Eylül
+`weeklyDone` hep sıfır). Ama önerilen çözüm o iki kusurun **hiçbirini
+yakalamazdı**: `columnToDict` hep böyle yazıyordu, üretici hiç değişmedi.
+Alan kümesini dondurmak yalnızca "yeniden adlandırıldı / eklendi / silindi"
+sınıfını yakalar; buradaki kusur sözleşmenin **iki tarafı arasında** ve
+üretici tarafı kusursuz görünüyor.
+
+### Asıl dikiş nerede
+
+`routes/mcp.js` bitiş kolonu kümesini şöyle kuruyor:
+
+```js
+new Set(kolonlar.filter((c) => c.is_done).map((c) => c.id))
+```
+
+`mcpShape.js` ise şöyle soruyor:
+
+```js
+bitisKolonlari.has(gorev.col)
+```
+
+Biri `columnToDict().id`, öteki `taskToDict().col`. Bugün örtüşüyorlar
+**çünkü ikisi de kolonun slug'ı**. Biri "düzeltilip" `id` sayısal yapılsa
+küme sayılarla dolar, `has(slug)` hep `false` döner ve **her kart açık
+görünür** — tek bir test kırılmadan. `weeklyDone` hep sıfır kusuru bu dikişin
+öbür ucuydu.
+
+Testler bunu göremiyordu, çünkü `mcp.test.js` tüketiciyi **elle yazılmış**
+sözlüklerle besliyor: testin uydurduğu girdide `slug` vardı, üretici onu hiç
+yazmıyordu. **Uydurulan girdi, uydurulan sözleşmedir.**
+
+### Ne yazıldı
+
+`test/sozlesme.test.js` — 33 test, üç katman:
+
+1. **Üretici şekil kilidi.** On sekiz serileştiricinin alan kümesi sabit.
+   Tablo elle bakımlı değil: `src/lib` taranıyor (yorumlar boşaltılarak) ve
+   tabloda karşılığı olmayan yeni bir serileştirici testi kırıyor — liste
+   bayatlayamıyor.
+2. **Dikiş.** Tüketiciler (`gorevOzeti`, `gorevDetayi`, `acikMi`, `uyeOzeti`,
+   `notOzeti`) artık **gerçek üretici çıktısıyla** besleniyor. Sahte Prisma
+   kaydı taklit ediliyor, serileştirici çıktısı değil.
+3. **Kimlik anlamları.** `id` bu depoda üç ayrı şey demek ve karışması gerçek
+   kusur üretti: slug taşıyanlar (`columnToDict`, `userToDict`,
+   `channelToDict`), metne çevrilmiş sayı (`projectToDict`, `taskToDict`,
+   `notificationToDict`, `auditToDict`), ham sayı (`noteToDict`,
+   `subtaskToDict`, `commentToDict`). Üçü de kilitli.
+
+Yan kazanç: `mcp.test.js`teki "`updated_ago` düşürülüyor" testi **boş
+geçebilir** durumdaydı — üretici o alanı yazmayı bıraksa test hiçbir şey
+ölçmeden geçmeye devam ederdi. Artık alanın üreticide varlığı ayrıca
+doğrulanıyor.
+
+### Doğrulama
+
+345 → **378 test**, hepsi geçiyor. Yedi mutasyon denendi, **yedisi de
+yakalandı**: `columnToDict` id'sini sayısal yapmak (5 test düştü),
+`userToDict` id'sini sayısallaştırmak (2), `taskToDict.col`u kolon kimliğine
+çevirmek (3), `noteToDict`ten `updated_ago` silmek (2), `projectToDict`
+id'sini metne çevirmemek (1), `taskToDict`e alan eklemek (2), tabloya
+yazılmamış yeni bir serileştirici eklemek (1). İlk üçü tarihsel kusurun ta
+kendisi.
+
+### Sıradaki
+
+1. Cowork'te `add_comment` denemesi (yeni sohbet) — hâlâ açık, makine başı iş.
+2. Deneme kartı #114 `ghghhg` projesinde duruyor.
+3. TODO'da kalanlar: MCP'de silme/etiket/alt görev, `updated_at` şema kararı,
+   sayfalama, anahtar sayfası.
 
 ---
 
