@@ -595,9 +595,25 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       *(13 Eylül 2026, göç sonrası okumada görüldü.)* `PATCH /tasks/:id`
       `doc` alınca `description`ı `p`, `h1`, `h2`, `h3` bloklarının metnini
       birleştirerek yeniden yazıyor. Sonuç: #19'un `desc` alanı "Açıklama
-      ttakcviöm Alt görevler" — iki başlık da açıklamanın içinde. Pano kartı,
+      ttakcviöm Alt görevler" — iki başlık da açıklamanın içinde. Eski veriye
+      özgü değil: aynı gün tarayıcıda açılan #115'in açıklaması da "Açıklama
+      ASDASDAS" oldu, yani her açıklama düzenlemesi yeniden üretiyor. Pano kartı,
       arama ve MCP `desc`i bu hâliyle görüyor. Muhtemel düzeltme yalnızca `p`
       bloklarını almak; mevcut açıklamalar ayrıca temizlenmeli (veri yazımı).
+- [ ] **Açık sekme dağıtımı fark etmiyor — eski kodla saatlerce çalışabiliyor.**
+      *(13 Eylül 2026 — DEVIR 0-U.)* Tek kaynak dağıtımından sonra, önceden
+      açık sekme eski çekmeceyle çalıştı ve dört işlemin dördü de reddedildi.
+      Bu kez sunucunun ret mesajı ("sayfayı yenileyin") kurtardı. Öneri:
+      sunucu bir sürüm başlığı döndürsün (`X-Stoa-Build` gibi), `apiFetch`
+      açılıştaki değerle karşılaştırıp değiştiyse "yeni sürüm var, yenile"
+      desin. Yanına `index.html` için açık `Cache-Control: no-cache` — bugün
+      yalnızca zayıf ETag var, davranış tarayıcının tahminine kalmış.
+- [ ] **Eski sekmeye gidecek hata mesajı sunucuda iki dilde kurulmalı.**
+      *(13 Eylül 2026.)* `err_doc_checklist_retired` İngilizce arayüzde Türkçe
+      çıktı: eski paketin sözlüğünde kod yoktu, `apiFetch` Türkçe `message`a
+      düştü. Kural önerisi: yeni bir hata kodu, tanımı gereği eski istemciye
+      dönüyorsa (uyumsuzluk reddi), `message` `reqLang(req)` ile kurulur —
+      `X-Stoa-Lang` başlığını eski paket de gönderiyor.
 - [ ] **Kart açma penceresi alt görevleri ekledikten sonra kartı tazelemiyor.**
       *(13 Eylül 2026.)* Pencere kartı açıp alt görevleri tek tek ekliyor
       (`modals.jsx`), ama panodaki kart "0/N" sayısını sayfa yenilenene kadar

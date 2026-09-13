@@ -10,8 +10,8 @@ güven, düzyazıya değil.
 > **Alt görevin tek kaynağı canlıda** (13 Eylül, 0-U): çekmece `subtasks`
 > tablosuna geçti, ilerleme tek kuraldan, eski listeler taşındı (26 kart).
 > Önce 0.5.0 Cowork'te uçtan uca doğrulandı ve 0.5.1 iki yüzey kusurunu
-> kapattı (0-T). **Açık kalan:** çekmecenin yeni listesi tarayıcıda elle
-> denenmedi — ilk iş o.
+> kapattı (0-T). Çekmece canlıda tarayıcıda da denendi: eski sekme reddedildi
+> ve hiçbir şey yazmadı, F5 sonrası dört işlem de geçti.
 
 ---
 
@@ -83,13 +83,41 @@ Yan gözlem (göçten bağımsız, TODO'da): #19'un `desc` alanı "Açıklama
 ttakcviöm Alt görevler". `PATCH` doc → açıklama senkronu başlık metinlerini de
 açıklamaya katıyor.
 
-### Denenmeyen
+### Tarayıcı denemesi — önce eski sekme, sonra yeni kod
 
-**Çekmecenin yeni listesi tarayıcıda elle denenmedi.** Yerel `server/.env`
-canlı veritabanını gösteriyor; uygulamayı yerelde açıp tıklamak canlıya
-yazmak demekti. Doğrulayan yalnızca testler ve derleme. İlk iş: bir kartın
-çekmecesinde madde ekle, işaretle, yeniden adlandır, sil; panodaki kartın
-"x/y" sayısı ve yüzdesi her adımda değişmeli.
+Yerel `server/.env` canlı veritabanını gösterdiği için arayüz buradan
+denenmedi; Eray canlıda denedi (deneme kartı #115, "Ana Proje").
+
+**İlk tur, dağıtımdan önce açılmış sekmeyle:** ekle, işaretle, yeniden
+adlandır, sil — dördü de `err_doc_checklist_retired` aldı. Beklenen buydu:
+eski çekmece listeyi hâlâ `doc`a yazıyordu. Veritabanından doğrulandı,
+reddedilen yol **hiçbir şey yazmadı** (#115'in `doc`u listesiz). Canlı paket
+de ayrıca indirilip tarandı: `index-CHnGTU9h.js` yeni kodu taşıyor
+(`renameSubtask` var, `kind:"checklist"` yok) — sorun sitede değil sekmedeydi.
+
+**F5'ten sonra dört işlem de uyarısız geçti.**
+
+Bu tur ret-yerine-ayıklama kararını sahada doğruladı. Sunucu sessizce
+ayıklasaydı dört işlem de "başarılı" görünecek, eklenen maddeler hata
+vermeden kaybolacaktı. Ret mesajı "sayfayı yenileyin" dedi, kullanıcı yeniledi,
+düzeldi.
+
+### Yoldan çıkan üç ders (TODO'da)
+
+1. **Eski sekmede yeni hata kodu çevrilemiyor.** Uyarı İngilizce arayüzde
+   Türkçe çıktı: eski paketin sözlüğünde `err_doc_checklist_retired` yok,
+   `apiFetch` sunucunun Türkçe `message`ına düştü. Eski sekmeye gitmesi
+   beklenen hatalarda mesaj sunucuda `reqLang(req)` ile kurulmalı — o başlığı
+   eski paket de gönderiyor.
+2. **Açık sekme dağıtımı fark etmiyor.** SPA sayfayı yeniden yüklemediği için
+   dağıtımdan önce açılan sekme saatlerce eski kodla çalışabiliyor. Bu kez ret
+   mesajı kurtardı; bir sonraki uyumsuz değişiklikte kurtarmayabilir.
+3. **`index.html` `Cache-Control` başlığı taşımıyor** (yalnızca zayıf ETag).
+   Bugün F5 yetti, ama önbellek davranışı tarayıcının tahminine kalmış.
+
+Yan gözlem: #115'in açıklaması "Açıklama ASDASDAS" — doc → açıklama
+senkronundaki başlık kusuru (TODO) yeni kartlarda da oluşuyor, yalnızca eski
+veride değil.
 
 ---
 
