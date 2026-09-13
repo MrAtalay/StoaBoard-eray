@@ -47,9 +47,12 @@ import {
   baslik,
   alanUyusuyor,
   atamaListesi,
+  uyeOlmayanAtananlar,
+  aracAdlari,
   ARAC_BASLIKLARI,
   DESC_SINIRI,
 } from '../src/lib/mcpShape.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ALL_PERMISSIONS, memberPermissions } from '../src/lib/permissions.js';
 import { yorumsuzDosya } from './yardimcilar.js';
 
@@ -190,6 +193,66 @@ describe('gorevDetayi — detayda açıklama kırpılmaz', () => {
 });
 
 // ─── Süzgeç ────────────────────────────────────────────────────────────────
+
+// ─── Yetim atananlar (0.6.0) ───────────────────────────────────────────────
+//
+// Korunan kusur: 11 Eylül denemesinde #5 ve #6'da `efe-kapan-1` atanan
+// görünüyordu, alan üyesi ise `efe-kapan`. Model slug'ı `list_members`te
+// bulamayıp "bu kim" diye kaldı. Atama düşürülmüyor (ürün kararı), işaretleniyor.
+
+describe('uyeOlmayanAtananlar — üye olmayan atanan işaretleniyor', () => {
+  const UYELER = new Set(['efe-kapan', 'eray-atalay']);
+
+  test('üye olmayan slug ayıklanıyor, sıra korunuyor, tekrar yok', () => {
+    assert.deepEqual(
+      uyeOlmayanAtananlar(['eray-atalay', 'efe-kapan-1', 'eski-uye', 'efe-kapan-1'], UYELER),
+      ['efe-kapan-1', 'eski-uye'],
+    );
+  });
+
+  test('hepsi üyeyse boş dizi', () => {
+    assert.deepEqual(uyeOlmayanAtananlar(['efe-kapan'], UYELER), []);
+  });
+
+  test('üye kümesi bilinmiyorsa null — "hepsi üye" diye uydurulmuyor', () => {
+    assert.equal(uyeOlmayanAtananlar(['efe-kapan-1'], null), null);
+    assert.equal(uyeOlmayanAtananlar(['efe-kapan-1'], undefined), null);
+    assert.equal(uyeOlmayanAtananlar(['efe-kapan-1'], ['efe-kapan']), null);
+  });
+
+  test('kart özetinde alan yalnızca doluyken var; küme bilinmiyorsa hiç yok', () => {
+    const yetimli = gorev({ assignees: ['efe-kapan', 'efe-kapan-1'] });
+    assert.deepEqual(gorevOzeti(yetimli, { uyeSluglari: UYELER }).assignees_not_members, ['efe-kapan-1']);
+    assert.deepEqual(gorevDetayi(yetimli, { uyeSluglari: UYELER }).assignees_not_members, ['efe-kapan-1']);
+
+    const temiz = gorev({ assignees: ['efe-kapan'] });
+    assert.equal('assignees_not_members' in gorevOzeti(temiz, { uyeSluglari: UYELER }), false);
+    assert.equal('assignees_not_members' in gorevOzeti(yetimli), false);
+    assert.equal('assignees_not_members' in gorevDetayi(yetimli), false);
+  });
+});
+
+// ─── Araç adları (0.6.0) ───────────────────────────────────────────────────
+//
+// `whoami` sunucunun o anki araç adlarını dönüyor ki eski listeyle açılmış
+// bir sohbet bayat olduğunu fark edebilsin. Ad listesi SDK'nın belgelenmemiş
+// `_registeredTools` alanından okunuyor; bu test onu GERÇEK bir McpServer
+// üzerinde sınıyor. SDK yükseltmesinde alan değişirse burası kırılır —
+// yanıttan sessizce düşen bir alan yerine.
+
+describe('aracAdlari — SDK kaydından okunuyor', () => {
+  test('gerçek sunucuda kayıtlı araçlar kayıt sırasıyla dönüyor', () => {
+    const sunucu = new McpServer({ name: 'deneme', version: '0.0.0' }, { capabilities: { tools: {} } });
+    sunucu.registerTool('birinci', { description: 'a' }, async () => ({ content: [] }));
+    sunucu.registerTool('ikinci', { description: 'b' }, async () => ({ content: [] }));
+    assert.deepEqual(aracAdlari(sunucu), ['birinci', 'ikinci']);
+  });
+
+  test('kayıt okunamazsa null — boş liste uydurulmuyor', () => {
+    assert.equal(aracAdlari({}), null);
+    assert.equal(aracAdlari(null), null);
+  });
+});
 
 describe('gorevSuz', () => {
   const bugun = '2026-09-11';
@@ -881,6 +944,29 @@ describe('aktif alan geçişi — yüzey kendisiyle çelişmiyor', () => {
     const yanlis = ilgili.filter((m) => !m.includes('set_active_workspace'));
     assert.deepEqual(yanlis, [],
       'Bu metinler alanın değiştirilebileceği aracı anmıyor — model yapabildiği işi yapamaz sanabilir');
+  });
+
+  test('kart döndüren okuma araçları üye kümesini geçiriyor ve bilinmezliği söylüyor', () => {
+    // Üç araç da kart döndürüyor; biri kümeyi geçirmeyi unutursa o araçta
+    // `assignees_not_members` hiç çıkmaz ve yokluk "yetim yok" diye okunur.
+    //
+    // Desenler KOD biçimini arıyor (`anahtar: değer`), düz adı değil. İlk hâl
+    // `includes('assignees_membership_unknown')` idi ve mutasyonda kaçtı: ad
+    // aracın açıklama dizesinde de geçiyor, kod silinse bile açıklama testi
+    // geçiriyordu. Yorum tuzağının dize biçimi (CLAUDE.md).
+    for (const aracAdi of ['list_tasks', 'search_tasks', 'get_task']) {
+      const blok = parcalar.find((p) => ad(p) === aracAdi);
+      assert.ok(blok, `${aracAdi} kayıtlı değil`);
+      assert.ok(blok.includes('uyeSluglariniGetir('), `${aracAdi} üye kümesini okumuyor`);
+      assert.ok(/(gorevOzeti|gorevDetayi)\([^;]*uyeSluglari/.test(blok), `${aracAdi} kümeyi karta geçirmiyor`);
+      assert.ok(/assignees_membership_unknown:\s*true/.test(blok), `${aracAdi} okunamayan üye listesini söylemiyor`);
+    }
+  });
+
+  test('whoami sunucunun araç adlarını dönüyor', () => {
+    const blok = parcalar.find((p) => ad(p) === 'whoami');
+    assert.ok(blok && blok.includes('aracAdlari(server)') && /available_tools:\s*araclar/.test(blok),
+      'whoami available_tools dönmüyor — eski sohbet bayat olduğunu fark edemez');
   });
 
   test('geçiş sonrası bağlam istek başındaki kullanıcı nesnesinden kurulmuyor', () => {

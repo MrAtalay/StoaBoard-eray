@@ -496,7 +496,11 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       yakalanıyor; altıncısı ilk turda kaçtı ve eksik olan testi ortaya
       çıkardı. Bildirim metni bilerek düz metin kaldı: `renderNotification`ın
       `mention` dalı yok, JSON verilseydi gövdesi boş bildirim çıkardı.
-- [ ] **Yetim atanan slug'ları — MCP'de işaretlenmeli.** 11 Eylül denemesinde
+- [x] **Yetim atanan slug'ları — MCP'de işaretlenmeli.** *(Kapandı 13 Eylül
+      2026 — MCP 0.6.0, DEVIR 0-V: `list_tasks`, `search_tasks`, `get_task`
+      kartlarında `assignees_not_members`; üye listesi okunamazsa kökte
+      `assignees_membership_unknown`. Tarama iki okuyucuyu karşılaştırıyor ve
+      canlı veride pozitif dal koşuyor: `efe-kapan-1`, #5 ve #6.)* 11 Eylül denemesinde
       5 ve 6 numaralı kartlarda `efe-kapan-1` göründü; alan üyesi
       `efe-kapan`. `-1` eki `uniqueSlug`tan geliyor (`lib/user.js`): aynı adla
       ikinci bir hesap açılmış (kayıt ya da farklı e-postayla Google girişi,
@@ -530,8 +534,11 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       çöpte (30 gün sonra kalıcı silinince kör nokta geri döner). Veri gelince
       ortaya çıktı ki kontrol veri yokluğundan değil **sorgusundan** da
       atlanıyordu: `is_done` NULL olan kolonları eliyordu. 0.5.1'de düzeltildi.
-- [ ] **`mcp:tara` hangi anahtarı gönderdiğini söylemiyor, sunucu da hangilerini
-      yüklediğini.** *(11 Eylül 2026 — DEVIR 0-F.)* Canlıya karşı 401
+- [x] **`mcp:tara` hangi anahtarı gönderdiğini söylemiyor, sunucu da hangilerini
+      yüklediğini.** *(11 Eylül 2026 — DEVIR 0-F. Kapandı 13 Eylül — DEVIR 0-V:
+      öneri olduğu gibi uygulandı; sunucu anahtar yokken de açılışta uyarıyor,
+      ham anahtarın satıra düşmediği ve uyarının kalkamayacağı testle kilitli.)*
+      Canlıya karşı 401
       alındığında sebep bir saat dağıtımda arandı; asıl sebep canlı anahtarın
       kök `.env`'de, taramanın ise `server/.env`'deki eskisini göndermesiydi.
       Öneri: betik başlıkta anahtar özetinin (SHA-256) ilk 8 hanesini bassın,
@@ -547,7 +554,22 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       tarayıcıdaki aktif alanı değiştirebiliyor. Bugün pratikte zararsız
       (yalnızca bozuk durumda tetikleniyor) ama "salt okuma" iddiasıyla
       çelişiyor; yazma araçları gelmeden bakılmalı.
-- [ ] **`whoami`'ye `available_tools`.** *(Öneri, karar bekliyor.)* Araç
+      **13 Eylül — ölçüldü, bilerek ertelendi (DEVIR 0-V).** Sorun maddede
+      yazandan geniş: okurken onaran kod **üç kopya** — `lib/workspace.js`
+      (`currentMember`), `routes/api.js` (açılış yükü) ve `sockets/chat.js`.
+      Ayrıca `routes/notifications.js`, `api.js` (rol başlığı) ve
+      `workspaces.js` (`is_current`) sütunu doğrudan okuyor. Yalnızca MCP'nin
+      `aktifAlan`ını yazmasız yapmak **sahte güvence** olurdu: MCP'nin okuma
+      araçları API'ye gidiyor ve oradaki kopya aynı yazmayı yapıyor. Asıl
+      çözüm onarımı tek noktaya (giriş / açılış) toplamak ve okuma yollarını
+      bellekte türetir hâle getirmek; doğrudan okuyanlar da o noktaya
+      bağlanmalı. Aciliyeti düşük: yazılan değer, her okuyucunun zaten
+      türettiği değerin aynısı (ilk üyelik) — görünür bir alan değişikliği
+      üretmiyor, yalnızca "salt okuma" sözünü bozuyor.
+- [x] **`whoami`'ye `available_tools`.** *(Kapandı 13 Eylül 2026 — MCP 0.6.0,
+      DEVIR 0-V: `server.available_tools`; tarama `tools/list` ile
+      karşılaştırıyor, SDK'nın belgelenmemiş kaydı gerçek bir `McpServer`
+      üzerinde testli.)* Araç
       listesi bağlantı başında bir kez okunuyor ve sunucu "değişti" diyemiyor
       (bkz. `MCP-SURUMLER.md`). Araç ÇAĞRILARI ise canlı. `whoami` sunucunun o
       anki araç adlarını dönerse, bayat bir sohbet kendi listesinde olmayan
@@ -777,8 +799,10 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       bir sözleşme. Araç girdileri `z.coerce` ile ikisini de kabul ettiği için
       tur kapanıyor — ne dönüyorsa geri verilebiliyor.
 
-      **[bekliyor] Görevde `created_at` / `updated_at`.** *(2. dilim —
-      bilinçli olarak 11 Eylül'e alınmadı.)* `createdAt` şemada **var**, sadece
+      **[yarısı bitti] Görevde `created_at` / `updated_at`.** *(2. dilim —
+      bilinçli olarak 11 Eylül'e alınmadı. `created_at` 13 Eylül'de geldi —
+      MCP 0.6.0, `taskToDict`ten, yani ön yüz de alıyor. `updated_at` aşağıdaki
+      karar yüzünden hâlâ bekliyor.)* `createdAt` şemada **var**, sadece
       `taskToDict` yayımlamıyor; tek satır. Ama `updatedAt` **yok** ve sütun
       eklemek üretime yazmak demek — bu depoda şema değişikliği ayrı, elle
       yapılan bir iş. **Tuzak:** sütun eklendiğinde mevcut kartların geçmişi

@@ -7,11 +7,76 @@ güven, düzyazıya değil.
 
 **Son güncelleme:** 13 Eylül 2026 öğleden sonra, **ev makinesinde** (5432 açık).
 
-> **Alt görevin tek kaynağı canlıda** (13 Eylül, 0-U): çekmece `subtasks`
-> tablosuna geçti, ilerleme tek kuraldan, eski listeler taşındı (26 kart).
-> Önce 0.5.0 Cowork'te uçtan uca doğrulandı ve 0.5.1 iki yüzey kusurunu
-> kapattı (0-T). Çekmece canlıda tarayıcıda da denendi: eski sekme reddedildi
-> ve hiçbir şey yazmadı, F5 sonrası dört işlem de geçti.
+> **MCP 0.6.0** (13 Eylül akşam, 0-V): `available_tools`, yetim atanan
+> işareti, `created_at`, anahtar izi. MCP'de asıl kalan iş: **kişinin kendi
+> anahtarını alabilmesi**. Aynı gün önce 0.5.0 Cowork'te doğrulandı, 0.5.1
+> iki yüzey kusurunu kapattı (0-T) ve alt görev tek kaynağa indi (0-U).
+
+---
+
+## 0-V. 13 Eylül, akşam — MCP 0.6.0: kuyruğun karar gerektirmeyen kısmı
+
+"MCP bitti mi?" sorusunun cevabı: planlanan üç adım (okuma, alan kapısı,
+yazma) bitti. Kalan kuyruk üçe ayrıldı ve karar gerektirmeyenler bu turda
+kapandı.
+
+### Yapılanlar
+
+- **`whoami` → `server.available_tools`.** TODO'da "öneri, karar bekliyor"
+  duruyordu; ucuz ve bayat sohbeti görünür kıldığı için yapıldı. SDK'nın
+  belgelenmemiş kaydından okunuyor — gerçek `McpServer` üzerinde testli,
+  taramada `tools/list` ile karşılaştırılıyor.
+- **Yetim atananlar: `assignees_not_members`.** Üç kart döndüren okuma
+  aracında. Üye listesi okunamazsa kökte `assignees_membership_unknown`.
+- **`created_at`** ortak serileştiriciden; ön yüz de alıyor.
+- **Anahtar izi.** Sunucu açılışta `[mcp] 1 anahtar: eray-atalay (e9fe29b9)`
+  basıyor, anahtar yoksa uyarıyor; tarama başlığında aynı önek. 11 Eylül'deki
+  bir saatlik yanlış iz (0-F) artık tek bakışta görünür.
+
+### Bilerek yapılmayan: `currentMember` okurken yazıyor
+
+Ölçüldü ve madde yazıldığından geniş çıktı: okurken onaran kod üç kopya
+(`lib/workspace.js`, `routes/api.js`, `sockets/chat.js`) ve sütunu doğrudan
+okuyan üç yer daha var. Yalnızca MCP'nin `aktifAlan`ını yazmasız yapmak sahte
+güvence olurdu — okuma araçları API'ye gidiyor, oradaki kopya aynı yazmayı
+yapıyor. Asıl çözüm ve aciliyetin düşük olma gerekçesi TODO'da.
+
+### Doğrulama
+
+**485 test** (473 → 485: 12 yeni). **Mutasyon on bir yönde koşuldu ve ilk
+turda üç sorun çıkardı:**
+
+- İki mutasyon **kaçtı**: yapısal test `assignees_membership_unknown` ve
+  `available_tools` adlarını dosyada düz metin olarak arıyordu. Ama bu adlar
+  aracın açıklama dizesinde de geçiyor; kod silinse bile açıklama testi
+  geçiriyordu. Yorum tuzağının dize biçimi. Desenler kod biçimine
+  (`anahtar: değer`) daraltıldı, ikisi de yakalandı.
+- Bir mutasyon **yanlış yeri vurdu**: aynı satır `lookupSlug`ta da var ve
+  çapa önce oraya düştü. "Yakalandı" görünüyordu ama başka işlev için; çapa
+  düzeltilip yeniden koşuldu.
+- Açılış uyarısını hiçbir test korumuyordu; yapısal test eklendi.
+
+Son durum: **on bir mutasyonun on biri, doğru yerde yakalanıyor.**
+
+**Yerel tarama (yerel sunucu, canlı veritabanı): 79 geçti, 0 kaldı, 1 atlandı.**
+İki yeni kontrolün ikisi de gerçek veriyle koştu: `efe-kapan-1` #5 ve #6'da
+işaretli, `get_task` aynı işareti taşıyor; `whoami`nin araç listesi
+`tools/list` ile birebir.
+
+Ortam notu: taramadan sonra `npm start` kabuğu durduruldu ama Windows'ta
+`node src/index.js` süreci 5000 portunu tutmaya devam etti; süreç kimliği ve
+komut satırı doğrulanıp elle kapatıldı.
+
+### MCP'de kalanlar
+
+1. **Kişinin kendi MCP anahtarını alabilmesi** — asıl büyük iş. Bugün her yeni
+   kişi için Railway'de ortam değişkeni elle düzenleniyor; Eray ayrıldıktan
+   sonra bu, Railway erişimi olan tek kişiye bağımlılık demek. Şema (anahtar
+   tablosu, özetle saklama, iptal) ve GUVENLIK.md eleği gerekiyor.
+2. **Sayfalama** — en büyük liste 17 kart; veri büyüyünce.
+3. **`updated_at`** — şema değişikliği, doldurma kararı bekliyor.
+4. **`my_open_tasks`** — iki hafta gerçek kullanımdan sonra.
+5. **Etiket korunmasının canlı denemesi** — `ghghhg`e iki etiket tanımlanınca.
 
 ---
 

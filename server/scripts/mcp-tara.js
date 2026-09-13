@@ -61,6 +61,7 @@ import { config } from '../src/config.js';
 import { prisma } from '../src/db.js';
 import { ARAC_BASLIKLARI, DESC_SINIRI, kelimedeKes, katla } from '../src/lib/mcpShape.js';
 import { ALL_PERMISSIONS } from '../src/lib/permissions.js';
+import { hashToken } from '../src/lib/mcpToken.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -306,6 +307,7 @@ const durum = {
   notSayisi: 0,
   ref: null, // olmayan kayıtların 404 gövdeleri — alan dışı bunlarla kıyaslanıyor
   alanDisi: null, // P0 bölümünün seçtiği başka alan kayıtları — yazma reddi de kullanıyor
+  aracAdlari: [], // tools/list — whoami.available_tools buna karşı
 };
 
 const tumAcik = () => [...durum.acik.values()].flat();
@@ -350,9 +352,12 @@ async function tara() {
   }
 
   console.log(`MCP taraması → ${HEDEF}`);
+  // Özet öneki, sunucunun açılışta bastığı `[mcp] N anahtar: slug (önek)`
+  // satırıyla yan yana konsun diye. 11 Eylül'de 401'in sebebi eski anahtardı
+  // ve bunu görmenin yolu yoktu. Anahtarın kendisi hiçbir koşulda basılmaz.
   console.log(
-    `anahtar: ${ANAHTAR.slug || '(MCP_TOKEN)'} · kaynaktaki sürüm ${BEKLENEN_SURUM} · `
-    + `veritabanı ${veritabaniHostu()}`,
+    `anahtar: ${ANAHTAR.slug || '(MCP_TOKEN)'} (${hashToken(ANAHTAR.token).slice(0, 8)}) · `
+    + `kaynaktaki sürüm ${BEKLENEN_SURUM} · veritabanı ${veritabaniHostu()}`,
   );
 
   let elSikisma;
@@ -398,6 +403,7 @@ async function tara() {
 
     const beklenen = Object.keys(ARAC_BASLIKLARI);
     const araclar = (await rpc('tools/list', {})).json?.result?.tools || [];
+    durum.aracAdlari = araclar.map((a) => a.name);
     kontrol(
       `araç listesi: ${araclar.length}`,
       araclar.length === beklenen.length && ayniKume(araclar.map((a) => a.name), beklenen),
@@ -437,6 +443,10 @@ async function tara() {
       'title_language tr': v.server?.title_language === 'tr',
       'permissions_without_tools ⊆ permissions':
         (v.permissions_without_tools || []).every((p) => durum.izinler.includes(p)),
+      // İki okuyucu: SDK'nın `tools/list` yanıtı ile `whoami`nin kendi okuduğu
+      // kayıt. Ayrışırsa eski sohbeti uyaran liste yanlış demektir.
+      'available_tools = tools/list':
+        Array.isArray(v.server?.available_tools) && ayniKume(v.server.available_tools, durum.aracAdlari),
     });
     if (durum.alan) {
       bilgi(`aktif alan: "${durum.alan.name}" (id ${durum.alan.id}), rol ${v.role}, ${durum.izinler.length} izin`);
@@ -694,10 +704,32 @@ async function tara() {
     );
     bilgi(`süre: sayımsız ${sureYalin} ms, sayımlı ${sureSayimli} ms (${durum.projeler.length} proje)`);
 
+    // Yetim atananlar (0.6.0): kartın kendi işareti ile üye listesi aynı
+    // şeyi söylemeli. İki okuyucu — `list_tasks`in `assignees_not_members`i ve
+    // `list_members`. Yalnızca bilgi satırı basan eski hâl hiçbir şeyi
+    // doğrulamıyordu.
     const uyeSluglari = new Set(uyeler.map((u) => u.slug));
-    const yabanci = [...new Set(tumKartlar().flatMap((t) => t.assignees || []))].filter((s) => !uyeSluglari.has(s));
-    if (yabanci.length) {
-      bilgi(`alan üyesi olmayan atananlar: ${yabanci.join(', ')} — TODO'daki atama açığının izi olabilir`);
+    const kartlar = tumKartlar();
+    const beklenen = (t) => [...new Set(t.assignees || [])].filter((s) => !uyeSluglari.has(s));
+    const uyusmayan = kartlar
+      .filter((t) => !ayniKume(t.assignees_not_members || [], beklenen(t)))
+      .map((t) => `#${t.id}`);
+    kontrol(
+      `assignees_not_members = atanan − üye (${kartlar.length} kart)`,
+      uyusmayan.length === 0 && kartlar.every((t) => !t.assignees_not_members || t.assignees_not_members.length > 0),
+      uyusmayan.slice(0, 6).join(', '),
+    );
+    const yetimli = kartlar.filter((t) => beklenen(t).length);
+    if (yetimli.length) {
+      const dusen = [];
+      for (const t of yetimli.slice(0, 5)) {
+        const d = (await arac('get_task', { task_id: t.id })).veri?.task || {};
+        if (!ayniKume(d.assignees_not_members || [], beklenen(t))) dusen.push(`#${t.id}`);
+      }
+      kontrol(`get_task aynı işareti taşıyor (${Math.min(yetimli.length, 5)} yetimli kart)`, dusen.length === 0, dusen.join(', '));
+      bilgi(`yetim atananlar: ${[...new Set(yetimli.flatMap(beklenen))].join(', ')} — ${yetimli.map((t) => `#${t.id}`).join(', ')}`);
+    } else {
+      atla('yetim atananın pozitif dalı', 'aktif alanda üye olmayan atanan yok — yalnızca boş cevap doğrulandı');
     }
   });
 

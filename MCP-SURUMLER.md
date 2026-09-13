@@ -16,6 +16,47 @@ commit'te sürüm artırılır ve buraya yazılır.
 
 ---
 
+## 0.6.0 — 13 Eylül 2026
+
+**Okuma yüzeyine üç ek alan.** Araç eklenmedi; kırıcı değişiklik yok, yeni
+alanlar ek. TODO'daki MCP kuyruğunun karar gerektirmeyen maddeleri (DEVIR 0-V).
+
+### `whoami` → `server.available_tools`
+
+Sunucunun o anki araç adları. İstemci araç listesini bağlantı başında bir kez
+okuyor ve sunucu "değişti" diyemiyor; araç çağrıları ise canlı. Eski bir
+sohbet kendi listesinde olmayan bir adı burada görürse kullanıcıya yeni sohbet
+açmasını söyleyebilir — açıklaması bunu istiyor. Bayatlığı imkânsız kılmıyor,
+görünür kılıyor.
+
+Ad listesi SDK'nın belgelenmemiş `_registeredTools` kaydından okunuyor. Kayıt
+okunamazsa alan yanıttan düşer; `mcp.test.js` gerçek bir `McpServer` üzerinde
+sınıyor, tarama `tools/list` ile karşılaştırıyor. SDK yükseltmesinde ikisinden
+biri kırılır.
+
+### Kartlarda `assignees_not_members`
+
+`list_tasks`, `search_tasks` ve `get_task` kartlarında: atanan görünen ama
+alanın üyesi olmayan slug'lar (alandan çıkarılmış ya da hiç üye olmamış). Alan
+yalnızca doluyken geliyor. Üye listesi okunamadıysa kökte
+`assignees_membership_unknown: true` — işaretin yokluğu "yetim yok" diye
+okunmasın. Atama düşürülmüyor; çıkarılan kişinin adının kartta kalması ürün
+kararı.
+
+### Kartlarda `created_at`
+
+Kartın açıldığı an. Şemada hep vardı, ortak serileştirici yayımlamıyordu; artık
+ön yüz de alıyor. `updated_at` şemada yok ve karar bekliyor (TODO).
+
+### Sunucu dışı: anahtar izi
+
+Sunucu açılışta `[mcp] N anahtar: slug (özet öneki)` basıyor, anahtar yoksa
+uyarıyor; `mcp:tara` başlığında aynı öneki gösteriyor. Yüzeyi değiştirmiyor.
+
+> Araç açıklamaları değişti — yeni sohbet önerilir.
+
+---
+
 ## 0.5.2 — 13 Eylül 2026
 
 **Alt görevler kartın yapılacaklar listesinin tek kaynağı; ilerleme tek

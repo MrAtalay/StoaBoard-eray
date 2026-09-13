@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { parseMcpTokens } from './lib/mcpToken.js';
+import { parseMcpTokens, anahtarOzetSatiri } from './lib/mcpToken.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,6 +65,14 @@ function getSecretKey() {
 const mcpTokens = parseMcpTokens(process.env.STOA_MCP_TOKENS);
 for (const uyari of mcpTokens.warnings) {
   console.warn('[mcp] anahtar atlandı:', uyari);
+}
+// Yüklenenler de basılıyor, yokluk da. Değişken tanımsızken uç her isteği
+// reddediyordu ve bunu hiçbir yerde söylemiyordu — kapalı başarısızlık
+// doğruydu ama sessizdi (TODO, 11 Eylül).
+{
+  const satir = anahtarOzetSatiri(mcpTokens.tokens);
+  if (satir) console.log(`[mcp] ${satir}`);
+  else console.warn('[mcp] geçerli anahtar yok (STOA_MCP_TOKENS) — /mcp her isteği 401 ile reddedecek');
 }
 
 export const config = {

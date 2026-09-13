@@ -108,6 +108,29 @@ export function lookupSlug(tokens, presented) {
   return tokens.get(hashToken(presented)) || null;
 }
 
+/**
+ * Yüklenen anahtarların açılış satırı: slug ve özetin ilk 8 hanesi.
+ *
+ * 11 Eylül 2026'da canlıya karşı tarama 401 aldı ve sebep bir saat dağıtımda
+ * arandı; asıl sebep taramanın, kök `.env`'deki yeni anahtar yerine
+ * `server/.env`'deki eskisini göndermesiydi. Ne betik hangi anahtarı
+ * gönderdiğini söylüyordu ne sunucu hangilerini yüklediğini. Bu satır sunucu
+ * tarafı; `mcp:tara` aynı öneki kendi başlığında basıyor ve ikisi yan yana
+ * konunca "gönderilen anahtar sunucuda var mı" tek bakışta cevaplanıyor.
+ *
+ * Önek anahtarın özetinden alınıyor, anahtarın kendisinden değil: 32 bitlik
+ * bir SHA-256 öneki rastgele bir anahtarı geri üretmeye yaramaz. Harita zaten
+ * ham anahtar tutmuyor, yani burası ham değere hiç erişemiyor.
+ *
+ * Harita boşsa `null` — çağıran bunu bir uyarıya çevirmek zorunda; sessiz
+ * kalmak "özellik neden çalışmıyor" sorusunu yine saatlere uzatırdı.
+ */
+export function anahtarOzetSatiri(tokens) {
+  if (!tokens || tokens.size === 0) return null;
+  const parcalar = [...tokens].map(([ozet, slug]) => `${slug} (${String(ozet).slice(0, 8)})`);
+  return `${tokens.size} anahtar: ${parcalar.join(', ')}`;
+}
+
 /** Uyarı metinlerinde ham değeri kısaltır — anahtarın tamamı loga düşmesin. */
 function kirp(s) {
   const t = String(s);

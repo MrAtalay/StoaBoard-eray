@@ -109,6 +109,10 @@ export function taskToDict(task) {
     attachments: 0,
     project_id: task.projectId,
     created_by: task.creator?.slug || null,
+    // Şemada hep vardı, yayımlanmıyordu; "bu kart ne zaman açıldı" sorusu
+    // cevapsızdı (TODO, MCP 2. dilim). `updated_at`in şemada karşılığı yok —
+    // o ayrı ve karar bekliyor.
+    created_at: task.createdAt ? new Date(task.createdAt).toISOString() : null,
     completed_at: task.completedAt ? task.completedAt.toISOString() : null,
     deleted_at: task.deletedAt ? task.deletedAt.toISOString() : null,
   };

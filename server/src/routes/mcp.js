@@ -80,6 +80,7 @@ import {
   baslik,
   alanUyusuyor,
   atamaListesi,
+  aracAdlari,
 } from '../lib/mcpShape.js';
 
 export const mcpRouter = Router();
@@ -91,7 +92,7 @@ export const mcpRouter = Router();
 // cevaplanamıyor. Yüzeyi değiştiren her commit'te bump et; `initialize`
 // yanıtındaki serverInfo.version dağıtım kanıtı olarak okunabilsin.
 // Sürüm geçmişi ve kırıcı değişiklikler: MCP-SURUMLER.md.
-const MCP_VERSION = '0.5.2';
+const MCP_VERSION = '0.6.0';
 
 /**
  * Araçların fiilen kullandığı izinler.
@@ -316,6 +317,21 @@ async function panoyuTara(user) {
   return { ok: true, projeler: sonuclar };
 }
 
+/**
+ * Aktif alanın üye slug'ları — kartlardaki `assignees_not_members` için.
+ *
+ * Okunamazsa `null` döner ve araç yanıta `assignees_membership_unknown`
+ * koyuyor: alanın yokluğu "yetim atanan yok" diye okunmasın. Kartları
+ * döndürmeyi engellemiyor — üye listesi yardımcı bilgi, asıl veri kartlar.
+ */
+async function uyeSluglariniGetir(user) {
+  const { member } = await aktifAlan(user);
+  if (!member?.workspaceId) return null;
+  const yanit = await callSelf(user, `/api/workspaces/${member.workspaceId}/members`);
+  if (!yanit.ok || !Array.isArray(yanit.data)) return null;
+  return new Set(yanit.data.map((u) => u.id));
+}
+
 /** Bugünün tarihi, ISO gün biçiminde — gecikme karşılaştırmaları için. */
 function bugunISO() {
   return new Date().toISOString().slice(0, 10);
@@ -480,12 +496,17 @@ function buildMcpServer(user, dil, req) {
         + 'MCP üzerinden kullanılamayan izinleri sayar — o işler için '
         + 'kullanıcıyı tarayıcıya yönlendir, deneme. '
         + 'server.title_language yalnızca araç başlıklarının dilidir; veri '
-        + 'alanlarının (kolon adı, kart başlığı) dilini belirlemez.',
+        + 'alanlarının (kolon adı, kart başlığı) dilini belirlemez. '
+        + 'server.available_tools sunucunun şu anki araç adlarıdır: kendi araç '
+        + 'listende olmayan bir ad burada görünüyorsa bu sohbet eski bir listeyle '
+        + 'açılmıştır — kullanıcıya yeni sohbet açmasını söyle.',
       annotations: salt,
     },
     async () => {
       const { member, workspace } = await aktifAlan(user);
       const izinler = memberPermissions(member);
+      // Çağrı anında okunuyor: bütün araçlar sunucu kurulurken kaydedildi.
+      const araclar = aracAdlari(server);
       return sonuc({
         user: { slug: user.slug, name: user.name },
         workspace,
@@ -494,7 +515,12 @@ function buildMcpServer(user, dil, req) {
         permissions_without_tools: kullanilmayanIzinler(
           izinler, ARACLARIN_KULLANDIGI_IZINLER,
         ),
-        server: { version: MCP_VERSION, writable: true, title_language: dil },
+        server: {
+          version: MCP_VERSION,
+          writable: true,
+          title_language: dil,
+          ...(araclar ? { available_tools: araclar } : {}),
+        },
       });
     },
   );
@@ -687,6 +713,11 @@ function buildMcpServer(user, dil, req) {
         + 'alanlar yalnızca doluyken gelir: desc_truncated yoksa açıklama '
         + 'tamdır (varsa tamamı için get_task kullan); subtasks yoksa alt görev '
         + 'yoktur, varsa "tamamlanan/toplam" biçimindedir. '
+        + 'assignees_not_members varsa o slug\'lar kartta atanan görünür ama '
+        + 'alanın üyesi değildir (alandan çıkarılmış ya da hiç üye olmamış); '
+        + 'list_members\'ta arama, kullanıcıya böyle aktar. Kökte '
+        + 'assignees_membership_unknown varsa üye listesi okunamadı, yani bu '
+        + 'işaret eksik olabilir. created_at kartın açıldığı andır. '
         + 'Yanıtta warning alanı varsa onu kullanıcıya aktar: panonun bitiş '
         + 'kolonu tanımlı değil demektir, yani liste olduğundan uzun. '
         + 'Proje aktif alanda değilse "bulunamadı" döner.',
@@ -710,7 +741,10 @@ function buildMcpServer(user, dil, req) {
       // Kolonlar her durumda gerekiyor: hem süzgeç hem her kartın
       // `col_is_done` alanı buna dayanıyor. Önce yalnızca `overdue` iken
       // çekiliyordu ve "bitmiş mi" sorusunun cevabı listede hiç yoktu.
-      const kolonlar = await bitisKolonlariniGetir(user, project_id);
+      const [kolonlar, uyeSluglari] = await Promise.all([
+        bitisKolonlariniGetir(user, project_id),
+        uyeSluglariniGetir(user),
+      ]);
       if (!kolonlar.ok) return hata(kolonlar.yanit);
 
       const gorevler = gorevSuz(yanit.data, {
@@ -719,7 +753,7 @@ function buildMcpServer(user, dil, req) {
         bitisKolonlari: kolonlar.kume,
         bugun: bugunISO(),
       }).map((g) => ({
-        ...gorevOzeti(g, { bitisKolonlari: kolonlar.kume }),
+        ...gorevOzeti(g, { bitisKolonlari: kolonlar.kume, uyeSluglari }),
         project_name: proje.proje.name,
       }));
 
@@ -735,6 +769,7 @@ function buildMcpServer(user, dil, req) {
         count: gorevler.length,
         include_done,
         ...(uyari ? { warning: uyari } : {}),
+        ...(uyeSluglari ? {} : { assignees_membership_unknown: true }),
         tasks: gorevler,
       });
     },
@@ -790,6 +825,7 @@ function buildMcpServer(user, dil, req) {
         taranan = tarama.projeler;
       }
 
+      const uyeSluglari = await uyeSluglariniGetir(user);
       const bulunan = [];
       for (const { proje, gorevler, bitisKolonlari } of taranan) {
         const eslesen = gorevSuz(gorevler, {
@@ -801,7 +837,7 @@ function buildMcpServer(user, dil, req) {
 
         for (const g of eslesen) {
           bulunan.push({
-            ...gorevOzeti(g, { bitisKolonlari }),
+            ...gorevOzeti(g, { bitisKolonlari, uyeSluglari }),
             project_name: proje.name,
           });
         }
@@ -816,6 +852,7 @@ function buildMcpServer(user, dil, req) {
         count: kesildi ? limit : bulunan.length,
         total_matches: bulunan.length,
         ...(kesildi ? { truncated: true } : {}),
+        ...(uyeSluglari ? {} : { assignees_membership_unknown: true }),
         tasks: bulunan.slice(0, limit),
       });
     },
@@ -833,6 +870,8 @@ function buildMcpServer(user, dil, req) {
         + 'list_tasks yalnızca özet veriyor ve açıklamayı kırpıyor. '
         + 'col_is_done yalnızca kolonlar okunabildiyse gelir; yoksa bilinmiyor '
         + 'demektir, "bitmemiş" diye okuma. '
+        + 'assignees_not_members varsa o atananlar alanın üyesi değildir; '
+        + 'assignees_membership_unknown varsa üye listesi okunamadı. '
         + 'Görev aktif alanda değilse "bulunamadı" döner.',
       inputSchema: { task_id: kimlik('list_tasks içindeki id') },
       annotations: salt,
@@ -849,12 +888,16 @@ function buildMcpServer(user, dil, req) {
       const proje = projeyiBul(projeler.data, yanit.data?.project_id);
       if (!proje) return hata(bulunamadi('gorev'));
 
-      const kolonlar = await bitisKolonlariniGetir(user, proje.id);
+      const [kolonlar, uyeSluglari] = await Promise.all([
+        bitisKolonlariniGetir(user, proje.id),
+        uyeSluglariniGetir(user),
+      ]);
       const bitisKolonlari = kolonlar.ok ? kolonlar.kume : undefined;
 
       return baglamli(user, {
+        ...(uyeSluglari ? {} : { assignees_membership_unknown: true }),
         task: {
-          ...gorevDetayi(yanit.data, { bitisKolonlari }),
+          ...gorevDetayi(yanit.data, { bitisKolonlari, uyeSluglari }),
           project_name: proje.name,
         },
       });

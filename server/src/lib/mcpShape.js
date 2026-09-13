@@ -137,7 +137,7 @@ export const DESC_SINIRI = 200;
  * işaretleniyor — sessizce kısaltmak, modelin eksik metni tam sanması demek
  * olurdu.
  */
-export function gorevOzeti(gorev, { bitisKolonlari, descSiniri = DESC_SINIRI } = {}) {
+export function gorevOzeti(gorev, { bitisKolonlari, descSiniri = DESC_SINIRI, uyeSluglari } = {}) {
   const desc = String(gorev.desc ?? '');
   const kirpildi = desc.length > descSiniri;
 
@@ -152,18 +152,63 @@ export function gorevOzeti(gorev, { bitisKolonlari, descSiniri = DESC_SINIRI } =
   // okunur, oysa bilinmiyor. Bu deponun tekrar eden kusuru olan sessiz
   // varsayım tam buradan giriyor.
   if (bitisKolonlari) d.col_is_done = bitisKolonlari.has(gorev.col);
+  uyeOlmayanlariIsaretle(d, gorev, uyeSluglari);
   return d;
 }
 
 /** Detay yanıtı için görev — açıklama kırpılmıyor, kimlik yine metin. */
-export function gorevDetayi(gorev, { bitisKolonlari } = {}) {
+export function gorevDetayi(gorev, { bitisKolonlari, uyeSluglari } = {}) {
   const d = {
     ...gorev,
     id: metinKimlik(gorev.id),
     project_id: metinKimlik(gorev.project_id),
   };
   if (bitisKolonlari) d.col_is_done = bitisKolonlari.has(gorev.col);
+  uyeOlmayanlariIsaretle(d, gorev, uyeSluglari);
   return d;
+}
+
+/**
+ * Kartta atanan görünen ama çalışma alanının üyesi OLMAYAN slug'lar.
+ *
+ * 11 Eylül denemesinde 5 ve 6 numaralı kartlarda `efe-kapan-1` göründü; alan
+ * üyesi `efe-kapan`. Model bu slug'ı `list_members`te bulamayıp "bu kim"
+ * diye kaldı. Atama düşürülmüyor — alandan çıkarılan kişinin adının kartta
+ * kalması bir ürün kararı (`f789c37`) — yalnızca işaretleniyor.
+ *
+ * Üye kümesi bilinmiyorsa `null`: boş dizi "hepsi üye" demek olurdu, oysa
+ * bilinmiyor. `col_is_done`daki kuralın aynısı.
+ */
+export function uyeOlmayanAtananlar(atananlar, uyeSluglari) {
+  if (!(uyeSluglari instanceof Set)) return null;
+  const liste = Array.isArray(atananlar) ? atananlar : [];
+  return [...new Set(liste)].filter((slug) => !uyeSluglari.has(slug));
+}
+
+/** Alan yalnızca doluyken konuyor — listede her kart için boş dizi token yakar. */
+function uyeOlmayanlariIsaretle(d, gorev, uyeSluglari) {
+  const yabanci = uyeOlmayanAtananlar(gorev.assignees, uyeSluglari);
+  if (yabanci && yabanci.length) d.assignees_not_members = yabanci;
+}
+
+/**
+ * Sunucuya o an kayıtlı araçların adları, kayıt sırasıyla.
+ *
+ * `whoami` bunu `server.available_tools` olarak dönüyor. Sebep: istemci araç
+ * listesini bağlantı başında bir kez okuyor ve sunucu "değişti" diyemiyor
+ * (MCP-SURUMLER.md). Araç ÇAĞRILARI ise canlı. Eski bir sohbet kendi
+ * listesinde olmayan bir adı burada görürse kullanıcıya yeni sohbet açmasını
+ * söyleyebilir — bayatlık imkânsız olmuyor, görünür oluyor.
+ *
+ * SDK kayıtları `_registeredTools` içinde tutuyor ve bu alan belgelenmiş bir
+ * API değil. O yüzden okunamazsa `null` dönüyor (alan yanıttan düşer) ve
+ * `mcp.test.js` gerçek bir `McpServer` üzerinde bu işlevi sınıyor: SDK
+ * yükseltmesinde alan değişirse sessizce boş liste değil, kırmızı test çıkar.
+ */
+export function aracAdlari(server) {
+  const kayit = server?._registeredTools;
+  if (!kayit || typeof kayit !== 'object') return null;
+  return Object.keys(kayit);
 }
 
 /**

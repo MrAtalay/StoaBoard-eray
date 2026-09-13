@@ -25,7 +25,7 @@ import {
   hasAnyPermission,
 } from '../src/lib/permissions.js';
 import { renderNotification } from '../src/lib/mailer.js';
-import { parseMcpTokens, lookupSlug, MIN_TOKEN_LENGTH } from '../src/lib/mcpToken.js';
+import { parseMcpTokens, lookupSlug, MIN_TOKEN_LENGTH, anahtarOzetSatiri, hashToken } from '../src/lib/mcpToken.js';
 import { atananlariDenetle, atamaSluglari } from '../src/lib/assignees.js';
 import { bahsedilenleriCoz, adKatla } from '../src/lib/mentions.js';
 
@@ -431,6 +431,48 @@ describe('parseMcpTokens — yapılandırma çözümlemesi', () => {
   test('slug küçük harfe indiriliyor — kullanıcı slug\'ları küçük harf', () => {
     const { tokens } = parseMcpTokens(`ERAY:${GECERLI}`);
     assert.equal(lookupSlug(tokens, GECERLI), 'eray');
+  });
+});
+
+// ─── Açılışta yüklenen anahtarların izi ────────────────────────────────────
+//
+// Korunan kusur (11 Eylül 2026): canlıya karşı tarama 401 aldı, sebep bir saat
+// dağıtımda arandı — tarama eski anahtarı gönderiyordu ve ne betik ne sunucu
+// hangi anahtarın elde olduğunu söylüyordu. Açılış satırı artık slug ve özet
+// öneki basıyor. İki şart kilitli: anahtarın kendisi satıra ASLA düşmez, ve
+// anahtar yokken satır "yok" der (null) — sessiz kalmaz.
+
+describe('anahtarOzetSatiri — açılış izi, anahtarı sızdırmadan', () => {
+  const HAM = 'k'.repeat(MIN_TOKEN_LENGTH) + 'gizli-kuyruk';
+
+  test('slug ve özetin ilk 8 hanesi basılıyor', () => {
+    const { tokens } = parseMcpTokens(`eray-atalay:${HAM}`);
+    assert.equal(anahtarOzetSatiri(tokens), `1 anahtar: eray-atalay (${hashToken(HAM).slice(0, 8)})`);
+  });
+
+  test('ham anahtarın hiçbir parçası satırda yok', () => {
+    const { tokens } = parseMcpTokens(`eray:${HAM},ahmet:${'z'.repeat(40)}`);
+    const satir = anahtarOzetSatiri(tokens);
+    assert.ok(!satir.includes(HAM) && !satir.includes('gizli') && !satir.includes('kkkk'),
+      `satır anahtar sızdırıyor: ${satir}`);
+    assert.ok(!satir.includes('zzzz'));
+    assert.match(satir, /^2 anahtar: /);
+  });
+
+  test('anahtar yoksa null — çağıran uyarıya çevirmek zorunda', () => {
+    assert.equal(anahtarOzetSatiri(parseMcpTokens('').tokens), null);
+    assert.equal(anahtarOzetSatiri(null), null);
+  });
+
+  test('config açılışta satırı basıyor, yokluğu da uyarıyla söylüyor', () => {
+    // Çağıran tarafın sözleşmesi: satır varsa basılır, null ise uyarı. Uyarı
+    // kalkarsa değişken tanımsızken uç yine hiçbir şey demeden 401 döner.
+    const kaynak = yorumsuzDosya(path.join(__dirname, '..', 'src', 'config.js'));
+    const i = kaynak.indexOf('anahtarOzetSatiri(mcpTokens.tokens)');
+    assert.ok(i > 0, 'config.js yüklenen anahtarları basmıyor');
+    const blok = kaynak.slice(i, i + 400);
+    assert.match(blok, /if\s*\(\s*satir\s*\)\s*console\.log\(/, 'yüklenen anahtar satırı basılmıyor');
+    assert.match(blok, /else\s+console\.warn\(/, 'anahtar yokken uyarı yok — kapalı başarısızlık sessiz kalır');
   });
 });
 

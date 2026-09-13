@@ -83,8 +83,11 @@ alt görevin iki kaynağı vardı (`subtasks` tablosu ve çekmecenin `task.doc`
 listesi). Aynı gün kapandı (DEVIR 0-U, MCP 0.5.2): tek kaynak tablo, ilerleme
 tek kuraldan (`lib/checklist.js`), eski listeler canlıda taşındı. **`doc`a
 yapılacaklar listesi yazma** — sunucu reddediyor, test kilitliyor.
+Akşam **MCP 0.6.0** (DEVIR 0-V): `whoami`de `available_tools`, kartlarda
+`assignees_not_members` ve `created_at`, açılışta anahtar izi. MCP'de asıl
+kalan iş kişinin kendi anahtarını alabilmesi.
 
-Test sayısı **473**, hepsi geçiyor. Ayrıntılı durum için **her zaman
+Test sayısı **485**, hepsi geçiyor. Ayrıntılı durum için **her zaman
 [DEVIR.md](DEVIR.md)** — bu blok bayatlamaya yatkın, oradaki 0-* bölümleri
 tarihli ve daha güvenilir.
 
@@ -132,7 +135,9 @@ Neon'da ayrı bir dal kullanılıyor.
 sonra kök `.env`'i yüklüyor ve dotenv var olan değişkeni ezmiyor: aynı ad
 ikisinde de varsa kökteki sessizce yok sayılır. 11 Eylül'de canlı MCP anahtarı
 köke yazıldı, tarama `server/.env`'deki eskisini gönderdi ve sebep bir saat
-dağıtımda arandı. Değişkeni `server/.env`'e yaz.
+dağıtımda arandı. Değişkeni `server/.env`'e yaz. Artık teşhis tek bakış:
+sunucu açılışta `[mcp] N anahtar: slug (özet öneki)` basıyor, `mcp:tara` da
+başlığında gönderdiği anahtarın önekini — ikisi farklıysa sebep budur.
 
 **`/api` dışındaki her adres SPA'ya düşüyor — yokluk 404 ile söylenmeli.**
 12 Eylül'de bağlayıcı kurulamadı, çünkü `/.well-known/oauth-*` 200 + HTML
@@ -150,7 +155,7 @@ tarayıcı içi SQL Editor'ü HTTPS üzerinden çalıştığı için o ağlarda 
 
 ## Çalışma biçimi
 
-**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 473 test,
+**Testleri çalıştır.** Değişiklikten sonra `cd server && npm test` — 485 test,
 veritabanı gerektirmez, birkaç saniye sürer. Çıktıda `[db] warmup failed` /
 "Can't reach database server" görürsen bu bir test hatası **değil**: uygulama
 modülü yüklenirken bağlantıyı deniyor, kurumsal ağda 5432 kapalı. Ölçüt en
@@ -179,7 +184,7 @@ derlemeyi çalıştırıp kırmızıysa push'u iptal ediyor. Kancalar `.git/hook
 içinde takip edilmediği için depoda `.githooks/` klasöründe duruyorlar; komut
 git'e oraya bakmasını söylüyor. Bilerek atlamak için `git push --no-verify`.
 
-**Kanca ofis ağında da çalışır.** 473 testin hiçbiri veritabanı istemiyor;
+**Kanca ofis ağında da çalışır.** 485 testin hiçbiri veritabanı istemiyor;
 çalışmayan tek şey uygulamanın kendisi. Kanca sahte bir `DATABASE_URL` ile
 koşuyor ki test koşusu ağa bağımlı hale gelip asılı kalmasın.
 
