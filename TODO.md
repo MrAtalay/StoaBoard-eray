@@ -526,6 +526,10 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       kapanır (Dershane'de bir not, StoaBoard'da çöpe atılmış bir kart).
       Veri yazmak olduğu için karar kullanıcının; o güne kadar ikisi
       `mcp.test.js`te kaynak düzeyinde kilitli.
+      **13 Eylül:** (b) için veri artık var — deneme kartı #114 bitmemiş hâlde
+      çöpte (30 gün sonra kalıcı silinince kör nokta geri döner). Veri gelince
+      ortaya çıktı ki kontrol veri yokluğundan değil **sorgusundan** da
+      atlanıyordu: `is_done` NULL olan kolonları eliyordu. 0.5.1'de düzeltildi.
 - [ ] **`mcp:tara` hangi anahtarı gönderdiğini söylemiyor, sunucu da hangilerini
       yüklediğini.** *(11 Eylül 2026 — DEVIR 0-F.)* Canlıya karşı 401
       alındığında sebep bir saat dağıtımda arandı; asıl sebep canlı anahtarın
@@ -549,6 +553,34 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       anki araç adlarını dönerse, bayat bir sohbet kendi listesinde olmayan
       aracı görüp kullanıcıya "yeni sohbet aç" diyebilir. Bayatlığı imkânsız
       kılmıyor, görünür kılıyor.
+- [ ] **Alt görevin İKİ kaynağı var — MCP yalnızca birine yazıyor.** *(Bulundu
+      13 Eylül 2026, Cowork'ün 0.5.0 denemesi — DEVIR 0-T.)* Kart açma penceresi
+      ve MCP `subtasks` tablosuna yazıyor; çekmecedeki "Yapılacaklar" bölümü
+      ise listeyi `task.doc` içindeki `checklist` bloğuna yazıyor ve ilerlemeyi
+      oradan kendisi hesaplıyor (`drawer.jsx`, `saveChecklist`). `doc` bir kez
+      saklanınca çekmece yalnızca onu okuyor: tablo satırları çekmecede
+      görünmüyor, çekmecedeki işaretler tabloya gitmiyor. Ölçüm (103 kart):
+      5 kartta iki kaynak birden var ve **3'ü ayrışmış** (#19, #40, #42);
+      3 kartın listesi yalnızca `doc`'ta, MCP onları hiç görmüyor. #19'da
+      `subtasks_detail` "yapılmadı", `doc` "yapıldı", ilerleme %100 diyor.
+      MCP için sonucu: saklı `doc`'lu kartta `add_subtask` çekmecenin
+      göstermediği bir satır yazar, `update_subtask` çekmecenin ilerlemesini
+      ezer. **Karar (13 Eylül):** tek kaynak `subtasks` tablosu — kimliği,
+      yetki kapısı, sunucu tarafı ilerleme hesabı ve MCP zaten orada.
+- [ ] **`board_columns.is_done` boş olabiliyor — 86 kolonun 53'ünde NULL.**
+      *(13 Eylül 2026.)* Ürün kodu kolonu `isDone: true` diye olumlu eşleştirdiği
+      için bugün etkilenmiyor; tuzak "bitmemiş" diye sorgulayan ilk yerde
+      düşüyor. `mcp:tara` düştü: `NOT isDone = true` NULL satırı eledi ve çöpte
+      bitmemiş kart dururken kontrol "veri yok" diye atlandı (0.5.1'de sorgu
+      düzeltildi). Kalıcı çözüm sütunu `NOT NULL DEFAULT false` yapmak —
+      üretime yazıyor, elle.
+- [ ] **MCP yüzeyinde küçük pürüzler — 0.5.0 denemesinden.** Alt görev
+      araçları girdide `title` alıp yanıtta `text` dönüyor (`subtaskToDict`
+      sözleşmesi; `subtasks_detail` de `text` — değiştirmek kırıcı).
+      `err_task_not_found` başka alandaki kart için de "list_tasks kullan"
+      diyor; aktif alanı eklemek kahin açmaz, çünkü olmayan kartla aynı gövde
+      kalır. `mcp.workspace_switched` satırı HEDEF alanın kaydına düşüyor:
+      StoaBoard'un kaydında 1→4 geçişi görünmüyor, yalnızca dönüş görünüyor.
 - [x] **`dil.test.js` ve `yetki.test.js` tarayıcıları yorumları silmiyor.**
       *(Kapandı 12 Eylül 2026 — DEVIR 0-L.)* Sorun maddede yazandan genişti:
       "yorum nedir" sorusunun depoda **üç ayrı cevabı** vardı ve üçü de farklı
@@ -673,9 +705,11 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       "kusur değil, doğrulanmamış" diye işaretlemişti, ayrım doğruydu.
       Sınır artık `list_notes` açıklamasında yazılı, yani istemci bunu
       denemeden biliyor.
-- [~] **MCP çalışma alanını göremiyor, değiştiremiyor.** *(Okuma yarısı
-      yapıldı 11 Eylül 2026: `list_workspaces`. Değiştirme hâlâ yok ve
-      3. adıma ait.)* Bütün araçlar
+- [x] **MCP çalışma alanını göremiyor, değiştiremiyor.** *(Okuma yarısı
+      11 Eylül 2026: `list_workspaces`. Değiştirme 13 Eylül, 0.5.0:
+      `set_active_workspace`. 0.5.1'de iki artık kapandı: öbür metinler hâlâ
+      "değiştiremezsin" diyordu ve geçiş yanıtı eski alanı gösteriyordu —
+      DEVIR 0-T.)* Bütün araçlar
       **aktif** çalışma alanına bakıyor ve o alan yalnızca tarayıcıdan
       değişiyor. Sonuç: kullanıcının tarayıcısı başka bir alandayken Claude
       diğer panoya hiç ulaşamıyor — üstelik o panonun var olduğunu bile
@@ -1024,6 +1058,13 @@ Ofiste dal itmek, yerelde **alınamayan** bir doğrulama sağlıyor.
       hâlâ geçerli ama sonucu yanlış: kaynak yoksa **sıfırlamak**, eski
       değeri korumaktan daha dürüst. Alternatif, alt görevi olmayan kartta
       ilerlemeyi hiç göstermemek.
+      **13 Eylül — ikinci yol ve karar.** Son alt görevi silmek de aynı yere
+      düşürüyor: `recalcTaskProgress` alt görev kalmayınca hiçbir şey yazmadan
+      çıkıyor, ilerleme son değerde donuyor. MCP'nin `delete_subtask`'ı ile
+      canlıda görüldü (#114: alt görevi yok, `doing`, %100). **Karar:** kaynak
+      yoksa ilerleme kolondan türer — bitmiş kolonda 100, değilse 0. Kolona
+      taşımanın zaten yaptığıyla aynı kural; alt görevin tek kaynağa inmesiyle
+      aynı turda.
 - [x] ~~Paket boyutu 787 KB, kod bölme yapılmadı.~~ **Yapıldı (2 Eylül).**
       Satıcı bölme (react-vendor 143 KB, realtime 42 KB ayrı, önbelleklenir) +
       altı açılış-dışı görünüm tembel yükleniyor (reports, notes, settings,

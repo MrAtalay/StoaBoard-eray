@@ -5,12 +5,85 @@ projeyi yeni devralan oturuma "şu an gerçekte ne doğru" demek için var.
 Belgelerde birbiriyle çelişen ifadeler bulursan **bu dosyaya ve `git log`a**
 güven, düzyazıya değil.
 
-**Son güncelleme:** 13 Eylül 2026 gece, **ev makinesinde** (5432 açık).
+**Son güncelleme:** 13 Eylül 2026 öğleden sonra, **ev makinesinde** (5432 açık).
 
-> **MCP 0.4.0 canlıda ve uçtan uca doğrulandı** (12 Eylül sabahı): tarama 64
-> geçti / 0 kaldı, ilk gerçek kart Cowork'ten açıldı (#114), denetim kaydında
-> üç `mcp.task_*` satırı. Bağlayıcı kurulumu **No sign-in + `x-auth-token`**
-> (0-I). Sıradaki iş: kart yorumundaki `@bahsetme` sızıntısı.
+> **MCP 0.5.0 canlıda ve uçtan uca doğrulandı** (13 Eylül): yazma araçlarının
+> başarı yolları Cowork'te, denetim kaydı veritabanında, tarama canlıda
+> (77/0/2). Denemeden iki yüzey kusuru (0.5.1) ve MCP'den eski, daha derin
+> bir kusur çıktı: **alt görevin iki kaynağı** (0-T). Sıradaki iş o.
+
+---
+
+## 0-T. 13 Eylül, öğlen — 0.5.0 canlı doğrulaması ve 0.5.1
+
+Önce dağıtımın indiği kanıtlandı (canlı tarama `initialize → stoaboard
+0.5.0`, 77 geçti / 0 kaldı / 2 atlandı), sonra Cowork'e yeni sohbette 38
+adımlık bir deneme verildi. Bütün yazmalar deneme kartı #114'e; başka kartlara
+yalnızca okuma.
+
+### Geçenler
+
+Alt görev ekle / işaretle / yeniden adlandır / sil, ilerleme 0 → 50 → 100;
+aitlik kapısı **gerçek** bir yabancı alt görev kimliğiyle (#19'un 10
+numarası, değer değişmeyecek biçimde çağrıldı) → `err_mcp_subtask_not_found`
+ve #19 dokunulmamış; çöpe at → listeden düştü, ghghhg `open` 1 → 0; ikinci
+silme `already_trashed` ve **`deleted_at` birebir aynı** (30 günlük sayaç
+tazelenmiyor); geri al → yorum, atanan, tarih, kolon yerinde; alan 1 → 4 →
+409 → 1.
+
+**Denetim kaydı veritabanından okundu:** on bir gerçek yazma için on bir
+`mcp.*` satırı. İşlem yapmayan çağrılar (`already_trashed`, `already_active`,
+`switched=false`) ve reddedilenler **hiç satır bırakmadı**; alt görev metni
+hiçbir satırda yok.
+
+**Denenemeyen:** "etiket eklemek öbürünü silmiyor" iddiası — ghghhg'de hiç
+etiket tanımlı değil. Bir sonraki denemede önce iki etiket tanımlanmalı.
+
+### 0.5.1 — iki yüzey kusuru
+
+1. **Açıklamalar çelişiyordu.** `list_workspaces` "Alanı DEĞİŞTİREMEZSİN",
+   `create_task` ve 409 mesajı "tarayıcıda değiştirmesini iste" diyordu;
+   araç 0.5.0'da gelmişti. Cowork çelişkiyi raporladı. Test: çalışma alanını
+   değiştirmekten söz eden her metin `set_active_workspace`'i anmalı.
+   Testin ilk hâli yanlış pozitif verdi — `update_task`'in "görevin
+   **alanlarını** değiştirir" cümlesi (alan = field); desen tekil biçimlere
+   daraltıldı.
+2. **Geçiş yanıtı eski alanı gösteriyordu** (`workspace` = `previous`).
+   `aktifAlan(user)` istek başında yüklenen nesneyi okuyordu. Kullanıcı satırı
+   geçişten sonra yeniden okunuyor. Tarama bunu göremezdi: bu aracın yalnızca
+   reddetme yolunu koşuyor, çünkü başarı yolu tarayıcıdaki alanı değiştiriyor.
+
+Mutasyon dört yönde koşuldu (üç metin ayrı ayrı eski hâline, bağlam bayat
+nesneye), **dördü de yakalandı.** 446 → 448 test.
+
+### Taramanın sessiz atlaması
+
+#114 bitmemiş hâlde çöpe atıldıktan sonra tarama yeniden koşuldu ve "çöpte
+bitmemiş kart yok" deyip kontrolü **yine atladı.** Sebep veri değil sorgu:
+86 kolonun 53'ünde `is_done` NULL, sorgu `NOT isDone = true` idi ve SQL'de
+`NOT (NULL = true)` satırı eler. Veritabanında ölçüldü: çöpte 1 kart, eski
+sorgu 0, düzeltilmiş sorgu 1. Ürün kodu kolonu olumlu eşleştirdiği için
+etkilenmiyor. Sütunun kendisi TODO'da (`NOT NULL DEFAULT false`).
+
+### Asıl bulgu: alt görevin iki kaynağı
+
+Cowork #19'da `subtasks_detail` ile `doc.checklist`'in çeliştiğini fark etti.
+Kök sebep MCP'den eski: çekmecedeki "Yapılacaklar" listeyi `task.doc`'a yazıp
+ilerlemeyi kendisi hesaplıyor; kart açma penceresi ve MCP `subtasks`
+tablosuna yazıyor. Ölçüm ve karar TODO'da. 0.5.0 bu yüzden **saklı `doc`'lu
+kartta** görünmez alt görev yazabiliyor — #114'te sorun çıkmamasının tek
+sebebi `doc`'unun hiç saklanmamış olması.
+
+Ara kapı (MCP'nin o kartlarda reddetmesi) **bilerek yazılmadı**: asıl onarım
+hemen ardından geliyor ve bir sonraki commit'te silinecek bir kapı, kapattığı
+riskten (bugün yalnızca Eray'ın Cowork'ü yazıyor) pahalı.
+
+### Deneme sonrası durum
+
+#114 çöpte, bitmemiş, alt görevsiz ve **ilerlemesi %100** — son alt görev
+silinince ilerleme donuyor (TODO, karar verildi). Aktif alan StoaBoard (1).
+`efe-kapan-1` hâlâ #5 ve #6'da atanan (TODO'daki yetim slug maddesi canlı
+veriyle doğrulandı).
 
 ---
 

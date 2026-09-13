@@ -1010,11 +1010,21 @@ async function tara() {
     // Açık sayımın çöp kutusu kusuru (11 Eylül) ancak çöpte bitmemiş kart
     // varken görünür: çöp boşsa `deletedAt` süzgeci olsa da olmasa da sayı aynı
     // çıkar. Mutasyonla doğrulandı — veri bunu sınayamıyorsa söylensin.
+    //
+    // "Bitmemiş" açıkça `false YA DA NULL` diye yazılıyor. `isDone` sütunu
+    // boş olabiliyor (13 Eylül'de 86 kolonun 53'ü) ve sorgunun ilk hâli
+    // `NOT isDone = true` idi: SQL'de `NOT (NULL = true)` NULL'dur, satır
+    // elenir. Sonuç sessizdi — çöpte bitmemiş #114 dururken tarama "çöpte
+    // bitmemiş kart yok" deyip kontrolü ATLADI. Prisma'nın `{ not: true }`
+    // biçimi de aynı nedenle NULL'u eler; o yüzden kullanılmadı.
     const coptaAcik = await prisma.task.count({
       where: {
         deletedAt: { not: null },
         projectId: { in: projeIdleri },
-        NOT: { column: { is: { isDone: true } } },
+        OR: [
+          { columnId: null },
+          { column: { is: { OR: [{ isDone: false }, { isDone: null }] } } },
+        ],
       },
     });
     if (coptaAcik) {

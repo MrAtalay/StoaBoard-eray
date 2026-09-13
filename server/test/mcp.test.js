@@ -828,3 +828,71 @@ describe('yazma araçları — kapılar her araçta, yazmadan önce', () => {
     assert.deepEqual(kacak, [], 'Bilinmeyen etiket slug\'ı sessizce yutulabilir');
   });
 });
+
+// ─── Aktif alan geçişi (0.5.1) ─────────────────────────────────────────────
+//
+// İki kusur da 13 Eylül'deki gerçek istemci denemesinde çıktı ve ikisi de
+// aynı sınıftan: yüzey bir şeyi yapabildiği hâlde başka bir yerinde tersini
+// söylüyordu.
+//
+//   1. `set_active_workspace` 0.5.0'da geldi ama `list_workspaces` modele hâlâ
+//      "Alanı DEĞİŞTİREMEZSİN; bu yalnızca tarayıcıdan yapılıyor" diyordu; 409
+//      mesajı ve `create_task` de "kullanıcıdan tarayıcıda değiştirmesini iste".
+//      Metinler araç eklenmeden önce doğruydu, araç gelince kimse onlara
+//      bakmadı. İstemci çelişkiyi fark edip aracın kendi açıklamasına göre
+//      davrandı; başka bir model aracı hiç kullanmayabilirdi.
+//   2. Geçiş yanıtının `workspace` alanı ESKİ alanı gösteriyordu (`previous`
+//      ile aynı), çünkü bağlam istek başında yüklenen kullanıcı nesnesinden
+//      kuruluyordu.
+
+describe('aktif alan geçişi — yüzey kendisiyle çelişmiyor', () => {
+  const mcpSrc = yorumsuz('routes/mcp.js');
+  const parcalar = mcpSrc.split('server.registerTool(');
+  const ad = (b) => /^\s*'([a-z_]+)'/.exec(b)?.[1];
+
+  /**
+   * Ardışık `'…' + '…'` dizelerini tek metne birleştirir. Açıklamalar ve
+   * mesajlar parça parça yazılıyor; cümle parçalar arasında bölünebildiği
+   * için satır satır bakan bir tarama "alanı" ile "değiştir"i ayrı görürdü.
+   */
+  function metinGruplari(kaynak) {
+    const DIZE = String.raw`'(?:[^'\\\n]|\\.)*'`;
+    const GRUP = new RegExp(`${DIZE}(?:\\s*\\+\\s*${DIZE})*`, 'g');
+    return [...kaynak.matchAll(GRUP)].map((m) => [...m[0].matchAll(new RegExp(DIZE, 'g'))]
+      .map((d) => d[0].slice(1, -1).replace(/\\'/g, "'"))
+      .join(''));
+  }
+
+  test('alan değiştirmekten söz eden her metin set_active_workspace\'i anıyor', () => {
+    // Aracın kendi açıklaması kapsam dışı: kendi adını anması beklenmez.
+    const kaynak = parcalar.filter((p) => ad(p) !== 'set_active_workspace').join('\n');
+    // Türkçe küçültme: `/i` bayrağı İ'yi i'ye katlamıyor, "DEĞİŞTİREMEZSİN"
+    // gibi büyük harfli uyarı gözden kaçardı — kusurun kendisi büyük harfliydi.
+    //
+    // Yalnızca TEKİL biçimler: "alan" Türkçede hem çalışma alanı hem kart
+    // alanı (field). Desenin ilk hâli `update_task`in "görevin alanlarını
+    // değiştirir" cümlesini yakaladı; çalışma alanından söz eden metinler
+    // tekil ("alan", "alanı", "alanın", "alanını").
+    const DEGISTIR = /(?:^|\s)alan(?:ı|ın|ını)?\s+(?:\S+\s+){0,6}değiştir/;
+    const ilgili = metinGruplari(kaynak).filter((m) => DEGISTIR.test(m.toLocaleLowerCase('tr')));
+
+    assert.ok(ilgili.length >= 3,
+      `alan değişikliğinden söz eden yalnızca ${ilgili.length} metin bulundu — desen bozuk olabilir`);
+    const yanlis = ilgili.filter((m) => !m.includes('set_active_workspace'));
+    assert.deepEqual(yanlis, [],
+      'Bu metinler alanın değiştirilebileceği aracı anmıyor — model yapabildiği işi yapamaz sanabilir');
+  });
+
+  test('geçiş sonrası bağlam istek başındaki kullanıcı nesnesinden kurulmuyor', () => {
+    const blok = parcalar.find((p) => ad(p) === 'set_active_workspace');
+    assert.ok(blok, 'set_active_workspace kayıtlı değil');
+    const govde = blok.split(/\n\s*return server;/)[0];
+    const i = govde.indexOf('/switch');
+    assert.ok(i > 0, 'geçiş çağrısı bulunamadı — desen bozuk olabilir');
+
+    const sonrasi = govde.slice(i);
+    assert.ok(/aktifAlan\(/.test(sonrasi), 'geçişten sonra aktif alan yeniden okunmuyor');
+    assert.ok(!/aktifAlan\(\s*user\s*\)/.test(sonrasi),
+      '`user` istek başındaki alanı taşıyor — yanıt eski alanı gösterir');
+  });
+});

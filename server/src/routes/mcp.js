@@ -91,7 +91,7 @@ export const mcpRouter = Router();
 // cevaplanamıyor. Yüzeyi değiştiren her commit'te bump et; `initialize`
 // yanıtındaki serverInfo.version dağıtım kanıtı olarak okunabilsin.
 // Sürüm geçmişi ve kırıcı değişiklikler: MCP-SURUMLER.md.
-const MCP_VERSION = '0.5.0';
+const MCP_VERSION = '0.5.1';
 
 /**
  * Araçların fiilen kullandığı izinler.
@@ -358,8 +358,9 @@ async function yazmaKapisi(user, workspaceId) {
         status: 409,
         data: {
           error: 'err_mcp_workspace_mismatch',
-          message: 'İstenen alan aktif alan değil; hiçbir şey yazılmadı. Kullanıcıdan '
-            + 'tarayıcıda alanı değiştirmesini iste ya da aktif alanda çalış.',
+          message: 'İstenen alan aktif alan değil; hiçbir şey yazılmadı. Aktif alanı '
+            + 'kullanıcıya söyle. Kullanıcı açıkça isterse alanı set_active_workspace '
+            + 'ile değiştirebilirsin — tarayıcıda açık olan alan da değişir.',
           active_workspace: { id: metinKimlik(workspace.id), name: workspace.name },
         },
       },
@@ -510,10 +511,11 @@ function buildMcpServer(user, dil, req) {
         + 'MCP yalnızca aktif alanı görür. Aradığın proje ya da kart '
         + 'bulunamıyorsa önce buraya bak: büyük ihtimalle başka bir alandadır. '
         + 'Kullanıcı belirli bir alan adı verdiyse ve is_current olan alan o '
-        + 'değilse dur ve kullanıcıya söyle; öteki alanın verilerine bu '
-        + 'bağlantıdan ulaşılamaz. '
-        + 'Alanı DEĞİŞTİREMEZSİN; bu yalnızca tarayıcıdan yapılıyor. '
-        + 'Kullanıcıdan alanı değiştirmesini iste, sonra yeniden dene.',
+        + 'değilse dur ve kullanıcıya söyle; öteki alanın verileri alan '
+        + 'değiştirilmeden görünmez. Kullanıcı açıkça isterse alanı '
+        + 'set_active_workspace ile değiştirebilirsin; aktif alan tarayıcı '
+        + 'oturumuyla ortak olduğu için bu, kullanıcının ekranındaki alanı da '
+        + 'değiştirir.',
       annotations: salt,
     },
     async () => {
@@ -923,7 +925,8 @@ function buildMcpServer(user, dil, req) {
         + 'döner. Kullanıcı açıkça istemediyse kart açma. '
         + 'workspace_id zorunludur ve AKTİF alanın kimliği olmalıdır (whoami '
         + 'yanıtındaki workspace.id); değilse 409 döner ve hiçbir şey yazılmaz '
-        + '— kullanıcıdan tarayıcıda alanı değiştirmesini iste. project_id '
+        + '— aktif alanı kullanıcıya söyle; alan yalnızca kullanıcı açıkça '
+        + 'isterse set_active_workspace ile değiştirilir. project_id '
         + 'list_projects\'ten alınır. col kolon slug\'ıdır (list_columns id); '
         + 'verilmezse "todo" kolonuna, pano onu tanımlamıyorsa ilk kolona '
         + 'açılır; olmayan bir slug hata döner. assignees kullanıcı slug\'larıdır '
@@ -1539,7 +1542,16 @@ function buildMcpServer(user, dil, req) {
           to: metinKimlik(workspace_id),
         },
       });
-      const sonra = await aktifAlan(user);
+      // Bağlam kullanıcı satırı YENİDEN okunarak kuruluyor. `user` istek
+      // başında yüklendi ve `currentWorkspaceId` alanı geçişten önceki değeri
+      // taşıyor; onunla kurulan bağlam eski alanı söylüyordu. 0.5.0'da tam
+      // olarak bu oldu: yanıtın `workspace` alanı `previous` ile aynıydı ve
+      // model ancak `whoami`ye bakınca geçişin olduğunu anladı (13 Eylül, gerçek
+      // istemci denemesi). Bütün öbür araçlarda `workspace` "şu an neredesin"
+      // demek; burada tersini söylemesi, geçişi doğrulayan tek alanın yalan
+      // söylemesi demekti.
+      const taze = await prisma.user.findUnique({ where: { id: user.id } });
+      const sonra = await aktifAlan(taze);
       return baglamli(user, { switched: true, previous: once.workspace }, sonra.workspace);
     },
   );

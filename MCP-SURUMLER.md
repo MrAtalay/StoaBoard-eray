@@ -16,6 +16,42 @@ commit'te sürüm artırılır ve buraya yazılır.
 
 ---
 
+## 0.5.1 — 13 Eylül 2026
+
+**Gerçek istemci denemesinin bulguları.** Araç eklenmedi, çıkarılmadı; iki
+yanlış söz düzeltildi. Cowork 0.5.0'ın yazma araçlarının başarı yollarını
+canlıda uçtan uca denedi (DEVIR 0-T) ve ikisi de oradan çıktı.
+
+### Yüzey kendisiyle çelişiyordu
+
+`set_active_workspace` 0.5.0'da geldi, ama üç metin araç yokmuş gibi
+konuşmaya devam ediyordu: `list_workspaces` "Alanı DEĞİŞTİREMEZSİN; bu
+yalnızca tarayıcıdan yapılıyor", `create_task` ve 409 mesajı
+(`err_mcp_workspace_mismatch`) "kullanıcıdan tarayıcıda değiştirmesini iste".
+İstemci çelişkiyi fark edip aracın kendi açıklamasına göre davrandı; başka
+bir model aracı hiç kullanmayabilirdi.
+
+Üç metin de artık aynı şeyi söylüyor: alan `set_active_workspace` ile
+değiştirilebilir, **yalnızca kullanıcı açıkça isterse**, çünkü tarayıcıdaki
+açık alan da değişir. Kural testte: çalışma alanını değiştirmekten söz eden
+her metin aracı anmak zorunda.
+
+### Geçiş yanıtı eski alanı gösteriyordu
+
+`set_active_workspace 4` çağrısının yanıtında `workspace` alanı **1**'di,
+`previous` ile aynı. Bütün öbür araçlarda `workspace` "şu an neredesin"
+demek; geçişi doğrulayan tek alan tersini söylüyordu. Sebep: bağlam, istek
+başında yüklenen ve geçişten önceki `currentWorkspaceId`'yi taşıyan kullanıcı
+nesnesinden kuruluyordu. Kullanıcı satırı artık geçişten sonra yeniden
+okunuyor.
+
+**İstemci için davranış değişikliği:** `switched=true` yanıtında `workspace`
+artık yeni alan. 0.5.0'da bu alana güvenen bir istemci yanlış alanı okuyordu.
+
+> Araç listesi değişmedi, ama açıklamalar değişti — yeni sohbet önerilir.
+
+---
+
 ## 0.5.0 — 13 Eylül 2026
 
 **Yazma araçları tamamlandı.** Yirmi araç, onu yazıyor. TODO'daki "3. adım —
