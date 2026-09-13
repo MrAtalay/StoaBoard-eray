@@ -591,6 +591,13 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       kabul etmiyor — `Prisma.DbNull` istiyor (göç betiği onu kullanıyor).
       Bugün hiçbir istemci `doc: null` göndermediği için yol ölü; açılırsa
       önce veritabanlı bir denemeyle doğrulanmalı.
+- [ ] **`doc` → açıklama senkronu başlıkları da açıklamaya katıyor.**
+      *(13 Eylül 2026, göç sonrası okumada görüldü.)* `PATCH /tasks/:id`
+      `doc` alınca `description`ı `p`, `h1`, `h2`, `h3` bloklarının metnini
+      birleştirerek yeniden yazıyor. Sonuç: #19'un `desc` alanı "Açıklama
+      ttakcviöm Alt görevler" — iki başlık da açıklamanın içinde. Pano kartı,
+      arama ve MCP `desc`i bu hâliyle görüyor. Muhtemel düzeltme yalnızca `p`
+      bloklarını almak; mevcut açıklamalar ayrıca temizlenmeli (veri yazımı).
 - [ ] **Kart açma penceresi alt görevleri ekledikten sonra kartı tazelemiyor.**
       *(13 Eylül 2026.)* Pencere kartı açıp alt görevleri tek tek ekliyor
       (`modals.jsx`), ama panodaki kart "0/N" sayısını sayfa yenilenene kadar

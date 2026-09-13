@@ -7,10 +7,89 @@ güven, düzyazıya değil.
 
 **Son güncelleme:** 13 Eylül 2026 öğleden sonra, **ev makinesinde** (5432 açık).
 
-> **MCP 0.5.0 canlıda ve uçtan uca doğrulandı** (13 Eylül): yazma araçlarının
-> başarı yolları Cowork'te, denetim kaydı veritabanında, tarama canlıda
-> (77/0/2). Denemeden iki yüzey kusuru (0.5.1) ve MCP'den eski, daha derin
-> bir kusur çıktı: **alt görevin iki kaynağı** (0-T). Sıradaki iş o.
+> **Alt görevin tek kaynağı canlıda** (13 Eylül, 0-U): çekmece `subtasks`
+> tablosuna geçti, ilerleme tek kuraldan, eski listeler taşındı (26 kart).
+> Önce 0.5.0 Cowork'te uçtan uca doğrulandı ve 0.5.1 iki yüzey kusurunu
+> kapattı (0-T). **Açık kalan:** çekmecenin yeni listesi tarayıcıda elle
+> denenmedi — ilk iş o.
+
+---
+
+## 0-U. 13 Eylül, öğleden sonra — alt görevin tek kaynağı, ilerlemenin tek kuralı
+
+0-T'de bulunan iki kaynak aynı gün kapandı. Karar ve gerekçe `lib/checklist.js`
+dosyasının başında; burada yalnızca ne yapıldığı ve nasıl doğrulandığı.
+
+### Ne değişti
+
+- **Çekmece** yapılacaklar listesini `subtasks_detail`'den okuyor, alt görev
+  uçlarına yazıyor (ekle / işaretle / yeniden adlandır / sil) ve kartı
+  sunucudan tazeliyor. `doc`taki `checklist` blokları çizilmiyor.
+- **Sunucu** liste taşıyan `doc`'u `err_doc_checklist_retired` ile REDDEDİYOR;
+  serileştirici `doc`a liste bloğu üretmiyor. İkinci kaynağın doğum yeri
+  buydu: serileştiricinin ürettiği blok, açıklama düzenlenince `doc` olarak
+  geri saklanıyordu.
+- **İlerleme tek üreticide** (`ilerlemeHesapla`): bitmiş kolon 100, değilse
+  alt görev oranı, alt görev yoksa 0. `recalcTaskProgress` her zaman yazıyor
+  ve kolon taşımasından sonra da çağrılıyor; PATCH gövdedeki `progress`'i
+  okumuyor; pano liste görünümü yüzdeyi kendisi hesaplamayı bıraktı.
+- MCP **0.5.2**: üç açıklama kurala göre; `get_task`in `doc`u liste taşımıyor.
+
+### Göç — canlıda uygulandı
+
+`scripts/altgorev-gocu.js`, önce DENEME kipinde gösterilip Eray'ın onayıyla:
+
+- **8 kart birleşti.** 10 yeni alt görev satırı (#11 dört, #42 ve #109 ikişer,
+  #13 ve #40 birer), 1 işaret düzeltmesi (#19: tablo "yapılmadı" → "yapıldı",
+  çünkü `doc` saklıyken kullanıcının gördüğü oydu), #4 ve #18'de yalnızca
+  `doc` temizliği. Hiçbir satır silinmedi.
+- **19 kartın ilerlemesi kurala geldi.** 6 kart 100 → 0 (#1, #9, #12, #14
+  alt görevsiz ve bitmemiş kolonda; #13 tek alt görevi işaretsiz; #114 çöpte);
+  13 kart bitmiş kolonda 0 → 100 (çoğu 10 Eylül'deki `is_done` düzeltmesinden
+  önce taşınmış, ilerlemesi hiç yazılmamış kartlar).
+- Toplam 26 kart, kart başına bir işlem. **Yedek:** ev makinesinde
+  `%TEMP%\altgorev-gocu-yedek-2026-09-13T13-47-28-278Z.json` (her kartın eski
+  `doc`, `progress` ve alt görev satırları). Geçici dizinde duruyor, yani
+  işletim sistemi temizleyebilir; kalıcı saklanacaksa taşınmalı.
+- Hemen ardından ikinci DENEME: "yapılacak bir şey yok". Liste taşıyan `doc`
+  8 → 0, alt görevli kart 41 → 44.
+
+**Sıra bilerek göç → dağıtım → ikinci koşu.** Tersi veri kaybı riski
+taşıyordu: yeni çekmece `doc`'u listesiz kaydeder, göç o kartı henüz
+taşımadıysa liste kaybolurdu. Göç önce koşunca aradaki birkaç dakikalık
+pencerenin tek riski eski arayüzün `doc`a yeniden liste yazması; ikinci koşu
+onu yakalar.
+
+### Testler ve mutasyon
+
+`test/altgorev.test.js`: 25 test, 448 → 473. Vakalar gerçek kartlardan.
+Tarama katmanı ikinci kaynağın ve ikinci üreticinin geri dönüşünü kilitliyor.
+**On bir mutasyonun on biri yakalandı.** Yol boyunca üç düzeltme:
+bir mutasyonun çapası tutmadı (kaçmış sayılmadı, yeniden koşuldu); "uçlar
+ilerlemeyi elle yazmıyor" taraması eski kodun tam kullandığı kısaltmalı
+`{ progress }` biçimini görmüyordu; dil testi istemcideki `'Alt görevler'`
+eşleştirme sabitini çevrilmemiş metin saydı — başlık temizliği sunucunun işi
+olduğu için istemciden kaldırıldı.
+
+### Dağıtımdan sonra
+
+`4382b1a` iki depoya da gitti (kanca iki kez yeşil). Canlı tarama
+`initialize → stoaboard 0.5.2`, 77 geçti / 0 kaldı / 1 atlandı. Göçün
+dağıtım sonrası ikinci DENEME koşusu: "yapılacak bir şey yok". MCP'den okundu:
+#11 `subtasks` "3/4", ilerleme 75, `doc` listesiz; #19 "1/1" yapıldı,
+ilerleme 100, `doc` listesiz — 0-T'deki üç hikâye tek hikâye.
+
+Yan gözlem (göçten bağımsız, TODO'da): #19'un `desc` alanı "Açıklama
+ttakcviöm Alt görevler". `PATCH` doc → açıklama senkronu başlık metinlerini de
+açıklamaya katıyor.
+
+### Denenmeyen
+
+**Çekmecenin yeni listesi tarayıcıda elle denenmedi.** Yerel `server/.env`
+canlı veritabanını gösteriyor; uygulamayı yerelde açıp tıklamak canlıya
+yazmak demekti. Doğrulayan yalnızca testler ve derleme. İlk iş: bir kartın
+çekmecesinde madde ekle, işaretle, yeniden adlandır, sil; panodaki kartın
+"x/y" sayısı ve yüzdesi her adımda değişmeli.
 
 ---
 
