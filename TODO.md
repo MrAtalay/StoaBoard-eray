@@ -553,8 +553,12 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       anki araç adlarını dönerse, bayat bir sohbet kendi listesinde olmayan
       aracı görüp kullanıcıya "yeni sohbet aç" diyebilir. Bayatlığı imkânsız
       kılmıyor, görünür kılıyor.
-- [ ] **Alt görevin İKİ kaynağı var — MCP yalnızca birine yazıyor.** *(Bulundu
-      13 Eylül 2026, Cowork'ün 0.5.0 denemesi — DEVIR 0-T.)* Kart açma penceresi
+- [x] **Alt görevin İKİ kaynağı var — MCP yalnızca birine yazıyor.** *(Bulundu
+      13 Eylül 2026, Cowork'ün 0.5.0 denemesi — DEVIR 0-T. Kapandı aynı gün —
+      DEVIR 0-U: çekmece alt görev uçlarına geçti, `doc`a liste yazımı sunucuda
+      reddediliyor, ilerleme tek üreticide (`lib/checklist.js`), eski listeler
+      `scripts/altgorev-gocu.js` ile taşındı; `test/altgorev.test.js`, on bir
+      mutasyonun on biri yakalanıyor.)* Kart açma penceresi
       ve MCP `subtasks` tablosuna yazıyor; çekmecedeki "Yapılacaklar" bölümü
       ise listeyi `task.doc` içindeki `checklist` bloğuna yazıyor ve ilerlemeyi
       oradan kendisi hesaplıyor (`drawer.jsx`, `saveChecklist`). `doc` bir kez
@@ -581,6 +585,16 @@ ilerlemeyi 100 yapıyor, geçişi kaydediyor.
       diyor; aktif alanı eklemek kahin açmaz, çünkü olmayan kartla aynı gövde
       kalır. `mcp.workspace_switched` satırı HEDEF alanın kaydına düşüyor:
       StoaBoard'un kaydında 1→4 geçişi görünmüyor, yalnızca dönüş görünüyor.
+- [ ] **`PATCH /tasks/:id` `doc: null` gönderilince muhtemelen 500 veriyor.**
+      *(13 Eylül 2026, okurken fark edildi; denenmedi.)* `updates.doc = null`
+      yazılıyor, oysa Prisma 5 boş bırakılabilir `Json` sütununa düz `null`
+      kabul etmiyor — `Prisma.DbNull` istiyor (göç betiği onu kullanıyor).
+      Bugün hiçbir istemci `doc: null` göndermediği için yol ölü; açılırsa
+      önce veritabanlı bir denemeyle doğrulanmalı.
+- [ ] **Kart açma penceresi alt görevleri ekledikten sonra kartı tazelemiyor.**
+      *(13 Eylül 2026.)* Pencere kartı açıp alt görevleri tek tek ekliyor
+      (`modals.jsx`), ama panodaki kart "0/N" sayısını sayfa yenilenene kadar
+      göstermiyor. Tek kaynağa inişten önce de böyleydi.
 - [x] **`dil.test.js` ve `yetki.test.js` tarayıcıları yorumları silmiyor.**
       *(Kapandı 12 Eylül 2026 — DEVIR 0-L.)* Sorun maddede yazandan genişti:
       "yorum nedir" sorusunun depoda **üç ayrı cevabı** vardı ve üçü de farklı
@@ -1046,9 +1060,10 @@ Ofiste dal itmek, yerelde **alınamayan** bir doğrulama sağlıyor.
 ### Bilinen kusurlar
 - [ ] Topbar'daki sohbet butonu bazı ekranlarda tepki vermiyor (yeniden
       üretilemedi — adım tarifi gerekiyor).
-- [ ] Alt görevi olmayan bir kart "tamamlandı" kolonundan çıkarılınca ilerleme
-      %100 kalıyor. Alt görev yoksa hesaplanacak bir kaynak da yok; bilinçli
-      olarak dokunulmadı.
+- [x] Alt görevi olmayan bir kart "tamamlandı" kolonundan çıkarılınca ilerleme
+      %100 kalıyor. *(Kapandı 13 Eylül 2026 — DEVIR 0-U: ilerleme tek kuraldan,
+      kolon + alt görev; göç kolondan kopmuş yüzdeleri de düzeltti.)* Alt görev
+      yoksa hesaplanacak bir kaynak da yok; bilinçli olarak dokunulmadı.
       **Kararı yeniden düşün — 10 Eylül'de ölçüldü ve kenar durum değilmiş.**
       MCP ile gerçek panoya bakıldığında geciken 6 kartın **5'i**
       `progress: 100` taşırken `todo`/`doing` kolonunda duruyor ve

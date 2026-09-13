@@ -215,6 +215,8 @@ const API = {
     apiFetch(`/api/tasks/${taskId}/subtasks`, { method: 'POST', body: { title } }),
   toggleSubtask: (id, done) =>
     apiFetch(`/api/subtasks/${id}`, { method: 'PATCH', body: { done } }),
+  renameSubtask: (id, title) =>
+    apiFetch(`/api/subtasks/${id}`, { method: 'PATCH', body: { title } }),
   deleteSubtask: (id) =>
     apiFetch(`/api/subtasks/${id}`, { method: 'DELETE' }),
 
@@ -1076,6 +1078,7 @@ err_action_forbidden:'Bu işlem için yetkiniz yok',
     err_default_channel_type:'Varsayılan kanalın tipi değiştirilemez',
     err_delete_for_all_forbidden:'Sadece gönderen veya yetkili yönetici herkesten silebilir',
     err_delete_subtask_forbidden:'Alt görev silme yetkiniz yok',
+    err_doc_checklist_retired:'Yapılacaklar artık alt görev olarak saklanıyor; sayfayı yenileyip yeniden deneyin.',
     err_edit_column_forbidden:'Kolon düzenleme yetkiniz yok',
     err_edit_subtask_forbidden:'Alt görev düzenleme yetkiniz yok',
     err_email_taken:'Bu e-posta adresi zaten kayıtlı',
@@ -1912,6 +1915,7 @@ err_action_forbidden:'You are not allowed to do this',
     err_default_channel_type:"The default channel's type cannot be changed",
     err_delete_for_all_forbidden:'Only the sender or an authorised admin can delete for everyone',
     err_delete_subtask_forbidden:'You are not allowed to delete subtasks',
+    err_doc_checklist_retired:'To-do items are now stored as subtasks; reload the page and try again.',
     err_edit_column_forbidden:'You are not allowed to edit columns',
     err_edit_subtask_forbidden:'You are not allowed to edit subtasks',
     err_email_taken:'This email address is already registered',

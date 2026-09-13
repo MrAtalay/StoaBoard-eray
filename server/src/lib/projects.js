@@ -2,6 +2,7 @@
 // _next_position, _log_activity ile aynı semantik.
 
 import { prisma } from '../db.js';
+import { ilerlemeHesapla } from './checklist.js';
 
 /**
  * Project'i ve bağlı tüm kayıtları sil. Transaction'da çağrılmalı.
@@ -67,22 +68,24 @@ export async function logActivity(client, projectId, userId, text) {
 }
 
 /**
- * Görevin ilerlemesini alt görevlere göre yeniden hesaplar.
+ * Görevin ilerlemesini kolonuna ve alt görevlerine göre yeniden yazar.
  *
- * Alt görev yoksa dokunmaz — ilerleme o durumda elle/kolon üzerinden yönetiliyor.
- * `client` transaction da olabilir, normal prisma da.
+ * Kural `lib/checklist.js` içindeki `ilerlemeHesapla`da; burası yalnızca
+ * veriyi okuyup yazıyor. İlerlemeyi değiştirebilecek her olaydan sonra
+ * (alt görev ekle/işaretle/sil, kolon değiştir) çağrılır ve HER ZAMAN yazar.
  *
- * Not: eskiden bu hesap yalnızca PATCH /subtasks/:id içinde yapılıyordu; alt görev
- * eklenince/silinince ve kart "tamamlandı" kolonundan çıkınca ilerleme bayat kalıyordu.
+ * Eski hâli alt görev yoksa hiçbir şey yazmadan çıkıyordu: son alt görevi
+ * silinen ya da "tamamlandı" kolonundan çıkan alt görevsiz kart %100'de
+ * donuyordu. `client` transaction da olabilir, normal prisma da — kolon
+ * taşımasında transaction içinden, kolon güncellendikten SONRA çağrılıyor.
  */
 export async function recalcTaskProgress(client, taskId) {
-  const subs = await client.subtask.findMany({
-    where: { taskId },
-    select: { done: true },
+  const task = await client.task.findUnique({
+    where: { id: taskId },
+    select: { column: { select: { isDone: true } }, subtasks: { select: { done: true } } },
   });
-  if (!subs.length) return null;
-  const done = subs.filter((s) => s.done).length;
-  const progress = Math.round((done / subs.length) * 100);
+  if (!task) return null;
+  const progress = ilerlemeHesapla({ altlar: task.subtasks, kolonBitti: task.column?.isDone === true });
   await client.task.update({ where: { id: taskId }, data: { progress } });
   return progress;
 }

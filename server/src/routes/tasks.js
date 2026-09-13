@@ -38,6 +38,7 @@ import { recordTransition } from '../lib/reporting.js';
 import { reqLang } from '../lib/lang.js';
 import { atananlariDenetle, atamaSluglari } from '../lib/assignees.js';
 import { bahsedilenleriCoz } from '../lib/mentions.js';
+import { docKontrolListesiVarMi, ilerlemeHesapla } from '../lib/checklist.js';
 
 export const projectTasksRouter = Router({ mergeParams: true }); // /projects/:projectId/tasks
 export const tasksRouter = Router();         // /tasks/:taskId
@@ -218,7 +219,8 @@ projectTasksRouter.post(
           title,
           description: data.desc || data.description || '',
           priority: data.priority || 'mid',
-          progress: 0,
+          // Yeni kartın alt görevi yok; bitmiş kolona açılıyorsa 100.
+          progress: ilerlemeHesapla({ altlar: [], kolonBitti: col?.isDone === true }),
           dueDate: parseDate(data.due),
           startDate: parseDate(data.start),
           assigneeDates: data.assignee_dates || null,
@@ -330,7 +332,11 @@ tasksRouter.patch(
       updates.description = data.desc ?? data.description ?? '';
     }
     if ('priority' in data) updates.priority = data.priority;
-    if ('progress' in data) updates.progress = parseInt(data.progress, 10) || 0;
+    // `progress` gövdeden BİLEREK okunmuyor. İlerleme sunucuda türetiliyor
+    // (`recalcTaskProgress`); eskiden çekmece onu `doc`taki listeden kendisi
+    // hesaplayıp buraya gönderiyordu ve alt görev tablosunun hesabını eziyordu.
+    // Kabul edilseydi, dağıtımdan önce açılmış bir sekme ikinci üreticiyi geri
+    // getirirdi.
     if ('due' in data) updates.dueDate = parseDate(data.due);
     if ('start' in data) updates.startDate = parseDate(data.start);
     if ('assignee_dates' in data) {
@@ -338,6 +344,16 @@ tasksRouter.patch(
     }
 
     if ('doc' in data) {
+      // Kontrol listesi taşıyan `doc` REDDEDİLİYOR, sessizce ayıklanmıyor.
+      // Yapılacaklar yalnızca `subtasks` tablosunda (lib/checklist.js). Bu
+      // gövdeyi bugün yalnızca dağıtımdan önce açılmış bir sekme gönderir;
+      // ayıklansaydı o kullanıcının işaretledikleri hata vermeden kaybolurdu.
+      if (docKontrolListesiVarMi(data.doc)) {
+        return res.status(400).json({
+          error: 'err_doc_checklist_retired',
+          message: 'Yapılacaklar artık alt görev olarak saklanıyor; sayfayı yenileyip yeniden deneyin',
+        });
+      }
       if (Array.isArray(data.doc)) {
         updates.doc = data.doc;
         // description'ı doc'taki text bloklarından senkronize et
@@ -350,9 +366,8 @@ tasksRouter.patch(
       }
     }
 
-    // Column move (+ aktivite log + geçiş kaydı + is_done ise progress=100)
+    // Column move (+ aktivite log + geçiş kaydı + ilerlemenin yeniden türetilmesi)
     let movedActivity = null;
-    let recalcAfterMove = false;
     let moveFromCol = null;
     let moveToCol = null;
     if ('col' in data) {
@@ -384,18 +399,19 @@ tasksRouter.patch(
         updates.columnId = newCol.id;
         moveFromCol = fromCol;
         moveToCol = newCol;
-        // Tamamlandi kolonuna girince 100; cikinca alt gorevlerden yeniden hesapla
-        // (alt gorev yoksa recalcAfterMove null doner ve ilerlemeye dokunulmaz).
+        // İlerleme burada YAZILMIYOR; kolon değiştikten sonra işlemin içinde
+        // `recalcTaskProgress` türetiyor (bitmiş kolon 100, değilse alt görev
+        // oranı, alt görev yoksa 0). Eskiden girişte 100 yazılıyor, çıkışta
+        // yalnızca ilerleme 100 ise ve alt görev varsa hesaplanıyordu — alt
+        // görevsiz kart "tamamlandı"dan çıkınca %100'de kalıyordu.
         if (newCol.isDone) {
-          updates.progress = 100;
           // İlk tamamlanma anı yazılır. İki farklı "tamamlandı" kolonu arasında
           // gezinirken ilk tamamlanma zamanı korunur, aksi halde akış raporundaki
           // tamamlanma süresi her taşımada sıfırlanırdı.
           if (!task.completedAt) updates.completedAt = new Date();
-        } else {
-          if (task.progress === 100) recalcAfterMove = true;
+        } else if (task.completedAt) {
           // "Tamamlandı"dan çıktı: iş yeniden açıldı, tamamlanma zamanı silinir.
-          if (task.completedAt) updates.completedAt = null;
+          updates.completedAt = null;
         }
         movedActivity = buildNotificationText('task_moved', {
           task: data.title?.trim() || task.title,
@@ -482,7 +498,7 @@ tasksRouter.patch(
           toCol: moveToCol,
         });
       }
-      if (recalcAfterMove) {
+      if (moveToCol) {
         await recalcTaskProgress(tx, taskId);
       }
     });
@@ -633,19 +649,9 @@ subtasksRouter.patch(
 
     await prisma.subtask.update({ where: { id: subtaskId }, data: updates });
 
-    // Auto progress: tüm subtask'lerin yüzdesini hesapla
-    const allSubs = await prisma.subtask.findMany({
-      where: { taskId: s.taskId },
-      select: { done: true },
-    });
-    if (allSubs.length) {
-      const done = allSubs.filter((x) => x.done).length;
-      const progress = Math.round((done / allSubs.length) * 100);
-      await prisma.task.update({
-        where: { id: s.taskId },
-        data: { progress },
-      });
-    }
+    // İlerleme tek üreticiden. Burada eskiden kendi kopyası vardı ve bitmiş
+    // kolondaki kartta işaret kaldırmak, taşımanın yazdığı 100'ü eziyordu.
+    await recalcTaskProgress(prisma, s.taskId);
 
     const updated = await prisma.subtask.findUnique({ where: { id: subtaskId } });
     res.json(subtaskToDict(updated));

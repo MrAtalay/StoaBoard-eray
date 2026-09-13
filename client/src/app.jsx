@@ -697,7 +697,16 @@ function App() {
     const col = DATA.COLUMNS.find(c => c.id === colId);
     setTasks(tasks.map(t => t.id === id ? { ...t, col: colId, progress: col?.is_done ? 100 : t.progress } : t));
     if (drawerTask?.id === id) setDrawerTask(dt => ({ ...dt, col: colId }));
-    try { await API.updateTask(id, { col: colId }); }
+    try {
+      // İyimser değer yalnızca bekleme anı için. İlerleme sunucuda türetiliyor
+      // (bitmemiş kolona dönen alt görevsiz kart 0 olur); yanıt birleştirilmezse
+      // kart sayfa yenilenene kadar eski yüzdeyi gösterirdi.
+      const updated = await API.updateTask(id, { col: colId });
+      if (updated?.id) {
+        setTasks(ts => ts.map(t => t.id === id ? { ...t, progress: updated.progress, subtasks: updated.subtasks } : t));
+        if (drawerTask?.id === id) setDrawerTask(dt => (dt ? { ...dt, progress: updated.progress } : dt));
+      }
+    }
     catch (e) {
       setTasks(prev);
       // Çekmece açıksa o da geri sarılmalı; aksi halde kart eski kolona

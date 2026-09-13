@@ -1458,7 +1458,10 @@ function BoardView({ tasks, onOpenTask, onMoveTask, onDeleteTask, tweaks, onOpen
                         const subParts = String(t.subtasks || '0/0').split('/');
                         const sDone = parseInt(subParts[0]) || 0;
                         const sTotal = parseInt(subParts[1]) || 0;
-                        const pct = sTotal > 0 ? Math.round(sDone / sTotal * 100) : (t.progress || 0);
+                        // Yüzde sunucunun: kolon ve alt görevlerden tek kuralla
+                        // türetiliyor (server/src/lib/checklist.js). Burada oranı
+                        // yeniden hesaplamak bitmiş kolondaki kartı %0 gösteriyordu.
+                        const pct = t.progress || 0;
                         return (
                           <tr key={t.id} data-done={isDone} onClick={() => onOpenTask(t)} style={{ cursor: 'pointer' }}>
                             <td onClick={(e) => {

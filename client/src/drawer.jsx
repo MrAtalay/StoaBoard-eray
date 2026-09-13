@@ -24,8 +24,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
   const [mentionIdx, setMentionIdx]     = useDrawerState(0);
   const [duplicating, setDuplicating]   = useDrawerState(false);
 
-  // ── Checklist ────────────────────────────────────────────────────────────
-  const [checklist, setChecklist]       = useDrawerState([]);
+  // ── Checklist (alt görevler) ───────────────────────────────────────────
   const [checkInput, setCheckInput]     = useDrawerState('');
   const [checkSaving, setCheckSaving]   = useDrawerState(false);
   const [editingCheckId, setEditingCheckId] = useDrawerState(null);
@@ -153,64 +152,72 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
     return () => document.removeEventListener('mousedown', handleClick);
   }, [statusOpen, priorityOpen, labelOpen, assigneeOpen, noteLinkOpen]);
 
-  // Load checklist from doc when detail arrives
-  useDrawerEffect(() => {
-    if (!detail) return;
-    const doc = detail.doc || [];
-    const block = doc.find(b => b.kind === 'checklist' && !b._subtask);
-    if (block && block.items) {
-      setChecklist(block.items.map((it, i) => ({ id: i, text: typeof it === 'string' ? it : it.text, done: !!it.done })));
-    } else {
-      setChecklist([]);
-    }
-  }, [detail?.doc]);
+  // Yapılacaklar = kartın alt görevleri; tek kaynak `subtasks` tablosu.
+  //
+  // Liste eskiden `task.doc` içindeki bir `checklist` bloğunda tutuluyor ve
+  // ilerleme burada, istemcide hesaplanıyordu; kart açma penceresi ve MCP ise
+  // aynı listeyi `subtasks` tablosuna yazıyordu. 13 Eylül 2026'da iki kaynağı
+  // birden taşıyan 5 kartın 3'ü birbirinden ayrışmış bulundu. Artık liste
+  // yalnızca alt görev uçlarından geçiyor, ilerlemeyi sunucu türetiyor ve
+  // kontrol listesi taşıyan `doc` yazımı sunucuda reddediliyor
+  // (server/src/lib/checklist.js).
+  const checklist = detail?.subtasks_detail || [];
 
-  // Save checklist back to doc
-  const saveChecklist = async (items) => {
+  // Alt görev değişikliği kartın ilerlemesini ve "x/y" sayısını sunucuda
+  // değiştiriyor; panodaki kart ikisini de gösterdiği için buradan tazeleniyor.
+  // `subtasks` alt görev kalmayınca yanıtta hiç yok — açıkça undefined
+  // verilmezse birleştirme eski "1/1"i kartta bırakırdı.
+  const kartiTazele = async () => {
+    const d = await API.getTaskDetail(task.id);
+    setDetail(prev => ({ ...(prev || {}), subtasks_detail: d.subtasks_detail, progress: d.progress }));
+    onTaskUpdate && onTaskUpdate({ id: task.id, progress: d.progress, subtasks: d.subtasks });
+  };
+
+  const altGorevIslemi = async (islem, iyimser) => {
     if (!task) return;
-    const existingDoc = (detail?.doc || []).filter(b => !(b.kind === 'checklist' && !b._subtask));
-    const newDoc = items.length > 0
-      ? [...existingDoc, { kind: 'checklist', items: items.map(it => ({ text: it.text, done: it.done })) }]
-      : existingDoc;
-    const done  = items.filter(i => i.done).length;
-    const total = items.length;
-    const progress = total > 0 ? Math.round((done / total) * 100) : (task.progress || 0);
+    const onceki = detail?.subtasks_detail || [];
+    if (iyimser) setDetail(d => ({ ...(d || {}), subtasks_detail: iyimser(d?.subtasks_detail || []) }));
+    const hataGoster = (e) =>
+      window.showToast?.((window.t?.('drawer_err_checklist') || 'Checklist kaydedilemedi: ') + e.message, 'error');
     setCheckSaving(true);
     try {
-      const updated = await API.updateTask(task.id, { doc: newDoc, progress });
-      onTaskUpdate && onTaskUpdate({ id: task.id, ...updated });
-    } catch (e) { window.showToast?.((window.t?.('drawer_err_checklist') || 'Checklist kaydedilemedi: ') + e.message, 'error'); }
-    finally { setCheckSaving(false); }
+      await islem();
+    } catch (e) {
+      // Yalnızca yazma başarısızsa geri sarılıyor.
+      setDetail(d => ({ ...(d || {}), subtasks_detail: onceki }));
+      hataGoster(e);
+      setCheckSaving(false);
+      return;
+    }
+    // Yazma oldu; tazeleme düşerse iyimser hâl doğru kalır, yalnızca söylenir.
+    try { await kartiTazele(); } catch (e) { hataGoster(e); } finally { setCheckSaving(false); }
   };
 
   const toggleCheckItem = (id) => {
-    const updated = checklist.map(it => it.id === id ? { ...it, done: !it.done } : it);
-    setChecklist(updated);
-    saveChecklist(updated);
+    const it = checklist.find(s => s.id === id);
+    if (!it) return;
+    altGorevIslemi(() => API.toggleSubtask(id, !it.done),
+      liste => liste.map(s => s.id === id ? { ...s, done: !s.done } : s));
   };
 
   const addCheckItem = () => {
     const text = checkInput.trim();
     if (!text) return;
-    const updated = [...checklist, { id: Date.now(), text, done: false }];
-    setChecklist(updated);
     setCheckInput('');
-    saveChecklist(updated);
+    // İyimser satır yok: kimliği sunucu veriyor, tazeleme listeyi getiriyor.
+    altGorevIslemi(() => API.addSubtask(task.id, text));
   };
 
   const deleteCheckItem = (id) => {
-    const updated = checklist.filter(it => it.id !== id);
-    setChecklist(updated);
-    saveChecklist(updated);
+    altGorevIslemi(() => API.deleteSubtask(id), liste => liste.filter(s => s.id !== id));
   };
 
   const renameCheckItem = (id, newText) => {
     const t = newText.trim();
-    if (!t) return;
-    const updated = checklist.map(it => it.id === id ? { ...it, text: t } : it);
-    setChecklist(updated);
-    saveChecklist(updated);
     setEditingCheckId(null);
+    if (!t) return;
+    altGorevIslemi(() => API.renameSubtask(id, t),
+      liste => liste.map(s => s.id === id ? { ...s, text: t } : s));
   };
 
   const patchTask = async (fields) => {
@@ -259,9 +266,11 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
     .filter(Boolean);
   const col = DATA.COLUMNS.find(c => c.id === task.col) || { title_tr: task.col };
 
-  const doc        = _patchDocI18n(docState || detail?.doc || _basicDoc(task));
+  // Kontrol listesi blokları gösterilmiyor ve geri saklanmıyor: yapılacaklar
+  // aşağıdaki bölümde, alt görevlerden geliyor. Blok bir kez daha kaydedilseydi
+  // sunucu reddederdi (err_doc_checklist_retired).
+  const doc        = _patchDocI18n(_kontrolListesiz(docState || detail?.doc || _basicDoc(task)));
   const comments   = detail?.comments_list || [];
-  const subsDetail = detail?.subtasks_detail || [];
 
   const saveDocBlock = async (index, newText) => {
     const newDoc = doc.map((b, i) => i === index ? { ...b, text: newText } : b);
@@ -317,29 +326,6 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
   const mentionMembers = mentionQuery !== null
     ? DATA.MEMBERS.filter(m => m.name.toLowerCase().includes(mentionQuery))
     : [];
-
-  // ── Toggle subtask ──────────────────────────────────────────────────────
-  const handleSubtaskToggle = async (subId, currentDone) => {
-    if (!canManageTasks) return;
-    const newDone = !currentDone;
-    setDetail(d => ({
-      ...(d || {}),
-      subtasks_detail: (d?.subtasks_detail || []).map(s =>
-        s.id === subId ? { ...s, done: newDone } : s
-      ),
-    }));
-    try {
-      await API.toggleSubtask(subId, newDone);
-    } catch (e) {
-      // Rollback
-      setDetail(d => ({
-        ...(d || {}),
-        subtasks_detail: (d?.subtasks_detail || []).map(s =>
-          s.id === subId ? { ...s, done: currentDone } : s
-        ),
-      }));
-    }
-  };
 
   const bodyContent = (
     <>
@@ -523,7 +509,7 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
       ) : (
         <div className="doc-content">
           {doc.map((b, i) => (
-            <DrawerDocBlock key={i} block={b} subsDetail={subsDetail} onSubtaskToggle={handleSubtaskToggle} canManageTasks={canManageTasks}
+            <DrawerDocBlock key={i} block={b}
               onUpdate={canManageTasks ? (newText) => saveDocBlock(i, newText) : undefined} />
           ))}
         </div>
@@ -974,31 +960,15 @@ function TaskDrawer({ open, task, onClose, onMoveTask, onTaskUpdate, onDelete, o
 
 // ── Doc block renderer ──────────────────────────────────────────────────────
 
-function DrawerDocBlock({ block, subsDetail, onSubtaskToggle, canManageTasks = true, onUpdate }) {
-  const [localChecks, setLocalChecks] = useDrawerState(null);
+function DrawerDocBlock({ block, onUpdate }) {
   const [pEditing, setPEditing] = useDrawerState(false);
   const [pDirty, setPDirty] = useDrawerState(false);
   const pRef = useDrawerRef(null);
 
-  // Build check state from subsDetail or block items
-  React.useEffect(() => {
-    if (block.kind !== 'checklist') return;
-    if (subsDetail && subsDetail.length > 0 && block.items) {
-      // Try to match items with subsDetail by position
-      setLocalChecks(block.items.map((it, i) => {
-        if (it.id) {
-          const sub = subsDetail.find(s => s.id === it.id);
-          return sub ? sub.done : !!it.done;
-        }
-        return subsDetail[i] ? subsDetail[i].done : !!it.done;
-      }));
-    } else if (block.items) {
-      setLocalChecks(block.items.map(it => !!it.done));
-    }
-  }, [subsDetail, block]);
-
-  const checks = localChecks || (block.items || []).map(it => !!it.done);
-
+  // `checklist` bloğu burada çizilmiyor: yapılacaklar alt görevlerden geliyor
+  // ve kendi bölümünde duruyor. Eski çizim işaret durumunu alt görevlerle
+  // SIRAYLA eşleştiriyordu (kimliksiz maddede `subsDetail[i]`), yani iki liste
+  // farklı uzunluktayken yanlış kutuyu işaretli gösteriyordu.
   switch (block.kind) {
     case 'h2':    return <h2>{block._i18n ? (window.t?.(block._i18n) || block.text) : block.text}</h2>;
     case 'h3':    return <h3>{block._i18n ? (window.t?.(block._i18n) || block.text) : block.text}</h3>;
@@ -1054,35 +1024,18 @@ function DrawerDocBlock({ block, subsDetail, onSubtaskToggle, canManageTasks = t
     case 'ul':    return <ul>{(block.items || []).map((it, i) => <li key={i}>{it}</li>)}</ul>;
     case 'pre':   return <pre>{block.text}</pre>;
     case 'quote': return <blockquote>{block.text}</blockquote>;
-    case 'checklist':
-      return (
-        <div className="checklist">
-          {(block.items || []).map((it, i) => {
-            const checked = checks[i] || false;
-            const subId = it.id || (subsDetail?.[i]?.id);
-            return (
-              <div
-                key={i}
-                className="check-row"
-                data-checked={checked}
-                onClick={() => {
-                  if (!canManageTasks) return;
-                  const newChecks = checks.map((c, j) => j === i ? !c : c);
-                  setLocalChecks(newChecks);
-                  if (subId && onSubtaskToggle) onSubtaskToggle(subId, checked);
-                }}
-              >
-                <div className="list-check" data-checked={checked}>
-                  {checked && <Icon name="check" size={10} strokeWidth={2.5} />}
-                </div>
-                <span className="check-text" style={{ fontSize: 14, lineHeight: 1.5 }}>{it.text}</span>
-              </div>
-            );
-          })}
-        </div>
-      );
     default: return null;
   }
+}
+
+// Kontrol listesi bloklarını ayıklar. Saklı doc'lardaki bloklar (ve önlerindeki
+// üretilmiş başlık) `scripts/altgorev-gocu.js` ile bir kez temizlendi; bu
+// yalnızca eski bir sekmenin göçten önce yazdığı blok ekrana düşmesin diye.
+// Başlık eşleştirmesi bilerek burada yok — o iş sunucudaki
+// `docKontrolListesiz`in (lib/checklist.js).
+function _kontrolListesiz(blocks) {
+  if (!Array.isArray(blocks)) return blocks;
+  return blocks.filter(b => b?.kind !== 'checklist');
 }
 
 // Known i18n keys by their possible stored text values (legacy fix for docs saved in Turkish)

@@ -151,17 +151,14 @@ export function taskToDetailDict(task) {
   if (Array.isArray(task.doc)) {
     base.doc = task.doc;
   } else {
+    // Alt görevler `doc`a KOPYALANMIYOR — `subtasks_detail` tek yeri.
+    // Eskiden buraya bir `checklist` bloğu üretiliyordu; çekmece o bloğu
+    // okuyup `doc` olarak geri saklıyor ve alt görevin ikinci kaynağı böyle
+    // doğuyordu (lib/checklist.js).
     const doc = [];
     if (task.description) {
       doc.push({ kind: 'h2', text: 'Açıklama' });
       doc.push({ kind: 'p', text: task.description });
-    }
-    if ((task.subtasks || []).length > 0) {
-      doc.push({ kind: 'h2', text: 'Alt görevler' });
-      doc.push({
-        kind: 'checklist',
-        items: task.subtasks.map((s) => ({ id: s.id, done: s.done, text: s.title })),
-      });
     }
     base.doc = doc.length
       ? doc

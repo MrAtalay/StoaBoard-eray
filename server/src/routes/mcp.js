@@ -91,7 +91,7 @@ export const mcpRouter = Router();
 // cevaplanamıyor. Yüzeyi değiştiren her commit'te bump et; `initialize`
 // yanıtındaki serverInfo.version dağıtım kanıtı olarak okunabilsin.
 // Sürüm geçmişi ve kırıcı değişiklikler: MCP-SURUMLER.md.
-const MCP_VERSION = '0.5.1';
+const MCP_VERSION = '0.5.2';
 
 /**
  * Araçların fiilen kullandığı izinler.
@@ -1133,8 +1133,10 @@ function buildMcpServer(user, dil, req) {
         + 'AKTİF alanın kimliği olmalıdır; değilse 409 döner. Pano bir kolondan '
         + 'yalnızca belirli kolonlara geçişe izin veriyorsa (allowed_next) ve '
         + 'hedef listede yoksa 409 döner — sebebi kullanıcıya aktar, başka yol '
-        + 'deneme. "Tamamlandı" işaretli kolona taşınan kartın ilerlemesi 100 '
-        + 'olur. Kart zaten o kolondaysa hiçbir şey yazılmaz ve moved=false döner.',
+        + 'deneme. İlerleme taşımadan sonra yeniden türetilir: "tamamlandı" '
+        + 'işaretli kolondaki kart 100; öbür kolonlarda tamamlanan alt görev '
+        + 'oranı, alt görev yoksa 0. Kart zaten o kolondaysa hiçbir şey '
+        + 'yazılmaz ve moved=false döner.',
       inputSchema: {
         workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
         task_id: kimlik('list_tasks içindeki id'),
@@ -1344,8 +1346,11 @@ function buildMcpServer(user, dil, req) {
       title: B('add_subtask'),
       description:
         'Bir görevin altına yeni alt görev (kontrol listesi maddesi) ekler. '
-        + 'Kartın ilerleme yüzdesi alt görevlerden hesaplandığı için ekleme '
-        + 'ilerlemeyi düşürebilir — bu beklenen davranış. workspace_id '
+        + 'İlerleme sunucuda türetilir: "tamamlandı" kolonundaki kart 100, '
+        + 'öbürlerinde tamamlanan alt görev oranı — yani ekleme ilerlemeyi '
+        + 'düşürebilir, bu beklenen davranış. Alt görevler kartın yapılacaklar '
+        + 'listesinin TEK kaynağıdır; tarayıcıdaki çekmece de bunları gösterir. '
+        + 'workspace_id '
         + 'zorunludur ve AKTİF alanın kimliği olmalıdır. Araç '
         + 'TEKRARLANABİLİR DEĞİLDİR: aynı çağrı iki kez yapılırsa iki alt '
         + 'görev oluşur.',
@@ -1464,7 +1469,8 @@ function buildMcpServer(user, dil, req) {
         'Bir alt görevi KALICI olarak siler — alt görevlerin çöp kutusu yok, '
         + 'geri alınamaz. Bu yüzden kullanıcı açıkça istemediyse çağırma. '
         + 'subtask_id o görevin subtasks_detail listesinden olmalıdır. '
-        + 'Silme sonrası kartın ilerleme yüzdesi yeniden hesaplanır.',
+        + 'Silme sonrası kartın ilerleme yüzdesi yeniden hesaplanır; alt görev '
+        + 'kalmazsa 0 olur ("tamamlandı" kolonundaysa 100).',
       inputSchema: {
         workspace_id: kimlik('aktif alanın kimliği — whoami yanıtındaki workspace.id'),
         task_id: kimlik('alt görevin bağlı olduğu görev — list_tasks içindeki id'),

@@ -16,6 +16,38 @@ commit'te sürüm artırılır ve buraya yazılır.
 
 ---
 
+## 0.5.2 — 13 Eylül 2026
+
+**Alt görevler kartın yapılacaklar listesinin tek kaynağı; ilerleme tek
+kuraldan.** Araç eklenmedi. Değişiklik ürünün kendisinde (DEVIR 0-U); MCP'ye
+yansıyan kısmı davranış ve açıklama.
+
+### Neden
+
+0.5.0 denemesinde #19'da üç ayrı hikâye görüldü: `subtasks_detail`
+"yapılmadı", `doc` içindeki liste "yapıldı", ilerleme %100. Tarayıcıdaki
+çekmece listeyi `task.doc`a yazıyordu, MCP `subtasks` tablosuna. Saklı
+`doc`'lu bir kartta `add_subtask` çekmecenin hiç göstermediği bir satır
+yazıyor, `update_subtask` çekmecenin hesapladığı ilerlemeyi eziyordu. Artık
+çekmece de alt görev uçlarından geçiyor; MCP'nin yazdığı her alt görev
+tarayıcıda görünüyor.
+
+### İstemci için davranış değişiklikleri
+
+- **İlerleme kuralı:** "tamamlandı" işaretli kolondaki kart **100**; öbür
+  kolonlarda tamamlanan alt görev oranı; alt görev yoksa **0**. Eskiden son alt
+  görev silinince ilerleme son değerde donuyordu, bitmiş kolondaki kartta alt
+  görev işaretlemek ise oranı yazıyordu.
+- **`get_task` yanıtındaki `doc` artık `checklist` bloğu taşımıyor.**
+  Serileştirici üretmiyor, saklı olanlar göçle alt görevlere taşındı. Yapılacaklar
+  için tek yer `subtasks_detail`.
+- `move_task`, `add_subtask`, `delete_subtask` açıklamaları kurala göre
+  güncellendi.
+
+> Açıklamalar değişti — yeni sohbet önerilir.
+
+---
+
 ## 0.5.1 — 13 Eylül 2026
 
 **Gerçek istemci denemesinin bulguları.** Araç eklenmedi, çıkarılmadı; iki
